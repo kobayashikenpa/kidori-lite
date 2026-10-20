@@ -17,8 +17,8 @@ describe('adjustIdsInExpr（式に出てくる調整寸法の id）', () => {
 })
 
 describe('partsUsingAdjust（1つの仕事で、調整寸法を式で使っている部材）', () => {
-  it('見本のメラミン1 は［棚板（H）］', () => {
-    expect(partsUsingAdjust(shelfJob(), MELAMINE_ID)).toEqual(['棚板（H）'])
+  it('見本のメラミン1 は［棚板（W）］', () => {
+    expect(partsUsingAdjust(shelfJob(), MELAMINE_ID)).toEqual(['棚板（W）'])
   })
 
   it('見本のシート0.5 は使われていない', () => {
@@ -27,29 +27,29 @@ describe('partsUsingAdjust（1つの仕事で、調整寸法を式で使って�
 
   it('1つの部材で W・H の両方に使っていれば軸を並べる（部材の並び順）', () => {
     const job = shelfJob()
-    job.parts[2].expr.H = `全体.H - {n:${MELAMINE_ID}}`
-    job.parts[3].expr.W = `天板.W - 20 × 2 - {n:${MELAMINE_ID}}`
+    job.parts[2].expr.H = `700 - {n:${MELAMINE_ID}}`
+    job.parts[3].expr.H = `天板.H - 20 × 2 - {n:${MELAMINE_ID}}`
     expect(partsUsingAdjust(job, MELAMINE_ID)).toEqual(['側板（H）', '棚板（W・H）'])
   })
 
   it('読めない式の中でも見つける', () => {
     const job = shelfJob()
-    job.parts[0].expr.H = `400 - {n:${MELAMINE_ID}} @`
-    expect(partsUsingAdjust(job, MELAMINE_ID)).toEqual(['全体（H）', '棚板（H）'])
+    job.parts[0].expr.H = `1800 - {n:${MELAMINE_ID}} @`
+    expect(partsUsingAdjust(job, MELAMINE_ID)).toEqual(['全体（H）', '棚板（W）'])
   })
 })
 
 describe('partsUsingAdjusts（いくつかの調整寸法のどれかを使っている部材）', () => {
   it('部材ごとに1つ、軸はまとめる', () => {
     const job = shelfJob()
-    job.parts[3].expr.W = `天板.W - {n:${SHEET_ID}}`
+    job.parts[3].expr.H = `天板.H - {n:${SHEET_ID}}`
     expect(partsUsingAdjusts(job, [MELAMINE_ID, SHEET_ID])).toEqual(['棚板（W・H）'])
   })
 
   it('1つの軸で2つ使っていても軸は1回', () => {
     const job = shelfJob()
-    job.parts[3].expr.H = `天板.H - {n:${MELAMINE_ID}} - {n:${SHEET_ID}}`
-    expect(partsUsingAdjusts(job, [MELAMINE_ID, SHEET_ID])).toEqual(['棚板（H）'])
+    job.parts[3].expr.W = `天板.W - {n:${MELAMINE_ID}} - {n:${SHEET_ID}}`
+    expect(partsUsingAdjusts(job, [MELAMINE_ID, SHEET_ID])).toEqual(['棚板（W）'])
   })
 
   it('id が1つなら partsUsingAdjust と同じ。空なら空', () => {
@@ -62,18 +62,18 @@ describe('adjustUsages（全部の仕事から、調整寸法を使っている�
   it('2つの仕事で使っている調整寸法は、両方の仕事の部材が返る（仕事の並び順・部材の並び順）', () => {
     const a = shelfJob('job-a', '棚A')
     const b = shelfJob('job-b', '棚B')
-    b.parts[2].expr.W = `700 - {n:${MELAMINE_ID}}`
+    b.parts[2].expr.H = `700 - {n:${MELAMINE_ID}}`
     expect(adjustUsages({ jobs: [a, b] }, MELAMINE_ID)).toEqual([
-      { jobId: 'job-a', jobName: '棚A', partId: 'part-tanaita', partName: '棚板', axes: ['H'] },
-      { jobId: 'job-b', jobName: '棚B', partId: 'part-gawaita', partName: '側板', axes: ['W'] },
-      { jobId: 'job-b', jobName: '棚B', partId: 'part-tanaita', partName: '棚板', axes: ['H'] },
+      { jobId: 'job-a', jobName: '棚A', partId: 'part-tanaita', partName: '棚板', axes: ['W'] },
+      { jobId: 'job-b', jobName: '棚B', partId: 'part-gawaita', partName: '側板', axes: ['H'] },
+      { jobId: 'job-b', jobName: '棚B', partId: 'part-tanaita', partName: '棚板', axes: ['W'] },
     ])
   })
 
   it('使っていない仕事は入らない。どこにも無ければ空', () => {
     const a = shelfJob('job-a', '棚A')
     const b = shelfJob('job-b', '棚B')
-    b.parts[3].expr.H = '天板.H - 20'
+    b.parts[3].expr.W = '天板.W - 20'
     expect(adjustUsages({ jobs: [a, b] }, MELAMINE_ID).map((u) => u.jobId)).toEqual(['job-a'])
     expect(adjustUsages({ jobs: [a, b] }, SHEET_ID)).toEqual([])
     expect(adjustUsages({ jobs: [] }, MELAMINE_ID)).toEqual([])
@@ -81,7 +81,7 @@ describe('adjustUsages（全部の仕事から、調整寸法を使っている�
 
   it('W・H の両方で使っていれば axes は W・H の順', () => {
     const a = shelfJob('job-a', '棚A')
-    a.parts[3].expr.W = `{n:${MELAMINE_ID}} + 天板.W`
+    a.parts[3].expr.H = `{n:${MELAMINE_ID}} + 天板.H`
     expect(adjustUsages({ jobs: [a] }, MELAMINE_ID)[0].axes).toEqual(['W', 'H'])
   })
 })
@@ -89,11 +89,11 @@ describe('adjustUsages（全部の仕事から、調整寸法を使っている�
 describe('adjustUsagesOf（いくつかの調整寸法をまとめて調べる。一括削除の確認用）', () => {
   it('部材ごとに1つ、軸はまとめ、どの調整寸法を使っているかも返す', () => {
     const a = shelfJob('job-a', '棚A')
-    a.parts[3].expr.W = `天板.W - {n:${SHEET_ID}}`
+    a.parts[3].expr.H = `天板.H - {n:${SHEET_ID}}`
     const b = shelfJob('job-b', '棚B')
     expect(adjustUsagesOf({ jobs: [a, b] }, [MELAMINE_ID, SHEET_ID])).toEqual([
       { jobId: 'job-a', jobName: '棚A', partId: 'part-tanaita', partName: '棚板', axes: ['W', 'H'], adjustIds: [MELAMINE_ID, SHEET_ID] },
-      { jobId: 'job-b', jobName: '棚B', partId: 'part-tanaita', partName: '棚板', axes: ['H'], adjustIds: [MELAMINE_ID] },
+      { jobId: 'job-b', jobName: '棚B', partId: 'part-tanaita', partName: '棚板', axes: ['W'], adjustIds: [MELAMINE_ID] },
     ])
   })
 
@@ -103,7 +103,7 @@ describe('adjustUsagesOf（いくつかの調整寸法をまとめて調べる�
 
   it('使っている仕事の数は jobId の重なりを除いて数える（「◯件の仕事で使っています」用）', () => {
     const jobs = [shelfJob('job-a', '棚A'), shelfJob('job-b', '棚B'), shelfJob('job-c', '棚C')]
-    jobs[2].parts[3].expr.H = '379'
+    jobs[2].parts[3].expr.W = '379'
     const ids = new Set(adjustUsagesOf({ jobs }, [MELAMINE_ID]).map((u) => u.jobId))
     expect(ids.size).toBe(2)
   })

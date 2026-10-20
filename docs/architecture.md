@@ -28,14 +28,14 @@ src/
       resolve.ts         依存関係（計算順・循環・存在しない部材）← kidori：dimensions/resolve.ts
       index.ts           computeDimensions(job, adjusts)：仕上がり・木取り寸法とエラー
     packing/
-      pieces.ts          部材 → 片、回転の向き、入らない片       ← kidori：pieces.ts（材料ごとの分けを外す）。E-05 では型（Orientation・Piece）だけ、中身は E-06
+      pieces.ts          部材 → 片、回転の向き、入らない片       ← kidori：pieces.ts（材料ごとの分けを外す）。expandPieces(job, dims, frozen)・orientationsFor・piecesOf
       sheet.ts           使える範囲（端切り）・刃厚込みの入り判定 ← kidori：sheet.ts（材料の型を板の大きさ BoardSize に）
       guillotine.ts      帯詰め（同じ幅の優先・並べ方の選び方 chooseWay を含む） ← kidori：guillotine.ts（手持ち packOnStock・SheetSpec を外し、1種類の板だけに）
       cutOrder.ts        切る順番（画面には出さない）            ← kidori：cutOrder.ts（そのまま）
       scraps.ts          端材                                     ← kidori：scraps.ts（そのまま）
       yield.ts           歩留まり                                 ← kidori：yield.ts（そのまま）
       sizes.ts           3×6 と 4×8 の比べ                        ← kidori：sizes.ts（材料の行を外す）
-      index.ts           packJob(job, dims)：おまかせ・固定した1枚を除いた入口 ← kidori：packing/index.ts
+      index.ts           packJob(job, dims, options?)：おまかせ・固定した1枚を除いた入口 ← kidori：packing/index.ts
     progress/
       frozen.ts          固定した1枚・部材が変わったことの検出   ← kidori：progress/frozen.ts
       sheetChecklist.ts  1枚ごとのチェックの一覧（同じ部材を1行）← kidori：sheetChecklist.ts
@@ -239,12 +239,16 @@ export interface PackingResult {
 - 帯詰め・同じ幅の優先・右上から詰める・おまかせの比べ方・切る順番・端材（30mm 以上・大きい順）・歩留まりは kidori のまま
 - 帯詰め（`guillotine.ts`）：`packGuillotine(pieces, usable, kerf, mode, sameWidthFirst = true)`。同じ幅を優先する並べ方（true）と、幅が収まる最初の帯に入れる並べ方（false。kidori 第2.4版まで）を持つ
 - 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は kidori と同じく、並べ方ごとに（おまかせなら縦切り・横切りを選んでから）`chooseWay` で比べる
-- 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から引いてから並べる（kidori：`frozenDemand`）
+- 部材 → 片（`pieces.ts`）：`expandPieces(job, dims, frozen)` で部材ごとの片の並び（枚数0 は除く、寸法のエラーは `skipped`）、`piecesOf(runs, board, trim, mode)` で向きを決めて片にする（どう置いても入らない部材は `unplaced`＝tooLarge）。向きの判定は、おまかせなら広いほう（縦切り優先）の範囲（kidori と同じ。横切り優先で入らない片は並べるときに除かれ、おまかせの比べで数える）
+- 入口は `packJob(job, dims, options?)`。`options.sameWidthFirst` を指定するとその並べ方だけで計算する（比べ・テスト用。ふつうは指定しない）。`unplaced` は部材の並び
+- 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から引いてから並べる（kidori：`frozenDemand`）。E-06 では `expandPieces` の引数 `frozen`（部材 id → 片の数）と、`packJob` の中の `frozenCounts(job)`（今は空を返す）だけを用意し、数える処理と `sheetCount` に固定した1枚を足す処理は E-08 で作る
 - `sheetCount` ＝ 固定していて切り終わっていない1枚 ＋ 切り終わった1枚 ＋ 計算した1枚（暫定。kidori と同じ数え方にそろえる）
 
 ### 3.4 3×6 と 4×8 の比べ（`packing/sizes.ts`）
 
 - 今の設定の板のサイズを 3×6・4×8 に置き換えて `packJob` を2回呼び、枚数・歩留まりを返す
+- `compareStandardSizes(job, dims)` → `{ options: [3×6, 4×8], fewer, higher }`（kidori は材料ごとの配列。1種類の板なので1つだけ返す）。`options` は種類・妻手・長手・枚数・歩留まり・入らない部材の数
+- 印（`pickBetterSize`）：枚数が少ない方 `fewer`、歩留まりが高い方 `higher`（小数第1位の % で比べる）。入らない部材が出るサイズ・枚数 0 のサイズがあれば比べない（どちらも null）。同じなら null
 - 固定した1枚は、どちらの計算でもそのまま数える（暫定）
 
 ### 3.5 切り出しチェック（`progress/`）— kidori 第1.8版・第2.7版と同じ

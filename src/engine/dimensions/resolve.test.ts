@@ -16,7 +16,7 @@ function mkPart(name: string, expr: Partial<Record<Axis, string>>): Part {
 }
 
 describe('resolve（参照の依存関係）', () => {
-  it('見本の計算順：全体が天板より先、天板が棚板より先、天板.H が棚板.H より先', () => {
+  it('見本の計算順：全体が天板より先、天板が棚板より先、全体.W が側板.W より先', () => {
     const job = shelfJob()
     const r = resolve(job.parts)
     expect(r.errors).toEqual([])
@@ -26,7 +26,7 @@ describe('resolve（参照の依存関係）', () => {
       expect(at('全体', axis)).toBeLessThan(at('天板', axis))
       expect(at('天板', axis)).toBeLessThan(at('棚板', axis))
     }
-    expect(at('全体', 'H')).toBeLessThan(at('側板', 'H'))
+    expect(at('全体', 'W')).toBeLessThan(at('側板', 'W'))
   })
 
   it('計算順にはすべての寸法が1回ずつ入る（4部材 × W・H ＝ 8）', () => {

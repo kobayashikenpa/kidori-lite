@@ -183,22 +183,22 @@ describe('調整寸法 {n:id} の値', () => {
 })
 
 describe('仕様書 6章の例', () => {
-  const values: Record<string, number> = { '全体.W': 1800, '全体.H': 400, '天板.W': 1800, '天板.H': 400 }
+  const values: Record<string, number> = { '全体.W': 400, '全体.H': 1800, '天板.W': 400, '天板.H': 1800 }
   const lookup: Lookup = {
     ref: (part, axis) => values[`${part}.${axis}`] ?? null,
     adjust: (id) => (id === 'adjust-melamine' ? 1 : null),
   }
 
-  it('棚板 W = 天板.W - 20 × 2 = 1760（掛け算が先）', () => {
-    expect(evaluateExpr('天板.W - 20 × 2', lookup)).toEqual({ ok: true, value: 1760 })
+  it('棚板 W = 天板.W - 20 - メラミン1 = 379', () => {
+    expect(evaluateExpr('天板.W - 20 - {n:adjust-melamine}', lookup)).toEqual({ ok: true, value: 379 })
   })
 
-  it('棚板 H = 天板.H - 20 - メラミン1 = 379', () => {
-    expect(evaluateExpr('天板.H - 20 - {n:adjust-melamine}', lookup)).toEqual({ ok: true, value: 379 })
+  it('棚板 H = 天板.H - 20 × 2 = 1760（掛け算が先）', () => {
+    expect(evaluateExpr('天板.H - 20 × 2', lookup)).toEqual({ ok: true, value: 1760 })
   })
 
-  it('全体．Ｗ - 20 は参照として計算する（1780）', () => {
-    expect(evaluateExpr('全体．Ｗ - 20', lookup)).toEqual({ ok: true, value: 1780 })
+  it('全体．Ｈ - 20 は参照として計算する（1780）', () => {
+    expect(evaluateExpr('全体．Ｈ - 20', lookup)).toEqual({ ok: true, value: 1780 })
   })
 
   it('天板.D は構文のエラー（寸法は W・H だけ）', () => {

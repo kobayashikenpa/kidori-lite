@@ -28,19 +28,19 @@ function dimsOf(job: Job, name: string, adjusts: Adjust[] = shelfAdjusts()) {
 }
 
 describe('computeDimensions：見本（docs/tasks.md の表。切り代 10）', () => {
-  it('仕上がり：全体 1800×400、天板 1800×400、側板 700×400、棚板 1760×379', () => {
+  it('仕上がり：全体 400×1800、天板 400×1800、側板 400×700、棚板 379×1760', () => {
     const job = shelfJob()
-    expect(dimsOf(job, '全体').finished).toEqual({ W: 1800, H: 400 })
-    expect(dimsOf(job, '天板').finished).toEqual({ W: 1800, H: 400 })
-    expect(dimsOf(job, '側板').finished).toEqual({ W: 700, H: 400 })
-    expect(dimsOf(job, '棚板').finished).toEqual({ W: 1760, H: 379 })
+    expect(dimsOf(job, '全体').finished).toEqual({ W: 400, H: 1800 })
+    expect(dimsOf(job, '天板').finished).toEqual({ W: 400, H: 1800 })
+    expect(dimsOf(job, '側板').finished).toEqual({ W: 400, H: 700 })
+    expect(dimsOf(job, '棚板').finished).toEqual({ W: 379, H: 1760 })
   })
 
-  it('木取り：天板 1810×410、側板 710×410、棚板 1770×389', () => {
+  it('木取り：天板 410×1810、側板 410×710、棚板 389×1770', () => {
     const job = shelfJob()
-    expect(dimsOf(job, '天板').cut).toEqual({ W: 1810, H: 410 })
-    expect(dimsOf(job, '側板').cut).toEqual({ W: 710, H: 410 })
-    expect(dimsOf(job, '棚板').cut).toEqual({ W: 1770, H: 389 })
+    expect(dimsOf(job, '天板').cut).toEqual({ W: 410, H: 1810 })
+    expect(dimsOf(job, '側板').cut).toEqual({ W: 410, H: 710 })
+    expect(dimsOf(job, '棚板').cut).toEqual({ W: 389, H: 1770 })
   })
 
   it('枚数・名前・id を部材の並び順で返す。見本はエラーなし', () => {
@@ -54,17 +54,17 @@ describe('computeDimensions：見本（docs/tasks.md の表。切り代 10）', 
   it('枚数0の全体も寸法は出す（木取りの値も持つ。切らないかどうかは枚数で決める）', () => {
     const d = dimsOf(shelfJob(), '全体')
     expect(d.quantity).toBe(0)
-    expect(d.cut).toEqual({ W: 1810, H: 410 })
+    expect(d.cut).toEqual({ W: 410, H: 1810 })
   })
 })
 
 describe('木取り寸法 ＝ 仕上がり ＋ 切り代', () => {
-  it('切り代を 5 にすると棚板の木取りは 1765×384（仕上がりは変わらない）', () => {
+  it('切り代を 5 にすると棚板の木取りは 384×1765（仕上がりは変わらない）', () => {
     const job = shelfJob()
     job.settings.allowance = 5
     const d = dimsOf(job, '棚板')
-    expect(d.finished).toEqual({ W: 1760, H: 379 })
-    expect(d.cut).toEqual({ W: 1765, H: 384 })
+    expect(d.finished).toEqual({ W: 379, H: 1760 })
+    expect(d.cut).toEqual({ W: 384, H: 1765 })
   })
 
   it('仕様書 5.1 の例：切り代 10、仕上がり W900×H300 → 木取り W910×H310', () => {
@@ -75,28 +75,28 @@ describe('木取り寸法 ＝ 仕上がり ＋ 切り代', () => {
   it('切り代 0 なら木取り ＝ 仕上がり', () => {
     const job = shelfJob()
     job.settings.allowance = 0
-    expect(dimsOf(job, '棚板').cut).toEqual({ W: 1760, H: 379 })
+    expect(dimsOf(job, '棚板').cut).toEqual({ W: 379, H: 1760 })
   })
 
-  it('式の参照はいつも仕上がり寸法：棚板の W は天板の仕上がり 1800 から（木取り 1810 からではない）', () => {
+  it('式の参照はいつも仕上がり寸法：棚受けの W は棚板の仕上がり 379（木取り 389 ではない）、H は天板の仕上がり 1800', () => {
     const job = withParts(mkPart('棚受け', { W: '棚板.W', H: '天板.H' }))
     const d = dimsOf(job, '棚受け')
-    expect(d.finished).toEqual({ W: 1760, H: 400 })
+    expect(d.finished).toEqual({ W: 379, H: 1800 })
     // 切り代は1回だけ足す（参照先の切り代は重ならない）
-    expect(d.cut).toEqual({ W: 1770, H: 410 })
+    expect(d.cut).toEqual({ W: 389, H: 1810 })
   })
 
   it('小数の切り代も足す（0.5）', () => {
     const job = shelfJob()
     job.settings.allowance = 0.5
-    expect(dimsOf(job, '棚板').cut).toEqual({ W: 1760.5, H: 379.5 })
+    expect(dimsOf(job, '棚板').cut).toEqual({ W: 379.5, H: 1760.5 })
   })
 })
 
 describe('調整寸法', () => {
-  it('調整寸法の寸法を変えると、使っている式の値も変わる（メラミン1 → 2 で棚板 H 378）', () => {
+  it('調整寸法の寸法を変えると、使っている式の値も変わる（メラミン1 → 2 で棚板 W 378）', () => {
     const adjusts = shelfAdjusts().map((a) => (a.id === MELAMINE_ID ? { ...a, value: 2 } : a))
-    expect(dimsOf(shelfJob(), '棚板', adjusts).finished).toEqual({ W: 1760, H: 378 })
+    expect(dimsOf(shelfJob(), '棚板', adjusts).finished).toEqual({ W: 378, H: 1760 })
   })
 
   it('削除した調整寸法を使う寸法は unknownAdjust。その軸だけ計算しない', () => {
@@ -104,23 +104,23 @@ describe('調整寸法', () => {
     expect(d.finished).toBeNull()
     expect(d.cut).toBeNull()
     expect(d.errors).toHaveLength(1)
-    expect(d.errors[0]).toMatchObject({ partId: 'part-tanaita', axis: 'H', kind: 'unknownAdjust' })
+    expect(d.errors[0]).toMatchObject({ partId: 'part-tanaita', axis: 'W', kind: 'unknownAdjust' })
     expect(d.errors[0].message).toContain('削除した調整寸法')
     // 使っていない部材は計算できる
-    expect(dimsOf(shelfJob(), '天板', []).cut).toEqual({ W: 1810, H: 410 })
+    expect(dimsOf(shelfJob(), '天板', []).cut).toEqual({ W: 410, H: 1810 })
   })
 
   it('削除した調整寸法を使う寸法を参照する部材も計算しない（元のエラーを from で示す）', () => {
-    const job = withParts(mkPart('棚受け', { H: '棚板.H' }))
+    const job = withParts(mkPart('棚受け', { W: '棚板.W' }))
     const d = dimsOf(job, '棚受け', [])
     expect(d.finished).toBeNull()
     expect(d.errors[0]).toMatchObject({
       partId: 'id-棚受け',
-      axis: 'H',
+      axis: 'W',
       kind: 'unknownAdjust',
-      from: { partId: 'part-tanaita', axis: 'H' },
+      from: { partId: 'part-tanaita', axis: 'W' },
     })
-    expect(d.errors[0].message).toContain('棚板.H')
+    expect(d.errors[0].message).toContain('棚板.W')
   })
 
   it('調整寸法を引いて 0 以下になるときは nonPositive（1 − メラミン1 = 0）', () => {
@@ -130,8 +130,8 @@ describe('調整寸法', () => {
 })
 
 describe('エラー', () => {
-  it('全体.W - 2000 は nonPositive（計算結果を示す）。木取り寸法も出さない', () => {
-    const d = dimsOf(withParts(mkPart('X', { W: '全体.W - 2000' })), 'X')
+  it('全体.H - 2000 は nonPositive（計算結果を示す）。木取り寸法も出さない', () => {
+    const d = dimsOf(withParts(mkPart('X', { W: '全体.H - 2000' })), 'X')
     expect(d.finished).toBeNull()
     expect(d.cut).toBeNull()
     expect(d.errors).toHaveLength(1)
@@ -140,17 +140,17 @@ describe('エラー', () => {
   })
 
   it('エラーの無い軸の値は軸ごとの値（finishedByAxis・cutByAxis）で出す（式の隣に出す値。仕様書 5.2）', () => {
-    const d = dimsOf(withParts(mkPart('X', { W: '全体.W - 2000', H: '300' })), 'X')
+    const d = dimsOf(withParts(mkPart('X', { W: '全体.H - 2000', H: '300' })), 'X')
     expect(d.finished).toBeNull()
     expect(d.finishedByAxis).toEqual({ H: 300 })
     expect(d.cutByAxis).toEqual({ H: 310 })
     const ok = dimsOf(shelfJob(), '棚板')
-    expect(ok.finishedByAxis).toEqual({ W: 1760, H: 379 })
-    expect(ok.cutByAxis).toEqual({ W: 1770, H: 389 })
+    expect(ok.finishedByAxis).toEqual({ W: 379, H: 1760 })
+    expect(ok.cutByAxis).toEqual({ W: 389, H: 1770 })
   })
 
   it('ちょうど 0 も nonPositive', () => {
-    const d = dimsOf(withParts(mkPart('X', { W: '全体.W - 1800' })), 'X')
+    const d = dimsOf(withParts(mkPart('X', { W: '全体.H - 1800' })), 'X')
     expect(d.errors[0]).toMatchObject({ kind: 'nonPositive' })
   })
 
@@ -173,7 +173,7 @@ describe('エラー', () => {
   })
 
   it('0 除算は divideByZero', () => {
-    const d = dimsOf(withParts(mkPart('X', { W: '全体.W / (側板.W - 700)' })), 'X')
+    const d = dimsOf(withParts(mkPart('X', { W: '全体.W / (側板.H - 700)' })), 'X')
     expect(d.errors[0]).toMatchObject({ axis: 'W', kind: 'divideByZero' })
   })
 
@@ -201,7 +201,7 @@ describe('エラー', () => {
   })
 
   it('エラーのある寸法を参照している寸法も計算しない（2段先でも元のエラーの寸法を指す）', () => {
-    const job = withParts(mkPart('X', { W: '全体.W - 2000' }), mkPart('Y', { W: 'X.W + 10' }), mkPart('Z', { H: 'Y.W' }))
+    const job = withParts(mkPart('X', { W: '全体.H - 2000' }), mkPart('Y', { W: 'X.W + 10' }), mkPart('Z', { H: 'Y.W' }))
     const y = dimsOf(job, 'Y')
     expect(y.finished).toBeNull()
     expect(y.errors[0]).toMatchObject({ partId: 'id-Y', axis: 'W', kind: 'nonPositive', from: { partId: 'id-X', axis: 'W' } })
@@ -237,24 +237,24 @@ describe('エラー', () => {
   })
 
   it('参照先のエラーを直すと、参照している部材も計算される', () => {
-    const job = withParts(mkPart('X', { W: '全体.W - 2000' }), mkPart('Y', { W: 'X.W + 10' }))
+    const job = withParts(mkPart('X', { W: '全体.H - 2000' }), mkPart('Y', { W: 'X.W + 10' }))
     expect(dimsOf(job, 'Y').finished).toBeNull()
-    job.parts.find((p) => p.name === 'X')!.expr.W = '全体.W - 1000'
+    job.parts.find((p) => p.name === 'X')!.expr.W = '全体.H - 1000'
     expect(dimsOf(job, 'Y').finished).toEqual({ W: 810, H: 100 })
   })
 })
 
 describe('参照の追従', () => {
-  it('参照先の寸法を変えると、参照している部材も変わる（全体 W 1800 → 1500 で天板 1500、棚板 1460）', () => {
+  it('参照先の寸法を変えると、参照している部材も変わる（全体 H 1800 → 1500 で天板 1500、棚板 1460）', () => {
     const job = shelfJob()
-    job.parts[0].expr.W = '1500'
-    expect(dimsOf(job, '天板').finished).toEqual({ W: 1500, H: 400 })
-    expect(dimsOf(job, '棚板').finished).toEqual({ W: 1460, H: 379 })
-    expect(dimsOf(job, '棚板').cut).toEqual({ W: 1470, H: 389 })
+    job.parts[0].expr.H = '1500'
+    expect(dimsOf(job, '天板').finished).toEqual({ W: 400, H: 1500 })
+    expect(dimsOf(job, '棚板').finished).toEqual({ W: 379, H: 1460 })
+    expect(dimsOf(job, '棚板').cut).toEqual({ W: 389, H: 1470 })
   })
 
   it('全角で書いた参照も、全角の名前の部材も計算できる', () => {
-    const job = withParts(mkPart('棚板１', { W: '（全体．Ｗ − ２００）÷２' }), mkPart('Y', { W: '棚板１.W × 2' }))
+    const job = withParts(mkPart('棚板１', { W: '（全体．Ｈ − ２００）÷２' }), mkPart('Y', { W: '棚板１.W × 2' }))
     expect(dimsOf(job, '棚板１').finished?.W).toBe(800)
     expect(dimsOf(job, 'Y').finished?.W).toBe(1600)
   })
