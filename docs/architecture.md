@@ -264,4 +264,4 @@ export interface PackingResult {
 ## 6. 公開
 
 - GitHub Pages。`main` に入ったら、チェック → ビルド → 公開（kidori の `.github/workflows/deploy.yml` と同じ）
-- ホーム画面に追加できるよう `public/manifest.webmanifest` とアイコンを置く（kidori と同じ形。名前は「kidori-lite」、短い名前は「木取りlite」（暫定））
+- ホーム画面に追加できるよう `public/manifest.webmanifest` とアイコンを置く（アイコンは kidori と同じ。名前・短い名前は「Kidori Lite」。オーナー決定）
