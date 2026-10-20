@@ -4,12 +4,14 @@
 //   → 同じなら一番大きい端材が大きいほう → それも同じなら縦切り優先 を採る（仕様書 4）
 // - 帯の並べ方：同じ幅を優先する並べ方と、幅が収まる最初の帯に入れる並べ方の両方を計算し（おまかせは並べ方ごとに切り方を選んでから）、
 //   入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう を採る（仕様書 7。guillotine.ts の chooseWay）
-// - 固定した1枚（frozenSheets）の片は、部材の枚数から引いてから並べる。数える処理と、必要な枚数に固定した1枚を足す処理は E-08 で作る
+// - 固定した1枚（frozenSheets）の片は、部材の枚数から引いてから並べる（progress/frozen.ts の frozenDemand）。
+//   必要な枚数・全体の歩留まりには、固定した1枚（切り終わりを含む）を足す
 import { round1 } from '../round'
 import type { DimensionResult, Job, PackingResult, SheetLayout } from '../types'
 import { buildCuts } from './cutOrder'
 import { chooseWay, packGuillotine, type StripMode } from './guillotine'
-import { expandPieces, piecesOf, type FrozenCounts, type Piece, type Unplaced } from './pieces'
+import { frozenDemand } from '../progress/frozen'
+import { expandPieces, piecesOf, type Piece, type Unplaced } from './pieces'
 import { scrapsOf } from './scraps'
 import { sheetOrientation, trimRects, usableRect, type BoardSize } from './sheet'
 import { combineYield, sheetYield } from './yield'
@@ -78,14 +80,6 @@ function preferFirst(a: Layout, b: Layout): boolean {
   return largestScrap(a) >= largestScrap(b)
 }
 
-/**
- * 固定した1枚の片の数（部材の id → 片の数）。
- * E-08 で progress/frozen.ts（kidori の frozenDemand）に置き換える。今は固定した1枚を数えない（空）
- */
-function frozenCounts(_job: Pick<Job, 'frozenSheets'>): FrozenCounts {
-  return new Map()
-}
-
 /** 入らない部材（部材ごとに1つ・部材の並び）：片にできなかった部材と、並べられなかった片の部材 */
 function unplacedOf(job: Pick<Job, 'parts'>, known: readonly Unplaced[], pieces: readonly Piece[]): PackingResult['unplaced'] {
   const out: Unplaced[] = [...known]
@@ -99,6 +93,7 @@ function unplacedOf(job: Pick<Job, 'parts'>, known: readonly Unplaced[], pieces:
 /**
  * 木取りの計算（仕様書 7・8）。dims は computeDimensions(job, adjusts) の結果（木取り寸法を並べる）。
  * 1. 部材を片にする（枚数0 の行は除く。寸法のエラーは skipped。固定した1枚の片を引く）
+ * 必要な枚数（sheetCount）と全体の歩留まりは、固定した1枚（切り終わりを含む）と計算した1枚を合わせて出す
  * 2. 板に向きの入らない部材は unplaced（tooLarge）。向きはおまかせなら縦切り優先の範囲で判定する
  * 3. 並べ方ごとに切り方を選んで並べ（chooseWay・choose）、切る順番・端材・歩留まりを付ける
  * 仕事のデータは書き換えない
@@ -106,16 +101,17 @@ function unplacedOf(job: Pick<Job, 'parts'>, known: readonly Unplaced[], pieces:
 export function packJob(job: Job, dims: DimensionResult, options: PackOptions = {}): PackingResult {
   const { sheet, kerf, trim, cutMode } = job.settings
   const board: BoardSize = { width: sheet.width, length: sheet.length }
-  const ex = expandPieces(job, dims, frozenCounts(job))
+  const ex = expandPieces(job, dims, frozenDemand(job))
   const { pieces, unplaced } = piecesOf(ex.runs, board, trim, cutMode === 'horizontal' ? 'horizontal' : 'vertical')
   const chosen = chooseWay(options.sameWidthFirst, (way) => choose(cutMode, (mode) => layout(pieces, board, trim, kerf, mode, way)))
-  const total = combineYield(chosen.sheets.map((s) => ({ usedArea: s.usedArea, boardArea: s.boardWidth * s.boardLength })))
+  // 固定した1枚（切り終わりを含む）と計算した1枚を合わせて数える（architecture.md 3.3。暫定）
+  const counted = [...job.frozenSheets.map((f) => f.layout), ...chosen.sheets]
+  const total = combineYield(counted.map((s) => ({ usedArea: s.usedArea, boardArea: s.boardWidth * s.boardLength })))
   return {
     sheet: { ...sheet },
     mode: chosen.mode,
     sheets: chosen.sheets,
-    // E-08：固定した1枚（切り終わりを含む）の枚数を足す
-    sheetCount: chosen.sheets.length,
+    sheetCount: counted.length,
     yieldRate: total.yieldRate,
     unplaced: unplacedOf(job, unplaced, chosen.unplaced),
     skipped: ex.skipped,

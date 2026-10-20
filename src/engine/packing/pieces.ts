@@ -58,7 +58,7 @@ export interface ExpandResult {
   skipped: PackingResult['skipped']
 }
 
-/** 固定した1枚の片の数（部材の id → 片の数）。E-08 で固定した1枚から数える */
+/** 固定した1枚の片の数（部材の id → 片の数）。progress/frozen.ts の frozenDemand で数える */
 export type FrozenCounts = ReadonlyMap<string, number>
 
 function fmt(v: number): string {
