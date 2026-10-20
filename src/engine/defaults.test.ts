@@ -6,7 +6,9 @@ import {
   defaultAdjusts,
   defaultAppData,
   defaultSettings,
+  customSheet,
   defaultSheet,
+  normalizeSheet,
 } from './defaults'
 
 function idMaker() {
@@ -126,5 +128,20 @@ describe('defaultAppData（初めて開いたときの保存データ）', () =>
     expect(d.jobs).toEqual([])
     expect(d.adjusts.map(adjustName)).toEqual(['メラミン1', 'シート0.5'])
     expect(d.clipboard).toBeNull()
+  })
+})
+
+describe('normalizeSheet・customSheet（妻手・長手をそろえる）', () => {
+  it('逆に入れても小さい方が妻手、大きい方が長手', () => {
+    expect(normalizeSheet({ sizeKind: 'custom', width: 2430, length: 1220 })).toEqual({ sizeKind: 'custom', width: 1220, length: 2430 })
+    expect(customSheet(1820, 910)).toEqual({ sizeKind: 'custom', width: 910, length: 1820 })
+    expect(customSheet(910, 1820)).toEqual({ sizeKind: 'custom', width: 910, length: 1820 })
+  })
+
+  it('正方形・そろっている板はそのまま。元の板は書き換えない', () => {
+    expect(customSheet(1000, 1000)).toEqual({ sizeKind: 'custom', width: 1000, length: 1000 })
+    const s = { sizeKind: 'custom' as const, width: 2430, length: 1220 }
+    normalizeSheet(s)
+    expect(s.width).toBe(2430)
   })
 })

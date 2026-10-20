@@ -16,6 +16,7 @@ src/
     fixtures/
       shelf.ts           仕様書 6章の例（全体・天板・側板・棚板）。テストで使う。shelfJob(id?, name?)・shelfAdjusts()（メラミン1＝adjust-melamine、シート0.5＝adjust-sheet）
       pieces.ts          帯詰めのテスト用の片（kidori の見本のランバー18・ベニヤ4 と同じ大きさの片、仕様書 6章の棚を全部「回転してよい」にした片）
+      progress.ts        切り出しチェックのテスト用（見本の棚を計算して i 枚目を固定する freezeAt など）
     formula/
       tokenize.ts        式 → 字句（数値・参照 部材名.W|H・調整寸法 {n:id}・記号）  ← kidori：tokenize.ts
       parse.ts           字句 → 構文木                           ← kidori：parse.ts
@@ -38,6 +39,7 @@ src/
       index.ts           packJob(job, dims, options?)：おまかせ・固定した1枚を除いた入口 ← kidori：packing/index.ts
     progress/
       frozen.ts          固定した1枚・部材が変わったことの検出   ← kidori：progress/frozen.ts
+      checks.ts          片のチェックの付け外し（1つ目で固定・全部で切り終わり・全部外すと固定を外す） ← kidori：store/jobs.ts の setPieceCheck・setPartCheck
       sheetChecklist.ts  1枚ごとのチェックの一覧（同じ部材を1行）← kidori：sheetChecklist.ts
       partProgress.ts    部材ごとの進み具合（2/5）               ← kidori：partProgress.ts
     clipboard/
@@ -233,6 +235,7 @@ export interface PackingResult {
 ### 3.3 木取り（`packing/`）— kidori 3.3・17.13 と同じ処理
 
 - 板は1種類（`settings.sheet`）。kidori の「材料ごとに分ける」段は無くす
+- 板の妻手・長手は `normalizeSheet`（`defaults.ts`。小さい方を width、大きい方を length）でそろえる。自由入力は `customSheet(a, b)` で作り、`packJob`・`freezeSheet` の頭でも必ずそろえる（逆に入れても同じ結果）
 - 片の向き（`Orientation` の x＝妻手方向、y＝長手方向）：
   - 回転しない：x ＝ 木取り W、y ＝ 木取り H
   - 回転してよい：両方の向きを試す（kidori の `any` と同じ）
@@ -241,7 +244,8 @@ export interface PackingResult {
 - 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は kidori と同じく、並べ方ごとに（おまかせなら縦切り・横切りを選んでから）`chooseWay` で比べる
 - 部材 → 片（`pieces.ts`）：`expandPieces(job, dims, frozen)` で部材ごとの片の並び（枚数0 は除く、寸法のエラーは `skipped`）、`piecesOf(runs, board, trim, mode)` で向きを決めて片にする（どう置いても入らない部材は `unplaced`＝tooLarge）。向きの判定は、おまかせなら広いほう（縦切り優先）の範囲（kidori と同じ。横切り優先で入らない片は並べるときに除かれ、おまかせの比べで数える）
 - 入口は `packJob(job, dims, options?)`。`options.sameWidthFirst` を指定するとその並べ方だけで計算する（比べ・テスト用。ふつうは指定しない）。`unplaced` は部材の並び
-- 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から引いてから並べる（kidori：`frozenDemand`）。E-06 では `expandPieces` の引数 `frozen`（部材 id → 片の数）と、`packJob` の中の `frozenCounts(job)`（今は空を返す）だけを用意し、数える処理と `sheetCount` に固定した1枚を足す処理は E-08 で作る
+- 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から数だけで引いてから並べる（`progress/frozen.ts` の `frozenDemand(job)` → `expandPieces` の引数 `frozen`。kidori と同じ）
+- 全体の歩留まり（`yieldRate`）も、`sheetCount` と同じ1枚たち（固定した1枚（切り終わりを含む）＋ 計算した1枚）で出す（暫定）
 - `sheetCount` ＝ 固定していて切り終わっていない1枚 ＋ 切り終わった1枚 ＋ 計算した1枚（暫定。kidori と同じ数え方にそろえる）
 
 ### 3.4 3×6 と 4×8 の比べ（`packing/sizes.ts`）
@@ -253,18 +257,30 @@ export interface PackingResult {
 
 ### 3.5 切り出しチェック（`progress/`）— kidori 第1.8版・第2.7版と同じ
 
-- 1枚ごとのチェックの一覧は、同じ部材を1行にまとめる（kidori：`sheetPartChecklist`）
-- 1つ目のチェックで、その1枚を `FrozenSheet` として写す（kidori：`freezeSheet`）。全部外したら消す
-- 固定した1枚の部材の寸法・枚数が今の部材と違えば「部材が変わっています」（kidori：`frozenSheetViews` の drift）
-- 部材ごとの進み具合は、全部の固定した1枚のチェックから数える（kidori：`partCutProgress`）
+- 1枚ごとのチェックの一覧は、同じ部材を1行にまとめる（`sheetPartChecklist(job, layout, checked)` → `{ partId, name, sizeLabel, pieceIds, done }[]`。kidori：`sheetPartChecklist`）。並びは切る順番に取り出される順（`pieceReleaseSteps`）。名前は今の部材名（部材が無ければ写しの名前）、寸法は写しのまま
+- 1つ目のチェックで、その1枚を `FrozenSheet` として写す（`freezeSheet(job, mode, layout, id, now)`。kidori：`freezeSheet`）。全部外したら消す
+- チェックの付け外しは `checks.ts`（kidori では store にあったものを、純粋関数として engine に置いた）：
+  - `SheetTarget` ＝ `{ kind: 'computed', mode, layout }`（計算した1枚）か `{ kind: 'frozen', sheetId }`
+  - `setPartCheck(job, target, partId, done, now, id?)`：その1枚の同じ部材をまとめて付け外し（画面の1行）。`setPieceCheck(job, target, pieceId, done, now, id?)`：片1つ
+  - 戻り値は `{ ok: true, job }` か `{ ok: false, message }`。計算した1枚に付けるときは、新しい固定した1枚の `id` が要る。`updatedAt` は付けない（保存の側で付ける）
+  - 全部チェックで `completedAt`（切り終わり）、1つ外すと消す。全部外すと固定した1枚を消す
+- 固定した1枚の部材の寸法・枚数が今の部材と違えば「部材が変わっています」（`frozenSheetViews(job, dims)` → `{ sheet, drift, complete }[]`。drift の理由は size（木取り寸法が違う・エラー）／count（固定した片の数 ＞ 今の枚数）／removed（部材が無い）。kidori：`frozenSheetViews` の drift）
+- 部材ごとの進み具合は、全部の固定した1枚（切り終わりを含む）のチェックから数える（`partCutProgress(job)` → `{ partId, name, done, total }[]`。枚数0 の部材は入れない。kidori：`partCutProgress`）
+- **画面向けの注意**：`pieceId` は1枚の中でだけ重ならない。固定した片を引いたあと残りの片の連番は #1 からふり直すので、別の1枚に同じ `pieceId` があり得る。1枚をまたいで区別するときは、1枚の id（固定した1枚の `id`、計算した1枚なら何枚目か）と組にする
+- **画面向けの注意**：計算した1枚の `SheetLayout.index` は、固定した1枚があっても 1 から。画面では 固定した1枚 → 計算した1枚 の順に通し番号を振り直す
+- kidori の `sheetProgress`（済んだ工程・残りの材料）は持ってこない（切る順番は画面に出さないため。取り出す工程 `pieceReleaseSteps` だけ `sheetChecklist.ts` に持ってきた）
 
 ### 3.6 コピーと貼り付け（`clipboard/copy.ts`）— 新しく作る
 
-- `copyParts(job, partIds)` → `CopiedPart[]`（並び順は画面の順）
-- `previewPaste(job, copied, adjusts)` → 行ごとに `{ ok: true }` か `{ ok: false, reason: 'duplicateName' }`、式に無い部材の参照があれば `warnings: ['全体 がありません']`
-  - 同じ名前は、今の部材とも、貼る部材どうしとも比べる（normalizePartName で）
-- `applyPaste(job, copied, newId)` → 足せる部材だけを後ろに足した仕事
-- `duplicateName(job, name)` → 「棚板のコピー」「棚板のコピー2」…（重ならない名前）
+- `copyParts(job, partIds)` → `CopiedPart[]`（並び順は画面の順。式は式のまま。id・仕上がりの完了は持たない）
+- `previewPaste(job, copied, adjusts)` → `{ rows, addCount, skipCount, hasWarnings }`
+  - `rows` は行ごとに `{ part, ok: true, warnings }` か `{ part, ok: false, reason: 'duplicateName', message: '棚板 はもうあります', warnings }`
+  - 同じ名前は、今の部材とも、貼る部材どうしとも比べる（normalizePartName で。貼る部材どうしは2つ目から足せない）
+  - `warnings`：貼ったあとの仕事（今の部材 ＋ 貼る部材）に無い部材の参照があれば `['全体 がありません']`、`adjusts` に無い調整寸法を使っていれば `'削除した調整寸法を使っています'`
+- `applyPaste(job, copied, newId)` → 足せる部材だけを後ろに足した仕事（id は `newId('part')`、仕上がりの完了は外す）
+- `duplicateName(job, name)` → 「棚板のコピー」「棚板のコピー2」…（重ならない名前。「棚板のコピー」を複製しても「棚板のコピー2」）
+- `duplicatePart(job, partId, newId)` → `{ ok: true, job, partId }`（式・枚数・回転を写し、元の部材のすぐ後ろに足す。仕上がりの完了は外す）か `{ ok: false, message }`
+- どれも仕事を書き換えずに新しい仕事を返す。`updatedAt` と `AppData.clipboard` への保存は store の側で行う
 
 ## 4. 保存（`src/store`）
 
