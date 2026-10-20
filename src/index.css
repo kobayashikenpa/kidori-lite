@@ -1,0 +1,27 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f1f3f0;
+  --text: #1c211e;
+  font-family: system-ui, -apple-system, 'Hiragino Sans', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111513;
+    --text: #e6ebe7;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  padding: 16px;
+}
