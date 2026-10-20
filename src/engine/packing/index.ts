@@ -1,0 +1,123 @@
+// 木取り計算の入口：部材を片にして、選んだ切り方で1種類の板（settings.sheet）に並べ、切る順番・端材・歩留まりをまとめる。
+// kidori の packing/index.ts をもとに、材料ごとの分け・重ね切り（組・端材の行）・手持ち・木取り済み（done）を外したもの。
+// - おまかせ：縦切り優先・横切り優先の両方を計算し、入らない片が少ないほう → 必要な板が少ないほう
+//   → 同じなら一番大きい端材が大きいほう → それも同じなら縦切り優先 を採る（仕様書 4）
+// - 帯の並べ方：同じ幅を優先する並べ方と、幅が収まる最初の帯に入れる並べ方の両方を計算し（おまかせは並べ方ごとに切り方を選んでから）、
+//   入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう を採る（仕様書 7。guillotine.ts の chooseWay）
+// - 固定した1枚（frozenSheets）の片は、部材の枚数から引いてから並べる。数える処理と、必要な枚数に固定した1枚を足す処理は E-08 で作る
+import { round1 } from '../round'
+import type { DimensionResult, Job, PackingResult, SheetLayout } from '../types'
+import { buildCuts } from './cutOrder'
+import { chooseWay, packGuillotine, type StripMode } from './guillotine'
+import { expandPieces, piecesOf, type FrozenCounts, type Piece, type Unplaced } from './pieces'
+import { scrapsOf } from './scraps'
+import { sheetOrientation, trimRects, usableRect, type BoardSize } from './sheet'
+import { combineYield, sheetYield } from './yield'
+
+export { MIN_SCRAP } from './scraps'
+
+/**
+ * 並べ方の指定。sameWidthFirst を指定しなければ、同じ幅を優先する並べ方ともう1つの並べ方の両方を計算して、
+ * 板が増えないほうを使う（仕様書 7）。true・false はその並べ方だけで計算する（比べるため・テストのため）
+ */
+export interface PackOptions {
+  sameWidthFirst?: boolean
+}
+
+interface Layout {
+  mode: StripMode
+  sheets: SheetLayout[]
+  /** 並べられなかった片（横切り優先で長手に入らない片など） */
+  unplaced: Piece[]
+}
+
+function layout(pieces: Piece[], board: BoardSize, trim: number, kerf: number, mode: StripMode, sameWidthFirst: boolean): Layout {
+  const usable = usableRect(board, trim, mode)
+  const orientation = sheetOrientation(mode)
+  const trims = trimRects(board, trim, mode)
+  const g = packGuillotine(pieces, usable, kerf, mode, sameWidthFirst)
+  const sheets = g.sheets.map((sh, i): SheetLayout => {
+    const placements = sh.strips.flatMap((s) => s.items.map((it) => it.placement))
+    const y = sheetYield(placements, board)
+    return {
+      index: i + 1,
+      boardWidth: board.width,
+      boardLength: board.length,
+      orientation,
+      trims,
+      usable,
+      placements,
+      cuts: buildCuts(sh, g.frame, board, trim),
+      scraps: scrapsOf(sh, g.frame, kerf),
+      usedArea: y.usedArea,
+      yieldRate: y.yieldRate,
+    }
+  })
+  return { mode, sheets, unplaced: g.unplaced }
+}
+
+/** 切り方に従って並べる。おまかせは両方を並べて preferFirst で選ぶ */
+function choose(cutMode: Job['settings']['cutMode'], run: (mode: StripMode) => Layout): Layout {
+  if (cutMode !== 'auto') return run(cutMode)
+  const v = run('vertical')
+  const h = run('horizontal')
+  return preferFirst(v, h) ? v : h
+}
+
+/** 一番大きい端材の面積（端材がなければ 0） */
+function largestScrap(l: Layout): number {
+  let max = 0
+  for (const s of l.sheets) for (const r of s.scraps) max = Math.max(max, round1(r.w * r.h))
+  return max
+}
+
+/** おまかせの比べ方：a（縦切り優先）を採るなら true。1種類の板なので、kidori の「使った材料の面積」の比べは要らない */
+function preferFirst(a: Layout, b: Layout): boolean {
+  if (a.unplaced.length !== b.unplaced.length) return a.unplaced.length < b.unplaced.length
+  if (a.sheets.length !== b.sheets.length) return a.sheets.length < b.sheets.length
+  return largestScrap(a) >= largestScrap(b)
+}
+
+/**
+ * 固定した1枚の片の数（部材の id → 片の数）。
+ * E-08 で progress/frozen.ts（kidori の frozenDemand）に置き換える。今は固定した1枚を数えない（空）
+ */
+function frozenCounts(_job: Pick<Job, 'frozenSheets'>): FrozenCounts {
+  return new Map()
+}
+
+/** 入らない部材（部材ごとに1つ・部材の並び）：片にできなかった部材と、並べられなかった片の部材 */
+function unplacedOf(job: Pick<Job, 'parts'>, known: readonly Unplaced[], pieces: readonly Piece[]): PackingResult['unplaced'] {
+  const out: Unplaced[] = [...known]
+  for (const p of pieces) {
+    if (!out.some((u) => u.partId === p.partId)) out.push({ partId: p.partId, name: p.name, reason: 'tooLarge' })
+  }
+  const order = new Map(job.parts.map((p, i) => [p.id, i]))
+  return out.sort((a, b) => (order.get(a.partId) ?? 0) - (order.get(b.partId) ?? 0))
+}
+
+/**
+ * 木取りの計算（仕様書 7・8）。dims は computeDimensions(job, adjusts) の結果（木取り寸法を並べる）。
+ * 1. 部材を片にする（枚数0 の行は除く。寸法のエラーは skipped。固定した1枚の片を引く）
+ * 2. 板に向きの入らない部材は unplaced（tooLarge）。向きはおまかせなら縦切り優先の範囲で判定する
+ * 3. 並べ方ごとに切り方を選んで並べ（chooseWay・choose）、切る順番・端材・歩留まりを付ける
+ * 仕事のデータは書き換えない
+ */
+export function packJob(job: Job, dims: DimensionResult, options: PackOptions = {}): PackingResult {
+  const { sheet, kerf, trim, cutMode } = job.settings
+  const board: BoardSize = { width: sheet.width, length: sheet.length }
+  const ex = expandPieces(job, dims, frozenCounts(job))
+  const { pieces, unplaced } = piecesOf(ex.runs, board, trim, cutMode === 'horizontal' ? 'horizontal' : 'vertical')
+  const chosen = chooseWay(options.sameWidthFirst, (way) => choose(cutMode, (mode) => layout(pieces, board, trim, kerf, mode, way)))
+  const total = combineYield(chosen.sheets.map((s) => ({ usedArea: s.usedArea, boardArea: s.boardWidth * s.boardLength })))
+  return {
+    sheet: { ...sheet },
+    mode: chosen.mode,
+    sheets: chosen.sheets,
+    // E-08：固定した1枚（切り終わりを含む）の枚数を足す
+    sheetCount: chosen.sheets.length,
+    yieldRate: total.yieldRate,
+    unplaced: unplacedOf(job, unplaced, chosen.unplaced),
+    skipped: ex.skipped,
+  }
+}
