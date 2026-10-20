@@ -23,7 +23,7 @@
 
 ## E. 計算（engine）
 
-- [ ] **E-01 データ型と初期値**（engine-dev。依存 S-01。spec 4章・architecture 2章）
+- [x] **E-01 データ型と初期値**（engine-dev。依存 S-01。spec 4章・architecture 2章）
   - `types.ts`・`round.ts`・`defaults.ts`。kidori から持ってきて、材料・厚み・フラッシュ・重ね切り・手持ちを外す
   - 完了の条件：初期設定が 4×8（1220×2430）・刃厚 3・端切り 5・切り代 10・縦切り優先、初めの調整寸法が メラミン1・シート0.5 になるテストが通る
 

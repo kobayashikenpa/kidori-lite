@@ -98,6 +98,9 @@ export interface Settings {
   cutMode: CutMode   // 初期値 'vertical'
 }
 
+/** 設定の数値の初期値（板はオブジェクトなので defaults.ts の defaultSettings() で作る） */
+export const DEFAULT_SETTINGS = { kerf: 3, trim: 5, allowance: 10, cutMode: 'vertical' }
+
 /** 調整寸法（アプリ全体で1つの一覧）。kidori の Nige と同じ形 */
 export interface Adjust {
   id: string     // 式からは {n:id} で参照する
@@ -184,10 +187,19 @@ export interface PackingResult {
   sheets: SheetLayout[]                   // 固定した1枚を除いた、計算した1枚
   sheetCount: number                      // 必要な板の枚数（固定した1枚を含む）
   yieldRate: number                       // 全体の歩留まり
-  unplaced: { partId: string; name: string; reason: 'tooLarge' }[]
+  unplaced: { partId: string; name: string; reason: UnplacedReason }[]  // UnplacedReason = 'tooLarge'
   skipped: { partId: string; name: string; reason: 'dimensionError' }[]
 }
 ```
+
+**初期値と表示名（`src/engine/defaults.ts`）**
+
+- `defaultSheet()`：4×8（1220×2430）。`defaultSettings()`：4×8・刃厚3・端切り5・切り代10・縦切り優先
+- `defaultAdjusts(newId)`：メラミン1・シート0.5（id は `newId('adjust')`）
+- `createJob({ id, name, now, settings? })`：部材なしの新しい仕事。`settings` を渡せばその写し（仕事のコピー）
+- `defaultAppData(newId)`：仕事なし・調整寸法は初期値・コピーした部材なし
+- `adjustName(adjust)`：表示名＝名前＋寸法（例：逃げ1。mm を付けない。寸法は丸めず、浮動小数の誤差だけ消す）
+- `adjustNameKey(adjust)`：表示名が重なるかの判定用（名前の前後の空白を外し、全角・半角をそろえた表示名）。名前「逃げ1」寸法5 と 名前「逃げ」寸法15 は同じ「逃げ15」
 
 ## 3. 計算の流れ
 
