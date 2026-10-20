@@ -269,11 +269,15 @@ export interface PackingResult {
 
 ### 3.6 コピーと貼り付け（`clipboard/copy.ts`）— 新しく作る
 
-- `copyParts(job, partIds)` → `CopiedPart[]`（並び順は画面の順）
-- `previewPaste(job, copied, adjusts)` → 行ごとに `{ ok: true }` か `{ ok: false, reason: 'duplicateName' }`、式に無い部材の参照があれば `warnings: ['全体 がありません']`
-  - 同じ名前は、今の部材とも、貼る部材どうしとも比べる（normalizePartName で）
-- `applyPaste(job, copied, newId)` → 足せる部材だけを後ろに足した仕事
-- `duplicateName(job, name)` → 「棚板のコピー」「棚板のコピー2」…（重ならない名前）
+- `copyParts(job, partIds)` → `CopiedPart[]`（並び順は画面の順。式は式のまま。id・仕上がりの完了は持たない）
+- `previewPaste(job, copied, adjusts)` → `{ rows, addCount, skipCount, hasWarnings }`
+  - `rows` は行ごとに `{ part, ok: true, warnings }` か `{ part, ok: false, reason: 'duplicateName', message: '棚板 はもうあります', warnings }`
+  - 同じ名前は、今の部材とも、貼る部材どうしとも比べる（normalizePartName で。貼る部材どうしは2つ目から足せない）
+  - `warnings`：貼ったあとの仕事（今の部材 ＋ 貼る部材）に無い部材の参照があれば `['全体 がありません']`、`adjusts` に無い調整寸法を使っていれば `'削除した調整寸法を使っています'`
+- `applyPaste(job, copied, newId)` → 足せる部材だけを後ろに足した仕事（id は `newId('part')`、仕上がりの完了は外す）
+- `duplicateName(job, name)` → 「棚板のコピー」「棚板のコピー2」…（重ならない名前。「棚板のコピー」を複製しても「棚板のコピー2」）
+- `duplicatePart(job, partId, newId)` → `{ ok: true, job, partId }`（式・枚数・回転を写し、元の部材のすぐ後ろに足す。仕上がりの完了は外す）か `{ ok: false, message }`
+- どれも仕事を書き換えずに新しい仕事を返す。`updatedAt` と `AppData.clipboard` への保存は store の側で行う
 
 ## 4. 保存（`src/store`）
 
