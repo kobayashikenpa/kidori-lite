@@ -48,7 +48,7 @@ describe('renamePart（部材名の変更と参照のつけ替え）', () => {
     if (!r.ok) return
     const byName = Object.fromEntries(r.parts.map((p) => [p.name, p.expr]))
     expect(byName['天板A']).toEqual({ W: '全体.W', H: '全体.H' })
-    expect(byName['棚板']).toEqual({ W: '天板A.W - 20 × 2', H: `天板A.H - 20 - {n:${MELAMINE_ID}}` })
+    expect(byName['棚板']).toEqual({ W: `天板A.W - 20 - {n:${MELAMINE_ID}}`, H: '天板A.H - 20 × 2' })
   })
 
   it('見本で「全体」を「外形」に変えると、参照している式がすべて書き換わる', () => {
@@ -56,10 +56,10 @@ describe('renamePart（部材名の変更と参照のつけ替え）', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const byName = Object.fromEntries(r.parts.map((p) => [p.name, p.expr]))
-    expect(byName['外形']).toEqual({ W: '1800', H: '400' })
+    expect(byName['外形']).toEqual({ W: '400', H: '1800' })
     expect(byName['天板']).toEqual({ W: '外形.W', H: '外形.H' })
-    expect(byName['側板']).toEqual({ W: '700', H: '外形.H' })
-    expect(byName['棚板']).toEqual({ W: '天板.W - 20 × 2', H: `天板.H - 20 - {n:${MELAMINE_ID}}` })
+    expect(byName['側板']).toEqual({ W: '外形.W', H: '700' })
+    expect(byName['棚板']).toEqual({ W: `天板.W - 20 - {n:${MELAMINE_ID}}`, H: '天板.H - 20 × 2' })
   })
 
   it('部材名以外（枚数・回転・仕上がりの完了）は変えない', () => {
@@ -93,7 +93,7 @@ describe('renamePart（部材名の変更と参照のつけ替え）', () => {
 
   it('長音 ー を含む名前に変えられる', () => {
     const r = renamePart(shelfJob().parts, 'part-tenita', 'カウンター')
-    expect(r.ok && r.parts[3].expr.W).toBe('カウンター.W - 20 × 2')
+    expect(r.ok && r.parts[3].expr.H).toBe('カウンター.H - 20 × 2')
   })
 
   it('同じ名前のままなら何も変わらない', () => {

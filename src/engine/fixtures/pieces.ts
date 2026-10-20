@@ -54,13 +54,13 @@ export function kidoriVeneerPieces(): Piece[] {
 
 /**
  * 仕様書 6章の棚の木取り寸法（切り代10）の片を、全部「回転してよい」にしたもの（4×8・端切り5）。
- * 天板 1810×410 ×1・側板 710×410 ×2・棚板 1770×389 ×3。天板・棚板は W が妻手（1215）に入らないので、回した向きだけが残る
+ * 天板 410×1810 ×1・側板 410×710 ×2・棚板 389×1770 ×3。天板・棚板は回すと H が妻手（1215）に入らないので、回さない向きだけが残る
  */
 export function shelfRotatablePieces(): Piece[] {
   const sides = { short: 1215, long: 2425 }
   return [
-    ...partPieces('part-tenita', '天板', 1810, 410, 1, true, sides),
-    ...partPieces('part-gawaita', '側板', 710, 410, 2, true, sides),
-    ...partPieces('part-tanaita', '棚板', 1770, 389, 3, true, sides),
+    ...partPieces('part-tenita', '天板', 410, 1810, 1, true, sides),
+    ...partPieces('part-gawaita', '側板', 410, 710, 2, true, sides),
+    ...partPieces('part-tanaita', '棚板', 389, 1770, 3, true, sides),
   ]
 }

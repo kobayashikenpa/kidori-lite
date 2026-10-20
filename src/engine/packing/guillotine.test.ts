@@ -361,10 +361,10 @@ describe('簡易版の見本（仕様書 6章の棚・木取り寸法・4×8・�
     expect(r.sheets).toHaveLength(2)
     expect(r.unplaced).toEqual([])
     expect(placements(r, 0).map((p) => [p.name, rect(p), p.rotated])).toEqual([
-      ['天板', { x: 805, y: 620, w: 410, h: 1810 }, true],
-      ['側板', { x: 392, y: 1720, w: 410, h: 710 }, true],
-      ['側板', { x: 392, y: 1007, w: 410, h: 710 }, true],
-      ['棚板', { x: 0, y: 660, w: 389, h: 1770 }, true],
+      ['天板', { x: 805, y: 620, w: 410, h: 1810 }, false],
+      ['側板', { x: 392, y: 1720, w: 410, h: 710 }, false],
+      ['側板', { x: 392, y: 1007, w: 410, h: 710 }, false],
+      ['棚板', { x: 0, y: 660, w: 389, h: 1770 }, false],
     ])
     expect(placements(r, 1).map((p) => [p.name, rect(p)])).toEqual([
       ['棚板', { x: 826, y: 660, w: 389, h: 1770 }],
@@ -373,9 +373,9 @@ describe('簡易版の見本（仕様書 6章の棚・木取り寸法・4×8・�
     expectValid(r, usableRect(SHIHACHI, 5, 'vertical'), KERF)
   })
 
-  it('配置図の寸法は木取り寸法の W×H（回しても W×H のまま）', () => {
+  it('配置図の寸法は木取り寸法の W×H', () => {
     const r = packGuillotine(shelfRotatablePieces(), usableRect(SHIHACHI, 5, 'vertical'), KERF, 'vertical')
-    expect(placements(r, 0).map((p) => p.sizeLabel)).toEqual(['1810×410', '710×410', '710×410', '1770×389'])
+    expect(placements(r, 0).map((p) => p.sizeLabel)).toEqual(['410×1810', '410×710', '410×710', '389×1770'])
   })
 
   it('横切り優先：2枚。範囲内・重ならない・刃厚あき', () => {
