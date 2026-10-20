@@ -15,6 +15,7 @@ src/
     defaults.ts          初期の設定・調整寸法・表示名            ← kidori：defaults.ts（材料を外す）
     fixtures/
       shelf.ts           仕様書 6章の例（全体・天板・側板・棚板）。テストで使う。shelfJob(id?, name?)・shelfAdjusts()（メラミン1＝adjust-melamine、シート0.5＝adjust-sheet）
+      pieces.ts          帯詰めのテスト用の片（kidori の見本のランバー18・ベニヤ4 と同じ大きさの片、仕様書 6章の棚を全部「回転してよい」にした片）
     formula/
       tokenize.ts        式 → 字句（数値・参照 部材名.W|H・調整寸法 {n:id}・記号）  ← kidori：tokenize.ts
       parse.ts           字句 → 構文木                           ← kidori：parse.ts
@@ -27,9 +28,9 @@ src/
       resolve.ts         依存関係（計算順・循環・存在しない部材）← kidori：dimensions/resolve.ts
       index.ts           computeDimensions(job, adjusts)：仕上がり・木取り寸法とエラー
     packing/
-      pieces.ts          部材 → 片、回転の向き、入らない片       ← kidori：pieces.ts（材料ごとの分けを外す）
-      sheet.ts           使える範囲（端切り）・刃厚込みの入り判定 ← kidori：sheet.ts（そのまま）
-      guillotine.ts      帯詰め（同じ幅の優先を含む）            ← kidori：guillotine.ts（手持ちを外す）
+      pieces.ts          部材 → 片、回転の向き、入らない片       ← kidori：pieces.ts（材料ごとの分けを外す）。E-05 では型（Orientation・Piece）だけ、中身は E-06
+      sheet.ts           使える範囲（端切り）・刃厚込みの入り判定 ← kidori：sheet.ts（材料の型を板の大きさ BoardSize に）
+      guillotine.ts      帯詰め（同じ幅の優先・並べ方の選び方 chooseWay を含む） ← kidori：guillotine.ts（手持ち packOnStock・SheetSpec を外し、1種類の板だけに）
       cutOrder.ts        切る順番（画面には出さない）            ← kidori：cutOrder.ts（そのまま）
       scraps.ts          端材                                     ← kidori：scraps.ts（そのまま）
       yield.ts           歩留まり                                 ← kidori：yield.ts（そのまま）
@@ -236,6 +237,8 @@ export interface PackingResult {
   - 回転しない：x ＝ 木取り W、y ＝ 木取り H
   - 回転してよい：両方の向きを試す（kidori の `any` と同じ）
 - 帯詰め・同じ幅の優先・右上から詰める・おまかせの比べ方・切る順番・端材（30mm 以上・大きい順）・歩留まりは kidori のまま
+- 帯詰め（`guillotine.ts`）：`packGuillotine(pieces, usable, kerf, mode, sameWidthFirst = true)`。同じ幅を優先する並べ方（true）と、幅が収まる最初の帯に入れる並べ方（false。kidori 第2.4版まで）を持つ
+- 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は kidori と同じく、並べ方ごとに（おまかせなら縦切り・横切りを選んでから）`chooseWay` で比べる
 - 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から引いてから並べる（kidori：`frozenDemand`）
 - `sheetCount` ＝ 固定していて切り終わっていない1枚 ＋ 切り終わった1枚 ＋ 計算した1枚（暫定。kidori と同じ数え方にそろえる）
 

@@ -40,12 +40,13 @@
   - kidori：`dimensions/resolve.ts` を持ってくる。`index.ts` に仕上がり・木取り（＋切り代）とエラーをまとめる
   - 完了の条件：見本の値の表どおりになる、切り代を 5 にすると棚板の木取りが 1765×384 になる、循環参照・存在しない部材・削除した調整寸法・0 以下がエラーになり、それを参照する部材も計算されない、のテストが通る
 
-- [~] **E-05 板・帯詰め・切る順番・端材・歩留まり**（engine-dev。依存 E-01。spec 4章・7章・architecture 3.3）
+- [x] **E-05 板・帯詰め・切る順番・端材・歩留まり**（engine-dev。依存 E-01。spec 4章・7章・architecture 3.3）
   - kidori：`packing/sheet.ts` `guillotine.ts` `cutOrder.ts` `scraps.ts` `yield.ts` とテストを持ってくる。手持ち（`StockKind`・`SheetSpec`）を外す
   - 完了の条件：kidori から持ってきたテスト（右上から詰める・刃厚・端切り・同じ幅の優先・端材 30mm 以上）が W・H の形で通る
 
 - [ ] **E-06 部材から片・回転・おまかせ・入口**（engine-dev。依存 E-04・E-05。spec 5章・7章・architecture 3.3）
   - kidori：`packing/pieces.ts` `index.ts`。材料ごとの分けを外し、1種類の板にする。回転しない＝W を妻手・H を長手
+  - 同じ幅を優先する並べ方と選び方（`chooseWay`）は E-05 で `guillotine.ts` に作った。`packJob` で kidori と同じく並べ方ごとに使う。`pieces.ts` は E-05 で型だけ置いてある
   - 完了の条件：見本が 4×8・縦切り優先で並び、回転しない部材は W が妻手方向に置かれる、回転してよい部材は入らないときに回して入る、板より大きい部材が「板に収まらない部材」になる、エラーの部材が計算から外れる、おまかせが板の少ないほうを採る、部材 120 枚が 1 秒以内に終わる、のテストが通る
 
 - [ ] **E-07 3×6 と 4×8 の比べ**（engine-dev。依存 E-06。spec 8章・architecture 3.4）
