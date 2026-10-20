@@ -171,6 +171,8 @@ export interface PartDimensions {
   quantity: number
   finished: Record<Axis, number> | null  // 仕上がり寸法（式の計算結果）。エラーがあれば null
   cut: Record<Axis, number> | null       // 木取り寸法（仕上がり ＋ 切り代）
+  finishedByAxis: Partial<Record<Axis, number>> // 軸ごとの仕上がり（計算できた軸だけ。片方の軸だけエラーのとき式の隣に出す）
+  cutByAxis: Partial<Record<Axis, number>>      // 軸ごとの木取り
   errors: DimensionError[]
 }
 
@@ -222,7 +224,10 @@ export interface PackingResult {
 2. 存在しない部材名 → `unknownRef`、存在しない調整寸法 → `unknownAdjust`、並べられないもの → `cycle`
 3. 計算順に：仕上がり ＝ 式の計算結果。0 以下 → `nonPositive`。参照先の値は **仕上がり寸法**
 4. 木取り ＝ 仕上がり ＋ `settings.allowance`（W・H それぞれに1回）
-5. 式の隣に出す値（spec 5.2）は `finished` / `cut` をそのまま使う
+5. 式の隣に出す値（spec 5.2）は `finishedByAxis` / `cutByAxis` を使う（W・H の片方だけエラーでも、もう片方の値は出せる）。`finished` / `cut` は W・H の両方が計算できたときだけ（木取りの計算はこちらを使う）
+6. 入口は `computeDimensions(job, adjusts)`（`adjusts` はアプリ全体の調整寸法の一覧）。kidori の `finished.ts`・`cutSize.ts` は `index.ts` にまとめた
+7. エラーのある寸法を参照している寸法は計算せず、元のエラーの種類を引き継いで `from` に元の寸法を入れる（kidori と同じ）
+8. 枚数 0 の行（全体 など）も `cut` を出す。切らないことは `quantity` で判断する（木取りのタブで「切らない」と出すかは画面で決める）
 
 ### 3.3 木取り（`packing/`）— kidori 3.3・17.13 と同じ処理
 
