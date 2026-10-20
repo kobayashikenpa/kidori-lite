@@ -14,14 +14,15 @@ src/
     round.ts             小数第1位の丸め                         ← kidori：round.ts（そのまま）
     defaults.ts          初期の設定・調整寸法・表示名            ← kidori：defaults.ts（材料を外す）
     fixtures/
-      shelf.ts           仕様書 6章の例（全体・天板・側板・棚板）。テストで使う
+      shelf.ts           仕様書 6章の例（全体・天板・側板・棚板）。テストで使う。shelfJob(id?, name?)・shelfAdjusts()（メラミン1＝adjust-melamine、シート0.5＝adjust-sheet）
     formula/
       tokenize.ts        式 → 字句（数値・参照 部材名.W|H・調整寸法 {n:id}・記号）  ← kidori：tokenize.ts
       parse.ts           字句 → 構文木                           ← kidori：parse.ts
       evaluate.ts        構文木の計算・参照の取り出し            ← kidori：evaluate.ts
       rename.ts          部材名の変更の追従                      ← kidori：rename.ts
-      usages.ts          調整寸法・部材を使っている式を探す      ← kidori：usages.ts（厚みを外す）
-      display.ts         式の表示（{n:id} → 逃げ1 など）         ← kidori：display.ts・units.ts
+      usages.ts          調整寸法を使っている部材を探す（仕事の中・全部の仕事から） ← kidori：usages.ts（厚み・id のつけ替えを外す）
+      units.ts           式をカーソルで動く単位に分ける           ← kidori：units.ts
+      display.ts         式の表示（{n:id} → 逃げ1 など）         ← kidori：display.ts
     dimensions/
       resolve.ts         依存関係（計算順・循環・存在しない部材）← kidori：dimensions/resolve.ts
       index.ts           computeDimensions(job, adjusts)：仕上がり・木取り寸法とエラー
@@ -209,7 +210,11 @@ export interface PackingResult {
 - 入力の揺れをそろえる（`normalizeFormulaText`。NFKC、`×` `✕` → `*`、`÷` → `/`、`−` `–` `—` → `-`。長音 `ー` は置き換えない）
 - 部材名は `normalizePartName` でそろえてから照らし合わせる
 - 結果は `{ ok: true, value }` か `{ ok: false, error }`。例外は投げない
-- `.D` を書いたら、存在しない寸法としてエラー（kidori の式を貼ったときなど）（暫定）
+- `.D` を書いたら、存在しない寸法としてエラー（kidori の式を貼ったときなど）（暫定）。kidori の `{t:id}` も「読めない参照」のエラー
+- 計算に渡す値は `Lookup = { ref(部材名, 軸), adjust(調整寸法の id) }`（kidori の `thickness`・`nige` を `adjust` 1つに）。見つからなければ `null` を返し、部材は `unknownRef`、調整寸法は `unknownAdjust`（「削除した調整寸法を使っています」）になる
+- 字句の種類は `number`・`ref`・`adjust`（`{n:id}`）・記号。構文木も同じ（kidori の `nige` を `adjust` に改名）
+- 部材名の変更（`rename.ts`）：`renamePart(parts, partId, newName)` で名前を変え、全部材の W・H の式の `旧名.W|H` を書き換える（`{n:…}` の中は書き換えない）
+- 表示（`display.ts`）：`formulaLabels(expr, adjusts)` は単位ごとの表示名（`* → ×`、`/ → ÷`、`- → −`、`{n:id}` → `adjustName`、無ければ「（削除した調整寸法）」）。`formulaText(expr, adjusts)` は1行の文字（例：`天板.H − 20 − メラミン1`）。調整寸法はアプリ全体の一覧（`AppData.adjusts`）から引くので、名前・寸法を変えると表示もついてくる
 
 ### 3.2 寸法（`dimensions/`）
 
@@ -255,7 +260,7 @@ export interface PackingResult {
 - kidori のキー（`kidori.*`）とは混ざらない（同じ `github.io` のドメインで localStorage を共有するため、キーの頭を必ず `kidori-lite.` にする）
 - 読み書きはすべて try/catch。読めない・壊れているときは空の一覧で始め、「保存データを読めませんでした」と出す（データは上書きしない）
 - 書き込みは状態が変わるたびに 300ms ほどまとめて行う
-- 調整寸法の変更・削除は、全部の仕事の部材を見て、使っている仕事と部材を返す（`adjustUsages(data, adjustId)`）。画面で確認してから行う
+- 調整寸法の変更・削除は、全部の仕事の部材を見て、使っている仕事と部材を返す（`formula/usages.ts` の `adjustUsages(data, adjustId)` → `{ jobId, jobName, partId, partName, axes }[]`。一括削除は `adjustUsagesOf(data, adjustIds)` で、部材ごとに使っている `adjustIds` も付く）。画面で確認してから行う
 - id は `crypto.randomUUID()`
 
 ## 5. 画面（`src/ui`）
