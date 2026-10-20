@@ -247,6 +247,8 @@ export interface PackingResult {
 ### 3.4 3×6 と 4×8 の比べ（`packing/sizes.ts`）
 
 - 今の設定の板のサイズを 3×6・4×8 に置き換えて `packJob` を2回呼び、枚数・歩留まりを返す
+- `compareStandardSizes(job, dims)` → `{ options: [3×6, 4×8], fewer, higher }`（kidori は材料ごとの配列。1種類の板なので1つだけ返す）。`options` は種類・妻手・長手・枚数・歩留まり・入らない部材の数
+- 印（`pickBetterSize`）：枚数が少ない方 `fewer`、歩留まりが高い方 `higher`（小数第1位の % で比べる）。入らない部材が出るサイズ・枚数 0 のサイズがあれば比べない（どちらも null）。同じなら null
 - 固定した1枚は、どちらの計算でもそのまま数える（暫定）
 
 ### 3.5 切り出しチェック（`progress/`）— kidori 第1.8版・第2.7版と同じ
