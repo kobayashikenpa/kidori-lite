@@ -2,6 +2,7 @@
 // 部材や設定が変わっても固定した1枚は動かない（仕様書 8）。
 // kidori の progress/frozen.ts をもとに、材料（boardId・材料名・厚み）・木目・重ね切り・手持ち・端材の行・
 // 材料ごとのまとめ（materialSummaries ほか）と、残りの材料の表示（sheetProgress）を外したもの
+import { normalizeSheet } from '../defaults'
 import { round1 } from '../round'
 import type { DimensionResult, FrozenSheet, Job, PartDimensions, SheetLayout } from '../types'
 
@@ -12,7 +13,7 @@ function copyLayout(layout: SheetLayout): SheetLayout {
 
 /**
  * 画面に出ている1枚を写して、固定した1枚を作る（チェックは空）。
- * 板・刃厚・端切りは job.settings から写す。mode はその1枚を並べた切り方（おまかせなら選ばれたほう＝PackingResult.mode）
+ * 板（妻手・長手をそろえる）・刃厚・端切りは job.settings から写す。mode はその1枚を並べた切り方（おまかせなら選ばれたほう＝PackingResult.mode）
  */
 export function freezeSheet(
   job: Pick<Job, 'settings'>,
@@ -23,7 +24,7 @@ export function freezeSheet(
 ): FrozenSheet {
   return {
     id,
-    sheet: { ...job.settings.sheet },
+    sheet: normalizeSheet(job.settings.sheet),
     mode,
     kerf: job.settings.kerf,
     trim: job.settings.trim,

@@ -235,6 +235,7 @@ export interface PackingResult {
 ### 3.3 木取り（`packing/`）— kidori 3.3・17.13 と同じ処理
 
 - 板は1種類（`settings.sheet`）。kidori の「材料ごとに分ける」段は無くす
+- 板の妻手・長手は `normalizeSheet`（`defaults.ts`。小さい方を width、大きい方を length）でそろえる。自由入力は `customSheet(a, b)` で作り、`packJob`・`freezeSheet` の頭でも必ずそろえる（逆に入れても同じ結果）
 - 片の向き（`Orientation` の x＝妻手方向、y＝長手方向）：
   - 回転しない：x ＝ 木取り W、y ＝ 木取り H
   - 回転してよい：両方の向きを試す（kidori の `any` と同じ）
@@ -265,6 +266,8 @@ export interface PackingResult {
   - 全部チェックで `completedAt`（切り終わり）、1つ外すと消す。全部外すと固定した1枚を消す
 - 固定した1枚の部材の寸法・枚数が今の部材と違えば「部材が変わっています」（`frozenSheetViews(job, dims)` → `{ sheet, drift, complete }[]`。drift の理由は size（木取り寸法が違う・エラー）／count（固定した片の数 ＞ 今の枚数）／removed（部材が無い）。kidori：`frozenSheetViews` の drift）
 - 部材ごとの進み具合は、全部の固定した1枚（切り終わりを含む）のチェックから数える（`partCutProgress(job)` → `{ partId, name, done, total }[]`。枚数0 の部材は入れない。kidori：`partCutProgress`）
+- **画面向けの注意**：`pieceId` は1枚の中でだけ重ならない。固定した片を引いたあと残りの片の連番は #1 からふり直すので、別の1枚に同じ `pieceId` があり得る。1枚をまたいで区別するときは、1枚の id（固定した1枚の `id`、計算した1枚なら何枚目か）と組にする
+- **画面向けの注意**：計算した1枚の `SheetLayout.index` は、固定した1枚があっても 1 から。画面では 固定した1枚 → 計算した1枚 の順に通し番号を振り直す
 - kidori の `sheetProgress`（済んだ工程・残りの材料）は持ってこない（切る順番は画面に出さないため。取り出す工程 `pieceReleaseSteps` だけ `sheetChecklist.ts` に持ってきた）
 
 ### 3.6 コピーと貼り付け（`clipboard/copy.ts`）— 新しく作る

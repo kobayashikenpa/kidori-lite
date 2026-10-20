@@ -338,3 +338,17 @@ describe('packJob：速さ', () => {
     expect(r.sheets.reduce((n, s) => n + s.placements.length, 0)).toBe(150)
   })
 })
+
+describe('packJob：自由入力の板の妻手・長手を逆に入れても同じ', () => {
+  it('{custom, 2430, 1220} は 4×8 と同じ並べ方・枚数・歩留まり（両方の切り方）', () => {
+    for (const mode of ['vertical', 'horizontal', 'auto'] as const) {
+      const std = run(withMode(mode))
+      const job = withMode(mode)
+      job.settings.sheet = { sizeKind: 'custom', width: 2430, length: 1220 }
+      const r = run(job)
+      expect(r.sheet).toEqual({ sizeKind: 'custom', width: 1220, length: 2430 })
+      expect([r.mode, r.sheetCount, r.yieldRate, r.unplaced]).toEqual([std.mode, std.sheetCount, std.yieldRate, std.unplaced])
+      expect(r.sheets).toEqual(std.sheets)
+    }
+  })
+})

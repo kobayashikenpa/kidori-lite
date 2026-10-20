@@ -9,6 +9,19 @@ export function defaultSheet(): Sheet {
   return { sizeKind: 'shihachi', width, length }
 }
 
+/**
+ * 板の妻手・長手をそろえる：小さい方を width（妻手）、大きい方を length（長手）にした写し。
+ * 自由入力で逆に入れても（2430×1220 など）同じ板として計算するため。packJob・freezeSheet の頭でも必ず通す
+ */
+export function normalizeSheet(sheet: Sheet): Sheet {
+  return { sizeKind: sheet.sizeKind, width: Math.min(sheet.width, sheet.length), length: Math.max(sheet.width, sheet.length) }
+}
+
+/** 自由入力の板（入れた順によらず、小さい方を妻手・大きい方を長手にする） */
+export function customSheet(a: number, b: number): Sheet {
+  return normalizeSheet({ sizeKind: 'custom', width: a, length: b })
+}
+
 /** 新しい仕事の設定：4×8・刃厚3・端切り5・切り代10・縦切り優先。呼ぶたびに新しいオブジェクト */
 export function defaultSettings(): Settings {
   return { sheet: defaultSheet(), ...DEFAULT_SETTINGS }

@@ -6,6 +6,7 @@
 //   入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう を採る（仕様書 7。guillotine.ts の chooseWay）
 // - 固定した1枚（frozenSheets）の片は、部材の枚数から引いてから並べる（progress/frozen.ts の frozenDemand）。
 //   必要な枚数・全体の歩留まりには、固定した1枚（切り終わりを含む）を足す
+import { normalizeSheet } from '../defaults'
 import { round1 } from '../round'
 import type { DimensionResult, Job, PackingResult, SheetLayout } from '../types'
 import { buildCuts } from './cutOrder'
@@ -99,7 +100,9 @@ function unplacedOf(job: Pick<Job, 'parts'>, known: readonly Unplaced[], pieces:
  * 仕事のデータは書き換えない
  */
 export function packJob(job: Job, dims: DimensionResult, options: PackOptions = {}): PackingResult {
-  const { sheet, kerf, trim, cutMode } = job.settings
+  const { kerf, trim, cutMode } = job.settings
+  // 自由入力で妻手・長手を逆に入れても同じ板として計算する
+  const sheet = normalizeSheet(job.settings.sheet)
   const board: BoardSize = { width: sheet.width, length: sheet.length }
   const ex = expandPieces(job, dims, frozenDemand(job))
   const { pieces, unplaced } = piecesOf(ex.runs, board, trim, cutMode === 'horizontal' ? 'horizontal' : 'vertical')
@@ -108,7 +111,7 @@ export function packJob(job: Job, dims: DimensionResult, options: PackOptions = 
   const counted = [...job.frozenSheets.map((f) => f.layout), ...chosen.sheets]
   const total = combineYield(counted.map((s) => ({ usedArea: s.usedArea, boardArea: s.boardWidth * s.boardLength })))
   return {
-    sheet: { ...sheet },
+    sheet,
     mode: chosen.mode,
     sheets: chosen.sheets,
     sheetCount: counted.length,

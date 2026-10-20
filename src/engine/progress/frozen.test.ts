@@ -40,6 +40,13 @@ describe('freezeSheet（固定した1枚の写しを作る）', () => {
     expect(f.sheet.width).toBe(1220)
   })
 
+  it('自由入力で妻手・長手を逆に入れた板は、そろえて写す', () => {
+    const job = shelfJob()
+    job.settings.sheet = { sizeKind: 'custom', width: 2430, length: 1220 }
+    const r = pack(job)
+    expect(freezeSheet(job, r.mode, r.sheets[0], 's', NOW).sheet).toEqual({ sizeKind: 'custom', width: 1220, length: 2430 })
+  })
+
   it('おまかせで横切り優先が選ばれたら、写しの切り方は horizontal', () => {
     const job = shelfJob()
     job.settings.cutMode = 'auto'

@@ -177,7 +177,10 @@ export interface Rect {
 }
 
 export interface Placement extends Rect {
-  /** `${partId}#${連番}` */
+  /**
+   * `${partId}#${連番}`。1枚の中でだけ重ならない。1枚をまたぐ区別は1枚の id と組にする
+   * （固定した1枚の片を引いたあと、残りの片の連番は #1 からふり直すため、別の1枚に同じ pieceId があり得る）
+   */
   pieceId: string
   partId: string
   name: string
@@ -205,7 +208,7 @@ export interface CutStep {
 }
 
 export interface SheetLayout {
-  /** 何枚目か（1 から） */
+  /** 何枚目か（1 から）。計算した1枚は固定した1枚があっても 1 から（画面で通し番号を振り直す） */
   index: number
   /** 妻手 */
   boardWidth: number
