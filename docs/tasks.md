@@ -14,7 +14,7 @@
 
 ## S. 土台
 
-- [ ] **S-01 プロジェクトの土台**（進行役。依存なし。spec 1章）
+- [~] **S-01 プロジェクトの土台**（進行役。依存なし。spec 1章）
   - Vite + React + TypeScript（strict）+ Vitest + oxlint。`package.json` のスクリプト（check / test / dev / build）は kidori と同じ
   - `vite.config.ts` の `base` は `/kidori-lite/`
   - ホーム画面に追加できる `manifest.webmanifest` とアイコン（architecture 6章）
