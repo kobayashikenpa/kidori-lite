@@ -209,7 +209,9 @@ export interface PackingResult {
 - 入力の揺れをそろえる（`normalizeFormulaText`。NFKC、`×` `✕` → `*`、`÷` → `/`、`−` `–` `—` → `-`。長音 `ー` は置き換えない）
 - 部材名は `normalizePartName` でそろえてから照らし合わせる
 - 結果は `{ ok: true, value }` か `{ ok: false, error }`。例外は投げない
-- `.D` を書いたら、存在しない寸法としてエラー（kidori の式を貼ったときなど）（暫定）
+- `.D` を書いたら、存在しない寸法としてエラー（kidori の式を貼ったときなど）（暫定）。kidori の `{t:id}` も「読めない参照」のエラー
+- 計算に渡す値は `Lookup = { ref(部材名, 軸), adjust(調整寸法の id) }`（kidori の `thickness`・`nige` を `adjust` 1つに）。見つからなければ `null` を返し、部材は `unknownRef`、調整寸法は `unknownAdjust`（「削除した調整寸法を使っています」）になる
+- 字句の種類は `number`・`ref`・`adjust`（`{n:id}`）・記号。構文木も同じ（kidori の `nige` を `adjust` に改名）
 
 ### 3.2 寸法（`dimensions/`）
 
