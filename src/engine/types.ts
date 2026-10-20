@@ -142,6 +142,10 @@ export interface PartDimensions {
   finished: Record<Axis, number> | null
   /** 木取り寸法（仕上がり ＋ 切り代。W・H それぞれに1回）。エラーがあれば null */
   cut: Record<Axis, number> | null
+  /** 軸ごとの仕上がり寸法（計算できた軸だけ）。片方の軸だけエラーのとき、式の隣に出す値（仕様書 5.2）に使う */
+  finishedByAxis: Partial<Record<Axis, number>>
+  /** 軸ごとの木取り寸法（計算できた軸だけ） */
+  cutByAxis: Partial<Record<Axis, number>>
   errors: DimensionError[]
 }
 

@@ -15,6 +15,7 @@ src/
     defaults.ts          初期の設定・調整寸法・表示名            ← kidori：defaults.ts（材料を外す）
     fixtures/
       shelf.ts           仕様書 6章の例（全体・天板・側板・棚板）。テストで使う。shelfJob(id?, name?)・shelfAdjusts()（メラミン1＝adjust-melamine、シート0.5＝adjust-sheet）
+      pieces.ts          帯詰めのテスト用の片（kidori の見本のランバー18・ベニヤ4 と同じ大きさの片、仕様書 6章の棚を全部「回転してよい」にした片）
     formula/
       tokenize.ts        式 → 字句（数値・参照 部材名.W|H・調整寸法 {n:id}・記号）  ← kidori：tokenize.ts
       parse.ts           字句 → 構文木                           ← kidori：parse.ts
@@ -27,9 +28,9 @@ src/
       resolve.ts         依存関係（計算順・循環・存在しない部材）← kidori：dimensions/resolve.ts
       index.ts           computeDimensions(job, adjusts)：仕上がり・木取り寸法とエラー
     packing/
-      pieces.ts          部材 → 片、回転の向き、入らない片       ← kidori：pieces.ts（材料ごとの分けを外す）
-      sheet.ts           使える範囲（端切り）・刃厚込みの入り判定 ← kidori：sheet.ts（そのまま）
-      guillotine.ts      帯詰め（同じ幅の優先を含む）            ← kidori：guillotine.ts（手持ちを外す）
+      pieces.ts          部材 → 片、回転の向き、入らない片       ← kidori：pieces.ts（材料ごとの分けを外す）。E-05 では型（Orientation・Piece）だけ、中身は E-06
+      sheet.ts           使える範囲（端切り）・刃厚込みの入り判定 ← kidori：sheet.ts（材料の型を板の大きさ BoardSize に）
+      guillotine.ts      帯詰め（同じ幅の優先・並べ方の選び方 chooseWay を含む） ← kidori：guillotine.ts（手持ち packOnStock・SheetSpec を外し、1種類の板だけに）
       cutOrder.ts        切る順番（画面には出さない）            ← kidori：cutOrder.ts（そのまま）
       scraps.ts          端材                                     ← kidori：scraps.ts（そのまま）
       yield.ts           歩留まり                                 ← kidori：yield.ts（そのまま）
@@ -171,6 +172,8 @@ export interface PartDimensions {
   quantity: number
   finished: Record<Axis, number> | null  // 仕上がり寸法（式の計算結果）。エラーがあれば null
   cut: Record<Axis, number> | null       // 木取り寸法（仕上がり ＋ 切り代）
+  finishedByAxis: Partial<Record<Axis, number>> // 軸ごとの仕上がり（計算できた軸だけ。片方の軸だけエラーのとき式の隣に出す）
+  cutByAxis: Partial<Record<Axis, number>>      // 軸ごとの木取り
   errors: DimensionError[]
 }
 
@@ -222,7 +225,10 @@ export interface PackingResult {
 2. 存在しない部材名 → `unknownRef`、存在しない調整寸法 → `unknownAdjust`、並べられないもの → `cycle`
 3. 計算順に：仕上がり ＝ 式の計算結果。0 以下 → `nonPositive`。参照先の値は **仕上がり寸法**
 4. 木取り ＝ 仕上がり ＋ `settings.allowance`（W・H それぞれに1回）
-5. 式の隣に出す値（spec 5.2）は `finished` / `cut` をそのまま使う
+5. 式の隣に出す値（spec 5.2）は `finishedByAxis` / `cutByAxis` を使う（W・H の片方だけエラーでも、もう片方の値は出せる）。`finished` / `cut` は W・H の両方が計算できたときだけ（木取りの計算はこちらを使う）
+6. 入口は `computeDimensions(job, adjusts)`（`adjusts` はアプリ全体の調整寸法の一覧）。kidori の `finished.ts`・`cutSize.ts` は `index.ts` にまとめた
+7. エラーのある寸法を参照している寸法は計算せず、元のエラーの種類を引き継いで `from` に元の寸法を入れる（kidori と同じ）
+8. 枚数 0 の行（全体 など）も `cut` を出す。切らないことは `quantity` で判断する（木取りのタブで「切らない」と出すかは画面で決める）
 
 ### 3.3 木取り（`packing/`）— kidori 3.3・17.13 と同じ処理
 
@@ -231,6 +237,8 @@ export interface PackingResult {
   - 回転しない：x ＝ 木取り W、y ＝ 木取り H
   - 回転してよい：両方の向きを試す（kidori の `any` と同じ）
 - 帯詰め・同じ幅の優先・右上から詰める・おまかせの比べ方・切る順番・端材（30mm 以上・大きい順）・歩留まりは kidori のまま
+- 帯詰め（`guillotine.ts`）：`packGuillotine(pieces, usable, kerf, mode, sameWidthFirst = true)`。同じ幅を優先する並べ方（true）と、幅が収まる最初の帯に入れる並べ方（false。kidori 第2.4版まで）を持つ
+- 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は kidori と同じく、並べ方ごとに（おまかせなら縦切り・横切りを選んでから）`chooseWay` で比べる
 - 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から引いてから並べる（kidori：`frozenDemand`）
 - `sheetCount` ＝ 固定していて切り終わっていない1枚 ＋ 切り終わった1枚 ＋ 計算した1枚（暫定。kidori と同じ数え方にそろえる）
 
