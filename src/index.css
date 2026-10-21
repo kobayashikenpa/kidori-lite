@@ -1788,3 +1788,139 @@ button.part-main,
   background: var(--dg-done);
   border: 1px solid var(--dg-line);
 }
+
+/* ---------- 切り出しチェック（仕様書 8） ---------- */
+.kd-fixed {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.kd-drift {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 4px solid var(--warn);
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.kd-drift .band-note {
+  display: block;
+  font-weight: 400;
+}
+.cl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.cl-head h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--cut);
+}
+.cl-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+.cl-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cut-soft);
+  color: var(--cut);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cl-row .check-box {
+  margin-right: 0;
+  border-color: var(--cut);
+}
+.cl-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cl-qty {
+  white-space: nowrap;
+  font-weight: 400;
+}
+.cl-size {
+  flex: none;
+  white-space: nowrap;
+}
+.cl-row.done {
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 400;
+}
+.cl-row.done .cl-name {
+  text-decoration: line-through;
+}
+.cl-row.done .check-box {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: var(--surface);
+}
+.kd-progress {
+  margin-top: 12px;
+}
+.kd-progress h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.pp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.pp-name {
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+.pp-bar {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.pp-fill {
+  display: block;
+  height: 100%;
+  background: var(--cut);
+}
+.pp-row.all .pp-fill {
+  background: var(--ok);
+}
+.pp-row.all .pp-count {
+  color: var(--ok);
+  font-weight: 700;
+}
