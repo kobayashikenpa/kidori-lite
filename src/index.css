@@ -1,27 +1,536 @@
+/* kidori-lite の見た目。色はすべてここの変数で決め、OS の設定（ライト／ダーク）に従って切り替える（kidori の配色をもとにした） */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f1f3f0;
-  --text: #1c211e;
-  font-family: system-ui, -apple-system, 'Hiragino Sans', sans-serif;
+  --surface: #ffffff;
+  --sunk: #e7eae6;
+  --ink: #1b211e;
+  --muted: #5c6762;
+  --line: #d5dad5;
+  --accent: #1d5c86;
+  --accent-soft: #dce8f1;
+  --accent-ink: #ffffff;
+  /* 仕上がり寸法＝青系、木取り寸法＝橙系（見出し・色で区別する） */
+  --fin: #1d5c86;
+  --fin-soft: #e2edf6;
+  --cut: #a8480f;
+  --cut-soft: #fbe9dc;
+  --warn: #8a5a0e;
+  --warn-soft: #f6e9d3;
+  --err: #b3261e;
+  --err-soft: #f8dedb;
+  --ok: #2e7a4d;
+  --ok-soft: #dcefe2;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  --sans: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', 'Noto Sans JP', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
+  --tabbar-h: 60px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --bg: #111513;
-    --text: #e6ebe7;
+    --surface: #1a1f1c;
+    --sunk: #252b27;
+    --ink: #e6ebe8;
+    --muted: #9aa6a0;
+    --line: #333b37;
+    --accent: #72b4e2;
+    --accent-soft: #1b3445;
+    --accent-ink: #08161f;
+    --fin: #8cc4ec;
+    --fin-soft: #172a38;
+    --cut: #f2a36b;
+    --cut-soft: #3a2616;
+    --warn: #e5b062;
+    --warn-soft: #3a2e1a;
+    --err: #f28b82;
+    --err-soft: #3e1f1c;
+    --ok: #7cc897;
+    --ok-soft: #1c3526;
+    --shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
   }
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--text);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-x: hidden;
 }
 
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 骨組み ---------- */
 .app {
-  padding: 16px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 16px calc(var(--tabbar-h) + 24px + env(safe-area-inset-bottom, 0px));
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -16px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.topbar .brand {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.topbar h1 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.tabbar .in {
+  max-width: 560px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.tabbar button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  min-height: var(--tabbar-h);
+  padding: 0 2px;
+  position: relative;
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+.tabbar button[aria-current='page'] {
+  color: var(--accent);
+  font-weight: 700;
+}
+.tabbar button[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 22%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+}
+.tabbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+h2 {
+  font-size: 20px;
+  margin: 20px 0 8px;
+}
+h3 {
+  font-size: 16px;
+  margin: 22px 0 8px;
+}
+.lead {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+.placeholder {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 16px;
+}
+
+/* ---------- ボタン ---------- */
+.btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 15px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.btn.danger {
+  color: var(--err);
+  border-color: var(--err);
+  background: none;
+}
+.btn.danger.solid {
+  background: var(--err);
+  color: var(--surface);
+}
+.btn.wide {
+  width: 100%;
+}
+.btn.small {
+  padding: 4px 12px;
+  font-size: 14px;
+  flex: none;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 入力 ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.field > .label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 16px; /* 16px 未満だと iPhone で入力時に拡大される */
+}
+.input.bad {
+  border-color: var(--err);
+}
+.unit-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.unit-input .unit {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- 知らせ ---------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--sunk);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chip.ok {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.msg {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.msg.err {
+  background: var(--err-soft);
+  color: var(--err);
+}
+.msg.ok {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.banner {
+  margin: 10px 0 0;
+}
+.banner-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.banner-row > span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- 仕事の一覧 ---------- */
+.job-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.job-item.open {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.job-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.job-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+.job-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+.job-actions .btn {
+  padding: 8px 4px;
+  font-size: 14px;
+}
+.confirm-box {
+  background: var(--err-soft);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 10px;
+}
+.foot {
+  display: flex;
+  gap: 8px;
+}
+.foot .btn {
+  flex: 1;
+}
+
+/* ---------- 見出しを押して出る説明（仕様書 9） ---------- */
+.help {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+.help-btn {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.field > .help {
+  margin: -12px 0 -10px; /* 押せる高さは 44px のまま、見た目の行間は変えない */
+}
+.help-mark {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1;
+}
+.help-btn[aria-expanded='true'] .help-mark {
+  font-weight: 700;
+}
+.help-bubble {
+  position: absolute;
+  top: calc(100% - 4px);
+  left: 0;
+  z-index: 40;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+h2 > .help,
+h3 > .help {
+  margin: -12px 0;
+}
+
+/* ---------- 数字キー（仕様書 5.4） ---------- */
+.keypad-box {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.keypad-box.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.keypad-placeholder {
+  color: var(--muted);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.keypad-fresh {
+  background: var(--fin-soft);
+  border-radius: 3px;
+}
+.numpad {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.18);
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+}
+.numpad-in {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.numpad-show {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 4px;
+  min-width: 0;
+}
+.numpad-name {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.numpad-val {
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.numpad-val.bad {
+  color: var(--err);
+}
+.pad-keys {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.pad-key {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--sunk);
+  color: var(--ink);
+  border-radius: 7px;
+  min-height: 48px;
+  font-size: 18px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pad-key:not(.num) {
+  font-size: 14px;
+}
+.pad-key.span2 {
+  grid-column: span 2;
+}
+.pad-key.span3 {
+  grid-column: span 3;
+}
+.pad-key.done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.numpad-done {
+  grid-column: 4;
+  grid-row: 3 / span 2;
 }
