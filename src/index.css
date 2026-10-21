@@ -534,3 +534,233 @@ h3 > .help {
   grid-column: 4;
   grid-row: 3 / span 2;
 }
+
+/* ---------- 切り替えボタン ---------- */
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  background: var(--sunk);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 3px;
+}
+.seg button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  min-height: 44px;
+  padding: 4px 2px;
+  border-radius: 7px;
+  cursor: pointer;
+  touch-action: manipulation;
+  overflow-wrap: anywhere;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* ---------- 設定（部材の画面の上にたたむ） ---------- */
+.settings {
+  margin-top: 12px;
+  padding: 0;
+}
+.settings-head {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.settings-title {
+  font-weight: 700;
+  font-size: 16px;
+  flex: none;
+}
+.settings-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.settings-arrow {
+  flex: none;
+  font-size: 20px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.settings-arrow.open {
+  transform: rotate(90deg);
+}
+.settings-body {
+  border-top: 1px solid var(--line);
+  padding: 4px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-sec > h3 {
+  margin: 8px 0 0;
+}
+.settings-grid {
+  display: grid;
+  gap: 8px;
+}
+.settings-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.settings-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 6px;
+}
+.settings-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.settings .msg {
+  margin: 0;
+}
+.cut-ink {
+  color: var(--cut);
+}
+.field > .help .label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.field > .help .label.cut-ink {
+  color: var(--cut);
+}
+
+/* ---------- 調整寸法の一覧（設定の中） ---------- */
+.adjust-empty {
+  margin: 0;
+}
+.adjust-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.adjust-rows > * + * {
+  border-top: 1px solid var(--line);
+}
+.adjust-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 4px 6px 4px 12px;
+  background: var(--surface);
+}
+.adjust-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.adjust-row .btn.small {
+  min-width: 60px;
+}
+.adjust-check {
+  appearance: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  color: var(--ink);
+}
+.adjust-check.on {
+  background: var(--err-soft);
+}
+.check-box {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--muted);
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  margin-right: 6px;
+}
+.adjust-check.on .check-box {
+  border-color: var(--err);
+  background: var(--err);
+  color: var(--surface);
+}
+.adjust-box {
+  padding: 10px;
+  background: var(--sunk);
+  border-radius: 8px;
+}
+.adjust-rows > .adjust-box {
+  border-radius: 0;
+}
+.adjust-rows > .adjust-box.confirm-box {
+  background: var(--err-soft);
+}
+.adjust-add-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.adjust-form .label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.adjust-form .seg {
+  background: var(--surface);
+}
+.adjust-form .seg button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.adjust-preview {
+  margin: 0;
+  font-size: 14px;
+}
+.confirm-text {
+  margin: 0;
+}
+.usage {
+  font-size: 13px;
+}
+.usage-head {
+  margin: 0;
+  font-weight: 700;
+  color: var(--err);
+}
+.usage-list {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+  overflow-wrap: anywhere;
+}
+.usage-job {
+  font-weight: 700;
+}
