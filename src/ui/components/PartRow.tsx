@@ -17,6 +17,8 @@ interface Props {
   progress?: PartCutProgress
   onEdit: () => void
   onToggleDone: () => void
+  /** 「選んでコピー」のとき：選んでいるか・押したとき（左にコピーの選択のチェックを出し、行を押すと選ぶ） */
+  select?: { on: boolean; onToggle: () => void }
 }
 
 function cellLabel(axis: Axis, c: DimCell): string {
@@ -25,14 +27,18 @@ function cellLabel(axis: Axis, c: DimCell): string {
   return `${axis} エラー`
 }
 
-export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDone }: Props) {
+export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDone, select }: Props) {
   const finishedTab = tab === 'finished'
+  // 左のチェックの列があるか（仕上がりの完了、またはコピーの選択）
+  const lead = finishedTab || select !== undefined
+  // 行を押したとき：選んでいるときは選ぶ、仕上がりのタブなら編集
+  const press = select ? select.onToggle : finishedTab ? onEdit : null
   const cells = { W: dimCell(part, dims, 'W', tab, adjusts), H: dimCell(part, dims, 'H', tab, adjusts) }
   // 行の下に全文・理由を出している欄
   const [detail, setDetail] = useState<Axis | null>(null)
   const formulaRefs = useRef<Partial<Record<Axis, HTMLSpanElement | null>>>({})
   const noCut = part.quantity === 0
-  const done = finishedTab && part.finishedDone
+  const done = finishedTab && part.finishedDone && !select
 
   const pressCell = (axis: Axis) => {
     const c = cells[axis]
@@ -41,7 +47,7 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
     if (detail === axis) setDetail(null)
     else if (c.kind === 'error' || (c.kind === 'formula' && cut)) setDetail(axis)
     else if (detail !== null) setDetail(null)
-    else if (finishedTab) onEdit()
+    else if (press) press()
   }
 
   const sub = [
@@ -64,9 +70,22 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
   )
 
   return (
-    <li className={`part-item${done ? ' done' : ''}`}>
-      <div className={`part-row ${finishedTab ? 'fin' : 'cut'}`}>
-        {finishedTab && (
+    <li className={`part-item${done ? ' done' : ''}${select?.on ? ' picked' : ''}`}>
+      <div className={`part-row ${finishedTab ? 'fin' : 'cut'}${lead ? ' has-lead' : ''}`}>
+        {select ? (
+          <button
+            type="button"
+            className={`part-check sel${select.on ? ' on' : ''}`}
+            aria-pressed={select.on}
+            aria-label={`${part.name} をコピーに選ぶ`}
+            onClick={select.onToggle}
+          >
+            <span className="check-box" aria-hidden="true">
+              {select.on ? '✓' : ''}
+            </span>
+          </button>
+        ) : (
+          finishedTab && (
           <button
             type="button"
             className={`part-check${part.finishedDone ? ' on' : ''}`}
@@ -78,9 +97,16 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
               {part.finishedDone ? '✓' : ''}
             </span>
           </button>
+          )
         )}
-        {finishedTab ? (
-          <button type="button" className="part-main" aria-label={`${part.name} を編集`} onClick={onEdit}>
+        {press ? (
+          <button
+            type="button"
+            className="part-main"
+            aria-label={select ? `${part.name} をコピーに選ぶ` : `${part.name} を編集`}
+            aria-pressed={select ? select.on : undefined}
+            onClick={press}
+          >
             {main}
           </button>
         ) : (

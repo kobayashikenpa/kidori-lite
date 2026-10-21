@@ -832,7 +832,7 @@ h3 > .help {
   padding: 2px 4px;
   min-width: 0;
 }
-.part-row.fin {
+.part-row.has-lead {
   grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1.25fr);
 }
 .part-colhead {
@@ -1304,4 +1304,623 @@ button.part-main,
 }
 .expr-keys .pad-key.done {
   background: var(--accent);
+}
+
+/* ---------- 部材のコピーと貼り付け（仕様書 5.3） ---------- */
+.parts-copy {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.parts-copy .btn {
+  flex: 1;
+  padding: 8px 6px;
+  min-width: 0;
+}
+.part-check.sel.on .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.part-item.picked {
+  background: var(--accent-soft);
+}
+.pick-bar {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  z-index: 4;
+  margin-top: 12px;
+  padding: 10px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pick-count {
+  font-weight: 700;
+  font-size: 14px;
+}
+.msg.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+  margin: 0;
+}
+.paste-sum {
+  margin: 0;
+  font-size: 17px;
+}
+.paste-skip {
+  color: var(--err);
+  font-weight: 700;
+}
+.paste-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--fin);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.paste-row {
+  padding: 8px 10px;
+  min-width: 0;
+}
+.paste-row + .paste-row {
+  border-top: 1px solid var(--line);
+}
+.paste-row.skip {
+  background: var(--sunk);
+  color: var(--muted);
+}
+.paste-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+.paste-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.paste-row.skip .paste-name {
+  text-decoration: line-through;
+}
+.paste-qty {
+  font-size: 13px;
+  color: var(--muted);
+}
+.paste-dims {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  color: var(--fin);
+}
+.paste-row.skip .paste-dims {
+  color: var(--muted);
+}
+.paste-dim {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.paste-axis {
+  flex: none;
+  font-weight: 700;
+  width: 1.2em;
+}
+.paste-reason {
+  margin: 4px 0 0;
+  color: var(--err);
+  font-weight: 700;
+  font-size: 14px;
+}
+.paste-warn {
+  margin: 4px 0 0;
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* ---------- 木取りの画面（仕様書 8） ---------- */
+.band-note {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.chip.bad {
+  background: var(--err-soft);
+  color: var(--err);
+  font-weight: 700;
+}
+.kd-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kd-big {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.kd-big > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.kd-k {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.kd-v {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--accent);
+}
+.kd-v small,
+.kd-size-count small {
+  font-size: 0.5em;
+  margin-left: 2px;
+}
+.kd-board {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 14px;
+}
+.kd-board > span {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.kd-board-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.kd-sizes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.kd-size {
+  appearance: none;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.kd-size[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.kd-size-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 16px;
+}
+.kd-size-now {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.kd-size-count {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.kd-size-yield {
+  font-size: 13px;
+}
+.kd-size-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.kd-compare .band-note {
+  margin-top: 6px;
+}
+.kd-issues {
+  margin-top: 12px;
+  border-left-width: 4px;
+}
+.kd-issues.err {
+  border-left-color: var(--err);
+}
+.kd-issues.warn {
+  border-left-color: var(--warn);
+}
+.kd-issues h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.kd-issues.err h4 {
+  color: var(--err);
+}
+.kd-issues.warn h4 {
+  color: var(--warn);
+}
+.kd-issues ul {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+  overflow-wrap: anywhere;
+}
+.kd-sheets {
+  margin-top: 16px;
+}
+.kd-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.kd-sheet-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.kd-sheet-no {
+  font-size: 18px;
+  font-weight: 700;
+}
+.kd-of {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.kd-sheet-yield {
+  font-weight: 700;
+  color: var(--accent);
+}
+.kd-sheet .band-note {
+  margin: 0;
+}
+.kd-scraps {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+}
+.kd-scraps-h {
+  flex: none;
+  font-weight: 700;
+}
+.kd-scraps-none {
+  color: var(--muted);
+}
+.kd-scraps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+}
+.kd-finished-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 16px 0 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.kd-finished-hint {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.kd-sheet.finished {
+  background: var(--bg);
+  color: var(--muted);
+}
+.kd-sheet.finished .diagram {
+  opacity: 0.6;
+}
+
+/* ---------- 配置図 ---------- */
+:root {
+  --dg-board: #efe6d6;
+  --dg-line: #3d3a33;
+  --dg-text: #1b211e;
+  --dg-trim: #d4331f;
+  --dg-done: #d9d6cf;
+  --dg-scrap: #fbf8f1;
+  --dg-hatch: rgba(120, 85, 40, 0.35);
+  --dg-scrap-text: #6b5a3c;
+  --pc0: #bcd9ee;
+  --pc1: #f6cfa8;
+  --pc2: #c6e3c0;
+  --pc3: #e3c8ea;
+  --pc4: #f3e1a0;
+  --pc5: #c9d3f2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dg-board: #211e18;
+    --dg-line: #cfc8b8;
+    --dg-text: #f1f4f2;
+    --dg-trim: #ff7a66;
+    --dg-done: #3a3a38;
+    --dg-scrap: #15130f;
+    --dg-hatch: rgba(230, 200, 150, 0.3);
+    --dg-scrap-text: #e2cfa8;
+    --pc0: #24506e;
+    --pc1: #6e4424;
+    --pc2: #2f5a36;
+    --pc3: #573a63;
+    --pc4: #5e5220;
+    --pc5: #34406b;
+  }
+}
+.diagram {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin: 0 auto;
+  font-family: var(--sans);
+}
+/* 横長（横切り優先）はカードの幅いっぱいに描く */
+.diagram.landscape {
+  max-width: none;
+}
+.dg-board {
+  fill: var(--dg-board);
+}
+.dg-piece {
+  stroke: var(--dg-line);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.dg-piece.pc0 { fill: var(--pc0); }
+.dg-piece.pc1 { fill: var(--pc1); }
+.dg-piece.pc2 { fill: var(--pc2); }
+.dg-piece.pc3 { fill: var(--pc3); }
+.dg-piece.pc4 { fill: var(--pc4); }
+.dg-piece.pc5 { fill: var(--pc5); }
+.dg-piece.done {
+  fill: var(--dg-done);
+}
+.dg-scrap {
+  fill: var(--dg-scrap);
+  stroke: var(--dg-line);
+  stroke-width: 1px;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+.dg-hatch {
+  stroke: var(--dg-hatch);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.dg-trim {
+  fill: var(--dg-trim);
+  stroke: var(--dg-trim);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+.dg-outline {
+  fill: none;
+  stroke: var(--dg-line);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+.dg-text {
+  fill: var(--dg-text);
+}
+.dg-text.done {
+  fill: var(--muted);
+}
+.dg-text.scrap {
+  fill: var(--dg-scrap-text);
+  font-family: var(--mono);
+  font-weight: 700;
+}
+.dg-text .l1 {
+  font-weight: 700;
+}
+.dg-text .l2 {
+  font-family: var(--mono);
+}
+.dg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dg-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dg-key {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
+.dg-key.trim {
+  width: 5px;
+  background: var(--dg-trim);
+}
+.dg-key.scrap {
+  border: 1px dashed var(--dg-line);
+  background: var(--dg-scrap) repeating-linear-gradient(45deg, var(--dg-hatch) 0 1px, transparent 1px 4px);
+}
+.dg-key.done {
+  background: var(--dg-done);
+  border: 1px solid var(--dg-line);
+}
+
+/* ---------- 切り出しチェック（仕様書 8） ---------- */
+.kd-fixed {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.kd-drift {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 4px solid var(--warn);
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.kd-drift .band-note {
+  display: block;
+  font-weight: 400;
+}
+.cl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.cl-head h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--cut);
+}
+.cl-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+.cl-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cut-soft);
+  color: var(--cut);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cl-row .check-box {
+  margin-right: 0;
+  border-color: var(--cut);
+}
+.cl-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cl-qty {
+  white-space: nowrap;
+  font-weight: 400;
+}
+.cl-size {
+  flex: none;
+  white-space: nowrap;
+}
+.cl-row.done {
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 400;
+}
+.cl-row.done .cl-name {
+  text-decoration: line-through;
+}
+.cl-row.done .check-box {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: var(--surface);
+}
+.kd-progress {
+  margin-top: 12px;
+}
+.kd-progress h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.pp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.pp-name {
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+.pp-bar {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.pp-fill {
+  display: block;
+  height: 100%;
+  background: var(--cut);
+}
+.pp-row.all .pp-fill {
+  background: var(--ok);
+}
+.pp-row.all .pp-count {
+  color: var(--ok);
+  font-weight: 700;
 }
