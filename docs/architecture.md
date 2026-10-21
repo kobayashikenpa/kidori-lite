@@ -231,6 +231,7 @@ export interface PackingResult {
 6. 入口は `computeDimensions(job, adjusts)`（`adjusts` はアプリ全体の調整寸法の一覧）。kidori の `finished.ts`・`cutSize.ts` は `index.ts` にまとめた
 7. エラーのある寸法を参照している寸法は計算せず、元のエラーの種類を引き継いで `from` に元の寸法を入れる（kidori と同じ）
 8. 枚数 0 の行（全体 など）も `cut` を出す。切らないことは `quantity` で判断する（木取りのタブで「切らない」と出すかは画面で決める）
+9. 部材の削除の確認用に `partsReferencing(parts, partId)`（`resolve.ts`）：その部材の寸法を式で使っている、ほかの部材と軸（`{ partId, name, axes }[]`）
 
 ### 3.3 木取り（`packing/`）— kidori 3.3・17.13 と同じ処理
 
