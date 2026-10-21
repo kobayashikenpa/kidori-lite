@@ -37,8 +37,8 @@ describe('使っている所を仕事ごとにまとめる', () => {
       adjusts,
     )
     expect(g).toEqual([
-      { jobId: 'j1', jobName: '本棚', parts: ['棚板（W）：メラミン1', '側板（W・H）：メラミン1・シート0.5'] },
-      { jobId: 'j2', jobName: '台', parts: ['天板（H）：シート0.5'] },
+      { jobId: 'j1', jobName: '本棚', parts: ['棚板（W）［メラミン1］', '側板（W・H）［メラミン1・シート0.5］'] },
+      { jobId: 'j2', jobName: '台', parts: ['天板（H）［シート0.5］'] },
     ])
   })
 })

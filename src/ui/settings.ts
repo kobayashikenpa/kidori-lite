@@ -66,7 +66,7 @@ export function groupUsages(
     let text = `${u.partName}（${u.axes.join('・')}）`
     if (adjusts && u.adjustIds && u.adjustIds.length > 0) {
       const names = u.adjustIds.map((id) => adjusts.find((a) => a.id === id)).filter((a) => a !== undefined)
-      if (names.length > 0) text += `：${names.map(adjustName).join('・')}`
+      if (names.length > 0) text += `［${names.map(adjustName).join('・')}］`
     }
     g.parts.push(text)
   }

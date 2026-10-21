@@ -5,6 +5,7 @@ import { customSheet } from '../../engine/defaults'
 import { BOARD_SIZES, type BoardSizeKind, type CutMode, type Settings } from '../../engine/types'
 import { useJobStore } from '../../store/useJobStore'
 import { CUT_MODES, SHEET_KINDS, settingsSummary, sheetSizeText } from '../settings'
+import { AdjustList } from './AdjustList'
 import { Help } from './Help'
 import { NumberField } from './NumberField'
 import { Segmented } from './Segmented'
@@ -134,6 +135,15 @@ export function SettingsPanel() {
               </Help>
             </h3>
             <Segmented ariaLabel="切り方" value={s.cutMode} options={CUT_MODES} onChange={pickCut} />
+          </section>
+
+          <section className="settings-sec" aria-label="調整寸法">
+            <h3>
+              <Help title="調整寸法">
+                逃げ・ほぞ・メラミンなど、仕上がり寸法を伸ばしたり短くしたりする寸法です。名前と寸法で登録し、式のボタンで入れて足し引きします。どの仕事でも同じ一覧を使います。
+              </Help>
+            </h3>
+            <AdjustList />
           </section>
 
         </div>
