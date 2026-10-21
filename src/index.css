@@ -534,3 +534,121 @@ h3 > .help {
   grid-column: 4;
   grid-row: 3 / span 2;
 }
+
+/* ---------- 切り替えボタン ---------- */
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  background: var(--sunk);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 3px;
+}
+.seg button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  min-height: 44px;
+  padding: 4px 2px;
+  border-radius: 7px;
+  cursor: pointer;
+  touch-action: manipulation;
+  overflow-wrap: anywhere;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* ---------- 設定（部材の画面の上にたたむ） ---------- */
+.settings {
+  margin-top: 12px;
+  padding: 0;
+}
+.settings-head {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.settings-title {
+  font-weight: 700;
+  font-size: 16px;
+  flex: none;
+}
+.settings-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.settings-arrow {
+  flex: none;
+  font-size: 20px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.settings-arrow.open {
+  transform: rotate(90deg);
+}
+.settings-body {
+  border-top: 1px solid var(--line);
+  padding: 4px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-sec > h3 {
+  margin: 8px 0 0;
+}
+.settings-grid {
+  display: grid;
+  gap: 8px;
+}
+.settings-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.settings-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 6px;
+}
+.settings-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.settings .msg {
+  margin: 0;
+}
+.cut-ink {
+  color: var(--cut);
+}
+.field > .help .label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.field > .help .label.cut-ink {
+  color: var(--cut);
+}
