@@ -6,6 +6,7 @@ import { partCutProgress } from '../../engine/progress/partProgress'
 import { browserStorage } from '../../store/storage'
 import { useJobStore } from '../../store/useJobStore'
 import { Help } from '../components/Help'
+import { PartEditor } from '../components/PartEditor'
 import { PartRow } from '../components/PartRow'
 import { SettingsPanel } from '../components/SettingsPanel'
 import { fmt } from '../format'
@@ -17,7 +18,7 @@ type Editing = { partId: string | null } | null
 export function PartsScreen() {
   const { job, data, dispatch } = useJobStore()
   const [tab, setTabState] = useState<PartsTab>(() => loadPartsTab(browserStorage()))
-  const [, setEditing] = useState<Editing>(null)
+  const [editing, setEditing] = useState<Editing>(null)
   const [error, setError] = useState<string | null>(null)
   const adjusts = data.adjusts
   const dims = useMemo(() => (job ? computeDimensions(job, adjusts) : null), [job, adjusts])
@@ -107,6 +108,14 @@ export function PartsScreen() {
         <button type="button" className="btn wide parts-add" onClick={() => setEditing({ partId: null })}>
           ＋ 部材を追加
         </button>
+      )}
+      {editing && (
+        <PartEditor
+          key={editing.partId ?? 'new'}
+          partId={editing.partId}
+          onClose={() => setEditing(null)}
+          onOpenPart={(id) => setEditing({ partId: id })}
+        />
       )}
     </section>
   )

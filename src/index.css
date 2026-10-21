@@ -990,3 +990,318 @@ button.part-main,
 .parts-add {
   margin-top: 12px;
 }
+
+/* ---------- 下から出る編集シート ---------- */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 94dvh;
+  background: var(--bg);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.sheet-head h2 {
+  margin: 0;
+  font-size: 17px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sheet-x {
+  min-width: 44px;
+  font-size: 20px;
+  line-height: 1;
+}
+.field-msg {
+  margin: 0;
+}
+.part-sub-actions {
+  margin-top: 6px;
+}
+
+/* ---------- 部材の編集：仕上がり寸法のまとまり（青系） ---------- */
+.fin-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 10px 10px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--fin);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.fin-head {
+  margin: 0;
+  color: var(--fin);
+  font-size: 14px;
+}
+
+/* ---------- 式の入力（仕様書 5.4） ---------- */
+.expr-field {
+  gap: 4px;
+}
+.expr-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 24px;
+  min-width: 0;
+  font-size: 13px;
+}
+.expr-axis {
+  flex: none;
+  font-weight: 700;
+  font-size: 15px;
+}
+.expr-result {
+  margin-left: auto;
+  color: var(--fin);
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+/* エラーは仕上がりの値と同じ行に赤で出す。1行に切り詰め、押すと全文 */
+.expr-err {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 見た目の高さは1行のまま、押せる範囲だけ上下に広げる */
+  margin: -10px 0 -10px auto;
+  padding: 10px 0;
+  border: 0;
+  background: none;
+  color: var(--err);
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.expr-err.full {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.expr-box {
+  appearance: none;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 4px;
+  text-align: left;
+  cursor: text;
+  touch-action: manipulation;
+}
+.expr-box.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.expr-box.bad {
+  border-color: var(--err);
+}
+.expr-placeholder {
+  color: var(--muted);
+  font-size: 15px;
+}
+.expr-unit-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+.expr-unit {
+  white-space: pre;
+  line-height: 1.6;
+}
+.expr-unit.gap {
+  margin-left: 0.35em;
+}
+.expr-unit.chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border-radius: 5px;
+  padding: 0 5px;
+  font-weight: 700;
+  font-family: var(--sans);
+  font-size: 15px;
+}
+.chip-ref {
+  background: var(--fin-soft);
+  color: var(--fin);
+}
+.chip-adjust {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.chip-bad {
+  background: var(--err-soft);
+  color: var(--err);
+}
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.3em;
+  margin: 0 1px;
+  background: var(--accent);
+  animation: caret-blink 1s steps(1) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+.pad {
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pad-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.pad-tab {
+  appearance: none;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pad-tab.part.on {
+  background: var(--fin-soft);
+  border-color: var(--fin);
+  color: var(--fin);
+}
+.pad-tab.adjust.on {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+/* 部材・調整寸法は1つの欄。高さは決めておき、多いときは中でスクロール（下の数字のボタンの位置がずれない） */
+.pad-refs {
+  height: 96px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.pad-empty {
+  margin: 0;
+  padding: 12px 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.pad-ref {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--fin-soft);
+  color: var(--ink);
+  border-radius: 7px;
+  min-height: 44px;
+  padding: 2px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  min-width: 0;
+}
+.pad-ref.part,
+.pad-ref.adjust {
+  align-items: center;
+  text-align: center;
+}
+.pad-ref.adjust {
+  background: var(--ok-soft);
+}
+.pad-ref.back {
+  background: var(--surface);
+}
+.pad-ref .ref-name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.pad-ref .ref-val {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.pad-keys.expr-keys {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.expr-keys .pad-key {
+  min-height: 44px;
+  padding: 0;
+  background: var(--surface);
+}
+.expr-keys .pad-key:not(.num) {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.expr-keys .pad-key.done {
+  background: var(--accent);
+}

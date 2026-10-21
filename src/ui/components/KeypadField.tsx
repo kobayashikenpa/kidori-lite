@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import { claimOpen } from '../exclusive'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
+import { keepAbovePad } from '../scroll'
 
 interface Props {
   /** 見せている文字（打っている途中も含む） */
@@ -22,18 +23,6 @@ interface Props {
   id?: string
   /** 見出し（読み上げと、数字キーの上に出す名前） */
   label?: string
-}
-
-/** 数字キーに欄が隠れないよう、画面の下に余白を足して欄を上へ動かす。返す関数で余白を戻す */
-function keepAbovePad(field: HTMLElement, pad: HTMLElement): () => void {
-  const body = document.body
-  const prev = body.style.paddingBottom
-  body.style.paddingBottom = `${pad.offsetHeight}px`
-  const overlap = field.getBoundingClientRect().bottom - pad.getBoundingClientRect().top + 8
-  if (overlap > 0) window.scrollBy({ top: overlap })
-  return () => {
-    body.style.paddingBottom = prev
-  }
 }
 
 export function KeypadField({ text, onText, onClose, integer = false, bad, unit = 'mm', placeholder, id, label }: Props) {
