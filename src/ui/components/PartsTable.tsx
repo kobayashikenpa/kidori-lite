@@ -15,8 +15,9 @@ import { createPortal, flushSync } from 'react-dom'
 import { validatePartName } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
 import { hasName, referableParts } from '../../engine/parts'
-import type { Adjust, Axis, DimensionResult, Job, Part } from '../../engine/types'
+import type { Adjust, Axis, CellPos, DimensionResult, Job, Part } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
+import { cellKey } from '../cellSelect'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import type { Edit } from '../formulaEdit'
@@ -40,11 +41,12 @@ interface Props {
   dims: DimensionResult
   adjusts: readonly Adjust[]
   dispatch: (action: StoreAction) => ReduceResult
-  /** 「選んでコピー」「選んで削除」で選んでいる部材（null は選んでいない）。選んでいる間は番号の列がチェックになる */
-  picking: ReadonlySet<string> | null
-  /** 選ぶ目的（チェックの読み上げに使う：「天板 を削除に選ぶ」） */
-  pickVerb: string
-  onTogglePick: (partId: string) => void
+  /**
+   * セルを選ぶ状態（仕様書 16.1）で選んでいるセル（null は選ぶ状態でない）。
+   * 選ぶ状態の間は、セル（名前・W・H・枚数。空の行も）を押すたびに選ぶ／外す。アプリのキー・名前の入力・番号のメニューは出さない
+   */
+  selecting: readonly CellPos[] | null
+  onToggleCell: (pos: CellPos) => void
   /** 番号を押したとき（番号のメニューを開く） */
   onOpenMenu: (partId: string) => void
   onError: (message: string | null) => void
@@ -76,7 +78,7 @@ const FIELD_LABEL: Record<TableField, string> = { name: '名前', W: 'W', H: 'H'
 /** キーを押しても注目が移らないようにする（スマホのキーボードが出ない・画面が跳ねないように） */
 const keep = (e: ReactPointerEvent) => e.preventDefault()
 
-export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, onTogglePick, onOpenMenu, onError, ref }: Props) {
+export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCell, onOpenMenu, onError, ref }: Props) {
   const parts = job.parts
   const rowCount = tableRowCount(parts.length)
   // 選んでいる欄。部材の id で持つ（行の番号は、部材を外すとずれるため）。partId が null なら いちばん上の空の行
@@ -202,6 +204,13 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, on
   useEffect(() => {
     selectRef.current = selectCell
   })
+
+  // 選ぶ状態になったら、入力中の欄を閉じる（書きかけの名前は確定する）
+  const selectingOn = selecting !== null
+  useEffect(() => {
+    if (selectingOn && selSRef.current) selectRef.current(null)
+  }, [selectingOn])
+  const pickedKeys = new Set((selecting ?? []).map(cellKey))
 
   // 何も入っていない部材は表から外す（保存しない）。選んでいる部材は、入力の途中なので外さない
   const selPartId = selS?.partId ?? null
@@ -356,7 +365,12 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, on
 
   return (
     <>
-      <div className={`pt${picking ? ' picking' : ''}`} ref={tableRef} role="table" aria-label="部材の表（仕上がり寸法）">
+      <div
+        className={`pt${selecting ? ' selecting' : ''}`}
+        ref={tableRef}
+        role="table"
+        aria-label={selecting ? '部材の表（仕上がり寸法）：押してセルを選ぶ' : '部材の表（仕上がり寸法）'}
+      >
         <div className="pt-row pt-head" role="row">
           <span role="columnheader">番号</span>
           <span role="columnheader">名前</span>
@@ -369,42 +383,32 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, on
           const key = part ? part.id : `empty-${i}`
           const isSel = (f: TableField) => sel !== null && sel.row === i && sel.field === f
           const rowSel = sel !== null && sel.row === i
-          const picked = part && picking ? picking.has(part.id) : false
+          const picked = (f: TableField) => pickedKeys.has(cellKey({ row: i, col: f }))
           const label = part && hasName(part) ? part.name : `#${i + 1}`
           const rowClass = [
             'pt-row',
             part ? 'part' : 'empty',
             part && part.quantity === null ? 'noqty' : '',
-            part?.finishedDone && !picking ? 'done' : '',
-            picked ? 'picked' : '',
+            part?.finishedDone && !selecting ? 'done' : '',
             rowSel ? 'sel' : '',
           ]
             .filter(Boolean)
             .join(' ')
 
           const cellPress = (f: TableField) => () => {
-            if (picking) {
-              if (part) onTogglePick(part.id)
+            if (selecting) {
+              onToggleCell({ row: i, col: f })
               return
             }
             selectCell({ row: i, field: f })
           }
+          // 選ぶ状態のときのセルの印と読み上げ
+          const pickCls = (f: TableField) => (selecting && picked(f) ? ' picked' : '')
 
-          const numCell = picking ? (
-            <button
-              type="button"
-              className={`pt-cell pt-no pt-pick${picked ? ' on' : ''}`}
-              disabled={!part}
-              aria-pressed={part ? picked : undefined}
-              aria-label={part ? `${label} を${pickVerb}に選ぶ` : undefined}
-              onClick={cellPress('name')}
-            >
-              {part && (
-                <span className="check-box" aria-hidden="true">
-                  {picked ? '✓' : ''}
-                </span>
-              )}
-            </button>
+          const numCell = selecting ? (
+            <span className={`pt-cell pt-no${part ? '' : ' muted'} num`} aria-hidden="true">
+              {part && !hasName(part) ? `#${i + 1}` : i + 1}
+            </span>
           ) : part ? (
             <button
               type="button"
@@ -431,8 +435,14 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, on
 
           // 名前の欄：部材の行といちばん上の空の行はその場で入力できる欄。ほかの空の行は押すといちばん上の空の行へ
           const nameCell =
-            picking ? (
-              <button type="button" className="pt-cell pt-name" disabled={!part} tabIndex={-1} onClick={cellPress('name')}>
+            selecting ? (
+              <button
+                type="button"
+                className={`pt-cell pt-name${pickCls('name')}`}
+                aria-pressed={picked('name')}
+                aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}`}
+                onClick={cellPress('name')}
+              >
                 {part && hasName(part) ? part.name : ''}
               </button>
             ) : part || i === firstEmpty ? (
@@ -468,9 +478,9 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, on
             return (
               <button
                 type="button"
-                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}`}
+                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${pickCls(axis)}`}
                 aria-label={`${label} の ${axis}：${text || '空'}`}
-                disabled={picking !== null && !part}
+                aria-pressed={selecting ? picked(axis) : undefined}
                 onClick={cellPress(axis)}
               >
                 {c.kind === 'error' ? (
@@ -506,9 +516,9 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, on
                 {dimCellEl('H')}
                 <button
                   type="button"
-                  className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}`}
+                  className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${pickCls('qty')}`}
                   aria-label={`${label} の枚数：${part?.quantity ?? '空'}`}
-                  disabled={picking !== null && !part}
+                  aria-pressed={selecting ? picked('qty') : undefined}
                   onClick={cellPress('qty')}
                 >
                   {part?.quantity ?? ''}

@@ -2,11 +2,14 @@
 // ［仕上がり］は入力できる表（番号を押すとメニュー）、［木取り］は同じ形の表を見るだけ。
 // 寸法の計算は engine（computeDimensions）、切り出しの進み具合は engine（partCutProgress）に任せる
 import { useMemo, useRef, useState } from 'react'
+import type { CellPos } from '../../engine/types'
 import { computeDimensions } from '../../engine/dimensions'
 import { partCutProgress } from '../../engine/progress/partProgress'
 import { currentJob } from '../../store/reducer'
 import { browserStorage } from '../../store/storage'
 import { useJobStore } from '../../store/useJobStore'
+import { toggleCell } from '../cellSelect'
+import { CellBar } from '../components/CellBar'
 import { CutTable } from '../components/CutTable'
 import { Help } from '../components/Help'
 import { PartMenu } from '../components/PartMenu'
@@ -26,6 +29,8 @@ export function PartsScreen() {
   const [error, setError] = useState<string | null>(null)
   // 操作の知らせ（「3件をコピーしました」など）
   const [notice, setNotice] = useState<string | null>(null)
+  // セルを選ぶ状態（仕様書 16.1）で選んでいるセル。null は選ぶ状態でない
+  const [selecting, setSelecting] = useState<CellPos[] | null>(null)
   const tableRef = useRef<PartsTableHandle>(null)
   const adjusts = data.adjusts
   const dims = useMemo(() => (job ? computeDimensions(job, adjusts) : null), [job, adjusts])
@@ -34,6 +39,8 @@ export function PartsScreen() {
 
   const setTab = (t: PartsTab) => {
     setTabState(t)
+    // ［木取り］のタブに切り替えたら、選ぶ状態を終わる
+    setSelecting(null)
     setNotice(null)
     setError(null)
     savePartsTab(browserStorage(), t)
@@ -44,6 +51,13 @@ export function PartsScreen() {
   const toggleAllRotation = () => {
     const r = dispatch({ type: 'setAllRotatable', rotatable: rotation !== 'all' })
     setError(r.ok ? null : r.message)
+  }
+
+  const toggleSelecting = () => {
+    setNotice(null)
+    setError(null)
+    setMenuPartId(null)
+    setSelecting((cur) => (cur ? null : []))
   }
 
   const insertAbove = (index: number) => {
@@ -63,7 +77,7 @@ export function PartsScreen() {
       <h2>
         <Help title="部材">
           部材の名前・W・H・枚数を、［仕上がり］のタブの表に仕上がり寸法で入れます。木取り寸法（仕上がり寸法 ＋
-          切り代）は［木取り］のタブで見られます。番号を押すと、回転・仕上がりの完了・複製・上に行を入れる・削除ができます。
+          切り代）は［木取り］のタブで見られます。番号を押すと、回転・仕上がりの完了・複製・上に行を入れる・削除ができます。「選ぶ」を押すとセルを選べて、コピー・貼り付け・消す・行を削除ができます。
         </Help>
       </h2>
 
@@ -97,6 +111,14 @@ export function PartsScreen() {
       {finishedTab ? (
         <>
           <div className="rot-all">
+            <button
+              type="button"
+              className={`btn small select-btn${selecting ? ' on' : ''}`}
+              aria-pressed={selecting !== null}
+              onClick={toggleSelecting}
+            >
+              選ぶ
+            </button>
             <Help className="rot-all-label" title="全部回転してよい">
               オンにすると全部の部材が「回転してよい」（W・H を入れ替えて置いてもよい）に、オフにすると全部「回転しない」（W を板の妻手、H を板の長手に合わせて置く）になります。部材ごとに違うときは「一部」と出ます。部材ごとの回転は、番号を押して変えます。
             </Help>
@@ -106,7 +128,7 @@ export function PartsScreen() {
               aria-checked={rotation === 'all' ? 'true' : rotation === 'some' ? 'mixed' : 'false'}
               aria-label={`全部回転してよい：${ROTATION_TEXT[rotation]}`}
               className={`rot-switch ${rotation}`}
-              disabled={job.parts.length === 0}
+              disabled={job.parts.length === 0 || selecting !== null}
               onClick={toggleAllRotation}
             >
               <span className="rot-knob" aria-hidden="true" />
@@ -119,9 +141,8 @@ export function PartsScreen() {
             dims={dims}
             adjusts={adjusts}
             dispatch={dispatch}
-            picking={null}
-            pickVerb="コピー"
-            onTogglePick={() => {}}
+            selecting={selecting}
+            onToggleCell={(pos) => setSelecting((cur) => (cur ? toggleCell(cur, pos) : cur))}
             onOpenMenu={(id) => {
               setNotice(null)
               setMenuPartId(id)
@@ -141,6 +162,16 @@ export function PartsScreen() {
         <p className="msg ok" role="status">
           {notice}
         </p>
+      )}
+      {finishedTab && selecting && (
+        <CellBar
+          job={job}
+          cells={selecting}
+          clip={data.cellClip}
+          dispatch={dispatch}
+          onCells={setSelecting}
+          onDone={() => setSelecting(null)}
+        />
       )}
       {menuPartId && (
         <PartMenu
