@@ -317,10 +317,10 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
         <button type="button" className="btn wide" onClick={() => fileInput.current?.click()}>
           ファイルから取り込む
         </button>
+        {/* accept は付けない（iPhone で .json が選べないことがあるため。kidori と同じ。中身で判断する） */}
         <input
           ref={fileInput}
           type="file"
-          accept=".json,application/json"
           aria-label="取り込むファイル"
           style={{ display: 'none' }}
           onChange={(e) => void pickFile(e)}
