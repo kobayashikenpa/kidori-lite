@@ -1871,6 +1871,10 @@ h3 > .help {
   min-height: 48px;
   background: var(--surface);
 }
+/* 枚数のキーの「次へ」も、式のキーと同じ色にする（上の背景の指定で白地に白い文字にならないように） */
+.pad-keys.qty-keys .pad-key.done {
+  background: var(--accent);
+}
 
 /* ---------- 番号のメニュー・全部回転・木取りの表（第1.1版 U-12） ---------- */
 .menu-actions {
