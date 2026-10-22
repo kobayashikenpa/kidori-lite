@@ -1,11 +1,20 @@
 // 仕事の画面（仕様書 10）：保存した仕事の一覧（名前・最後に変えた日・部材の数。新しい順）、
-// 新しく作る・開く・名前を変える・コピー・削除（画面の中で確認）。kidori の JobsScreen.tsx をもとにしたもの
-import { useState, type FormEvent } from 'react'
+// 新しく作る・開く・名前を変える・コピー・削除（画面の中で確認）。kidori の JobsScreen.tsx をもとにしたもの。
+// 共有とバックアップ（仕様書 15.3・15.4）：この仕事を送る・バックアップを書き出す・ファイルから取り込む
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { backupFileName, buildBackupFile } from '../../engine/transfer/backup'
+import { MAX_TRANSFER_SIZE, READ_FAILED } from '../../engine/transfer/envelope'
+import { importTransfer } from '../../engine/transfer/importFile'
+import { readTransferFile, type TransferRead } from '../../engine/transfer/read'
+import { buildJobFile, jobFileName } from '../../engine/transfer/share'
 import type { Job } from '../../engine/types'
-import { defaultJobName } from '../../store/jobs'
+import { defaultJobName, newId } from '../../store/jobs'
 import { useJobStore } from '../../store/useJobStore'
 import { Help } from '../components/Help'
+import { ImportDialog } from '../components/ImportDialog'
 import { jobMeta, sortJobsNewestFirst } from '../jobList'
+import { jsonFile, shareFile } from '../platform/shareSheet'
+import { MAKE_FAILED, shareResultText } from '../transferView'
 
 /** 一覧の1件で、いま何をしているか */
 type Mode = { kind: 'rename'; jobId: string } | { kind: 'delete'; jobId: string } | null
@@ -18,6 +27,11 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
   const [renameText, setRenameText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** 送る・書き出す・取り込むの知らせ。jobId があればその仕事の「この仕事を送る」の下、無ければ下の「共有とバックアップ」に出す */
+  const [transferMsg, setTransferMsg] = useState<{ ok: boolean; text: string; jobId?: string } | null>(null)
+  /** 読めたファイル（確認の画面を出している間） */
+  const [pending, setPending] = useState<Extract<TransferRead, { ok: true }> | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const jobs = sortJobsNewestFirst(data.jobs)
 
@@ -25,6 +39,7 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
     setMode(null)
     setError(null)
     setNotice(null)
+    setTransferMsg(null)
   }
 
   const open = (id: string) => {
@@ -75,6 +90,73 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
     }
     const made = r.state.data.jobs.find((j) => j.id === r.id)
     setNotice(`「${made?.name ?? ''}」を作りました。一番上に出ています`)
+  }
+
+  /** この仕事を送る。共有シートを開けるよう、ファイルは押した操作の中で同期に作る */
+  const send = (job: Job) => {
+    reset()
+    const file = jsonFile(buildJobFile(job, data.adjusts), jobFileName(job))
+    if (!file) {
+      setTransferMsg({ ok: false, text: MAKE_FAILED, jobId: job.id })
+      return
+    }
+    void shareFile(file, job.name).then((r) => {
+      const m = shareResultText(r, 'job')
+      if (m) setTransferMsg({ ...m, jobId: job.id })
+    })
+  }
+
+  /** バックアップを書き出す（全部の仕事と調整寸法）。送るときと同じく、ファイルは押した操作の中で作る */
+  const exportBackup = () => {
+    reset()
+    const file = jsonFile(buildBackupFile(data), backupFileName(new Date()))
+    if (!file) {
+      setTransferMsg({ ok: false, text: MAKE_FAILED })
+      return
+    }
+    void shareFile(file, 'kidori-lite のバックアップ').then((r) => {
+      const m = shareResultText(r, 'backup')
+      if (m) setTransferMsg(m)
+    })
+  }
+
+  /** ファイルを選んだ：読んで確認を出す。読めなければ知らせるだけ（今のデータは変えない） */
+  const pickFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget
+    const file = input.files?.[0]
+    // 同じファイルをもう一度選べるよう、値を毎回空に戻す
+    input.value = ''
+    if (!file) return
+    reset()
+    const fail = () => setTransferMsg({ ok: false, text: READ_FAILED })
+    if (file.size > MAX_TRANSFER_SIZE) {
+      fail()
+      return
+    }
+    let text: string
+    try {
+      text = await file.text()
+    } catch {
+      fail()
+      return
+    }
+    const r = readTransferFile(text)
+    if (r.ok) setPending(r)
+    else setTransferMsg({ ok: false, text: r.message })
+  }
+
+  /** 確認の「取り込む」「追加する」：今のデータに足して保存する。開いている仕事は変えない */
+  const importPending = () => {
+    const r = pending
+    setPending(null)
+    if (!r || !state.canSave) return
+    try {
+      const out = importTransfer(data, r.file, newId, new Date())
+      const d = dispatch({ type: 'replaceData', data: out.data })
+      setTransferMsg(d.ok ? { ok: true, text: out.message } : { ok: false, text: d.message })
+    } catch {
+      setTransferMsg({ ok: false, text: READ_FAILED })
+    }
   }
 
   const remove = (job: Job) => {
@@ -209,12 +291,54 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
                       削除
                     </button>
                   </div>
+                  <button type="button" className="btn wide" onClick={() => send(job)}>
+                    この仕事を送る
+                  </button>
+                  {transferMsg?.jobId === job.id && <TransferMessage msg={transferMsg} />}
                 </>
               )}
             </div>
           )
         })}
       </div>
+
+      <h3>
+        <Help title="共有とバックアップ">
+          「この仕事を送る」は、その仕事（設定・部材と、式で使っている調整寸法）を1つのファイルにして、LINE・メール・AirDrop などで送ります。切り出しチェックと仕上がりの完了は外して送ります。
+          「バックアップを書き出す」は、全部の仕事と調整寸法を1つのファイルにします（「ファイル」に保存しておく、新しいスマホに移すなど）。
+          「ファイルから取り込む」で、受け取ったファイルやバックアップのファイルを選ぶと、コピーとして仕事に足します（今の仕事は変わりません）。
+          ファイルを持っている人は、誰でも中身を見られます。
+        </Help>
+      </h3>
+      <div className="stack">
+        <button type="button" className="btn wide" onClick={exportBackup}>
+          バックアップを書き出す
+        </button>
+        <button type="button" className="btn wide" onClick={() => fileInput.current?.click()}>
+          ファイルから取り込む
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".json,application/json"
+          aria-label="取り込むファイル"
+          style={{ display: 'none' }}
+          onChange={(e) => void pickFile(e)}
+        />
+        {transferMsg && transferMsg.jobId === undefined && <TransferMessage msg={transferMsg} />}
+      </div>
+
+      {pending && (
+        <ImportDialog read={pending} canSave={state.canSave} onImport={importPending} onCancel={() => setPending(null)} />
+      )}
     </section>
+  )
+}
+
+function TransferMessage({ msg }: { msg: { ok: boolean; text: string } }) {
+  return (
+    <p className={`msg ${msg.ok ? 'ok' : 'err'}`} role={msg.ok ? 'status' : 'alert'} style={{ margin: 0 }}>
+      {msg.text}
+    </p>
   )
 }

@@ -87,6 +87,11 @@ export type StoreAction =
   | ({ type: 'updateAdjust'; adjustId: string } & AdjustDraft)
   /** 調整寸法を消す（1つでも一括でも） */
   | { type: 'removeAdjusts'; adjustIds: string[] }
+  /**
+   * 保存データを丸ごと置き換える（ファイルから取り込んだあとの data を入れる。engine/transfer の importTransfer）。
+   * 開いている仕事は変えない（新しいデータに無ければ閉じる）。updatedAt は付けない
+   */
+  | { type: 'replaceData'; data: AppData }
   /** 読み込みの知らせを閉じる */
   | { type: 'dismissLoadError' }
 
@@ -212,6 +217,10 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       return onAdjusts(state, updateAdjust(state.data.adjusts, action.adjustId, { name: action.name, value: action.value }))
     case 'removeAdjusts':
       return onAdjusts(state, removeAdjusts(state.data.adjusts, action.adjustIds))
+    case 'replaceData': {
+      const keep = state.currentJobId !== null && action.data.jobs.some((j) => j.id === state.currentJobId)
+      return done({ ...state, data: action.data, currentJobId: keep ? state.currentJobId : null })
+    }
     case 'dismissLoadError':
       return done({ ...state, loadError: null })
   }

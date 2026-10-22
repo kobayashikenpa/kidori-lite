@@ -4,6 +4,9 @@ import { MELAMINE_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
 import { formulaText } from '../engine/formula/display'
 import { adjustUsages } from '../engine/formula/usages'
 import { packJob } from '../engine/packing'
+import { importTransfer } from '../engine/transfer/importFile'
+import { readTransferFile } from '../engine/transfer/read'
+import { buildJobFile } from '../engine/transfer/share'
 import { currentJob, initialState, reduce, type Env, type StoreAction, type StoreState } from './reducer'
 
 const T0 = new Date(2026, 9, 21, 9, 0, 0)
@@ -198,5 +201,30 @@ describe('読み込みの知らせ', () => {
     })
     expect(s.loadError).toBe('保存データを読めませんでした')
     expect(run(s, { type: 'dismissLoadError' }).state.loadError).toBeNull()
+  })
+})
+
+describe('取り込んだデータに置き換える', () => {
+  it('共有のファイルを取り込むと、仕事がコピーとして足され、開いている仕事・今の仕事は変わらない', () => {
+    const s0 = start()
+    const read = readTransferFile(buildJobFile(currentJob(s0)!, s0.data.adjusts))
+    if (!read.ok) throw new Error(read.message)
+    const imported = importTransfer(s0.data, read.file, env().newId, T1)
+    const s = run(s0, { type: 'replaceData', data: imported.data }).state
+    expect(s.data.jobs).toHaveLength(2)
+    expect(s.currentJobId).toBe('job-shelf')
+    expect(s.data.jobs[0]).toBe(s0.data.jobs[0])
+    // メラミン1 は同じ表示名なので増えない
+    expect(s.data.adjusts).toHaveLength(s0.data.adjusts.length)
+    const copy = s.data.jobs[1]
+    expect(copy.name).toBe(`${s0.data.jobs[0].name}のコピー`)
+    expect(computeDimensions(copy, s.data.adjusts).parts.map((p) => p.finished)).toEqual(
+      computeDimensions(s0.data.jobs[0], s0.data.adjusts).parts.map((p) => p.finished),
+    )
+  })
+
+  it('開いている仕事が新しいデータに無ければ閉じる', () => {
+    const s = run(start(), { type: 'replaceData', data: { version: 1, jobs: [], adjusts: [], clipboard: null } }).state
+    expect(s.currentJobId).toBeNull()
   })
 })

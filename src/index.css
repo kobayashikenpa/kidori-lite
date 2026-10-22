@@ -1988,3 +1988,21 @@ h3 > .help {
   color: var(--muted);
   font-weight: 400;
 }
+
+/* ---------- 取り込みの確認（仕様書 15.3・15.4） ---------- */
+.import-title {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.import-names {
+  margin: 0;
+  padding-left: 1.4em;
+  max-height: 40dvh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.import-rest {
+  color: var(--muted);
+  list-style: none;
+}
