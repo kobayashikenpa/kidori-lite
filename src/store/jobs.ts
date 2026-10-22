@@ -128,6 +128,11 @@ function validatePartFields(part: Part): string | null {
 
 /** 部材を最後に足す。使えない名前・同じ名前（全角・半角の違いを含む）の部材があれば断る。名前が空の部材はいくつでも足せる */
 export function addPart(job: Job, part: Part): OpResult {
+  return insertPart(job, job.parts.length, part)
+}
+
+/** 部材を index の位置（今その位置にある部材の上）に入れる。index が範囲外なら最後。断る決まりは addPart と同じ */
+export function insertPart(job: Job, index: number, part: Part): OpResult {
   const name = part.name.trim()
   if (job.parts.some((p) => p.id === part.id)) return fail('同じ id の部材があります')
   const invalid = validatePartName(
@@ -138,7 +143,8 @@ export function addPart(job: Job, part: Part): OpResult {
   const p: Part = { ...part, name, expr: { W: part.expr.W, H: part.expr.H } }
   const err = validatePartFields(p)
   if (err) return fail(err)
-  return ok({ ...job, parts: [...job.parts, p] })
+  const i = Number.isInteger(index) && index >= 0 && index <= job.parts.length ? index : job.parts.length
+  return ok({ ...job, parts: [...job.parts.slice(0, i), p, ...job.parts.slice(i)] })
 }
 
 /**
@@ -169,6 +175,20 @@ export function updatePart(job: Job, partId: string, patch: Partial<Omit<Part, '
 export function removePart(job: Job, partId: string): OpResult {
   if (!job.parts.some((p) => p.id === partId)) return fail('部材が見つかりません')
   return ok({ ...job, parts: job.parts.filter((p) => p.id !== partId) })
+}
+
+/** 選んだ部材をまとめて消す（無い id は無視する）。1つも無ければ断る */
+export function removeParts(job: Job, partIds: readonly string[]): OpResult {
+  const ids = new Set(partIds)
+  const parts = job.parts.filter((p) => !ids.has(p.id))
+  if (parts.length === job.parts.length) return fail('消す部材を選んでください')
+  return ok({ ...job, parts })
+}
+
+/** 全部の部材を「回転してよい」（true）か「回転しない」（false）にする。変わらなければ同じ仕事を返す */
+export function setAllRotatable(job: Job, rotatable: boolean): OpResult {
+  if (job.parts.every((p) => p.rotatable === rotatable)) return ok(job)
+  return ok({ ...job, parts: job.parts.map((p) => (p.rotatable === rotatable ? p : { ...p, rotatable })) })
 }
 
 // ---------- 調整寸法（アプリ全体で1つの一覧） ----------

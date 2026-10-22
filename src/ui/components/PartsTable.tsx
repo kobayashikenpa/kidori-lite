@@ -2,8 +2,16 @@
 // 名前はその場でスマホのキーボード。W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（式も使える。枚数は数字だけ）。
 // 入力はキーを押すたびに保存する。空の行に入れたときに部材を作り、何も入っていない部材は表から外す（保存しない）。
 // 寸法の計算は engine（computeDimensions の結果を受け取る）。式の文字の編集は formulaEdit.ts
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { createPortal } from 'react-dom'
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type Ref,
+} from 'react'
+import { createPortal, flushSync } from 'react-dom'
 import { validatePartName } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
 import { hasName, referableParts } from '../../engine/parts'
@@ -32,12 +40,21 @@ interface Props {
   dims: DimensionResult
   adjusts: readonly Adjust[]
   dispatch: (action: StoreAction) => ReduceResult
-  /** 「選んでコピー」で選んでいる部材（null は選んでいない） */
+  /** 「選んでコピー」「選んで削除」で選んでいる部材（null は選んでいない）。選んでいる間は番号の列がチェックになる */
   picking: ReadonlySet<string> | null
+  /** 選ぶ目的（チェックの読み上げに使う：「天板 を削除に選ぶ」） */
+  pickVerb: string
   onTogglePick: (partId: string) => void
-  /** 番号を押したとき（部材の編集シートを開く。U-12 でメニューに替える） */
-  onOpenPart: (partId: string) => void
+  /** 番号を押したとき（番号のメニューを開く） */
+  onOpenMenu: (partId: string) => void
   onError: (message: string | null) => void
+  ref?: Ref<PartsTableHandle>
+}
+
+/** 表の外から使う操作 */
+export interface PartsTableHandle {
+  /** その部材の名前の欄を選び、スマホのキーボードを出す（押した操作の中で呼ぶ）。job は操作のあとの仕事 */
+  editName: (job: Job, partId: string) => void
 }
 
 /** 選んでいる欄（部材の id と欄）。partId が null なら いちばん上の空の行 */
@@ -59,7 +76,7 @@ const FIELD_LABEL: Record<TableField, string> = { name: '名前', W: 'W', H: 'H'
 /** キーを押しても注目が移らないようにする（スマホのキーボードが出ない・画面が跳ねないように） */
 const keep = (e: ReactPointerEvent) => e.preventDefault()
 
-export function PartsTable({ job, dims, adjusts, dispatch, picking, onTogglePick, onOpenPart, onError }: Props) {
+export function PartsTable({ job, dims, adjusts, dispatch, picking, pickVerb, onTogglePick, onOpenMenu, onError, ref }: Props) {
   const parts = job.parts
   const rowCount = tableRowCount(parts.length)
   // 選んでいる欄。部材の id で持つ（行の番号は、部材を外すとずれるため）。partId が null なら いちばん上の空の行
@@ -167,6 +184,21 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, onTogglePick
     if (cell.field !== 'qty') setCursor(formulaUnits(part?.expr[cell.field] ?? '').length)
   }
   const selectRef = useRef(selectCell)
+
+  useImperativeHandle(ref, () => ({
+    editName(nextJob, partId) {
+      jobRef.current = nextJob
+      const row = nextJob.parts.findIndex((p) => p.id === partId)
+      if (row < 0) return
+      // 先に表を描き直して名前の欄を作り、押した操作の中で注目を移す（スマホのキーボードが出るように）
+      flushSync(() => {
+        setSel({ partId, field: 'name' })
+        setDraft(nextJob.parts[row].name)
+        setNameMsg(null)
+      })
+      nameInputs.current.get(row)?.focus()
+    },
+  }))
   useEffect(() => {
     selectRef.current = selectCell
   })
@@ -364,7 +396,7 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, onTogglePick
               className={`pt-cell pt-no pt-pick${picked ? ' on' : ''}`}
               disabled={!part}
               aria-pressed={part ? picked : undefined}
-              aria-label={part ? `${label} をコピーに選ぶ` : undefined}
+              aria-label={part ? `${label} を${pickVerb}に選ぶ` : undefined}
               onClick={cellPress('name')}
             >
               {part && (
@@ -377,10 +409,11 @@ export function PartsTable({ job, dims, adjusts, dispatch, picking, onTogglePick
             <button
               type="button"
               className="pt-cell pt-no"
-              aria-label={`${label} の編集（回転・複製・削除）`}
+              aria-label={`${label} のメニュー（回転・仕上がりの完了・複製・上に行を入れる・削除）`}
+              aria-haspopup="dialog"
               onClick={() => {
                 selectCell(null)
-                onOpenPart(part.id)
+                onOpenMenu(part.id)
               }}
             >
               <span className="num">{hasName(part) ? i + 1 : `#${i + 1}`}</span>

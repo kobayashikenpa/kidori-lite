@@ -1,5 +1,5 @@
-// 入力欄が見やすい位置に来るように、いちばん近いスクロールする枠（部材の編集シート・画面全体）を動かす
-// 式のボタンの並び（FormulaInput）と数字キー（KeypadField）で使う。kidori の ui/scroll.ts から、文字の入力欄の部分を外したもの
+// 入力欄が見やすい位置に来るように、いちばん近いスクロールする枠（シート・画面全体）を動かす
+// 数字キー（KeypadField）で使う。kidori の ui/scroll.ts から、文字の入力欄の部分を外したもの
 
 /** いちばん近いスクロールする枠。無ければ画面全体 */
 export function nearestScroller(el: HTMLElement): HTMLElement | null {
@@ -27,29 +27,6 @@ function scrollerRect(scroller: HTMLElement) {
 function scrollByDelta(scroller: HTMLElement, delta: number) {
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
   scroller.scrollBy({ top: delta, behavior: reduce ? 'auto' : 'smooth' })
-}
-
-/** 式の欄とボタンの並びが見えるように、いちばん近いスクロールする枠（部材の編集シート）を動かす。
- * 全部が収まるなら動かす量をいちばん少なく、収まらないなら式の欄を枠の上端に合わせる。
- * 下端は、枠の下の余白（iPhone のホームバーの分 safe-area を含む）と、Safari の見えている範囲（visualViewport）を考える */
-export function scrollIntoComfort(field: HTMLElement, pad: HTMLElement) {
-  const scroller = nearestScroller(field)
-  if (!scroller) return
-  const r = scrollerRect(scroller)
-  const { viewTop, viewBottom } = visibleBand(r)
-  const margin = 8
-  const bottomMargin = Math.max(margin, Number.parseFloat(getComputedStyle(scroller).paddingBottom) || 0)
-  const top = field.getBoundingClientRect().top
-  const bottom = pad.getBoundingClientRect().bottom
-  // いまのスクロール位置からの差
-  const needDown = bottom - (viewBottom - bottomMargin) // 正ならこれだけ下へ動かすとボタンの並びの下端が見える
-  const maxDown = top - (viewTop + margin) // これより下へ動かすと式の欄の上端が隠れる
-  let delta = 0
-  if (bottom - top > viewBottom - bottomMargin - (viewTop + margin)) delta = maxDown
-  else if (needDown > 0) delta = needDown
-  else if (maxDown < 0) delta = maxDown
-  if (Math.abs(delta) < 1) return
-  scrollByDelta(scroller, delta)
 }
 
 /** 数字キー（画面の下に出る）に隠れないように、入力欄を上へ動かす。下が足りなければ枠の下に余白を足す。

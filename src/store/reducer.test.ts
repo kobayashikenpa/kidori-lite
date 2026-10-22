@@ -100,6 +100,17 @@ describe('部材の操作（開いている仕事）', () => {
     expect(job.parts.at(-1)).toMatchObject({ id: r.id, name: '棚板のコピー' })
   })
 
+  it('上に行を入れる・まとめて消す・全部回転', () => {
+    let r = run(start(), { type: 'insertPart', index: 2, part: { name: '', quantity: null } })
+    let job = currentJob(r.state)!
+    expect(job.parts[2]).toMatchObject({ id: r.id, name: '', quantity: null })
+    r = run(r.state, { type: 'removeParts', partIds: [r.id!, 'part-zentai'] })
+    job = currentJob(r.state)!
+    expect(job.parts.map((p) => p.name)).toEqual(['天板', '側板', '棚板'])
+    r = run(r.state, { type: 'setAllRotatable', rotatable: true })
+    expect(currentJob(r.state)!.parts.every((p) => p.rotatable)).toBe(true)
+  })
+
   it('仕事を開いていなければ断る', () => {
     const s = run(start(), { type: 'openJob', id: null }).state
     expect(reduce(s, { type: 'addPart', part: { name: 'a' } }, env())).toEqual({ ok: false, message: '仕事が開かれていません' })

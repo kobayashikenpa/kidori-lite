@@ -1,4 +1,5 @@
 // 部材の表（仕様書 15.1）の行と欄の決まり。画面から切り離して試せるようにする（寸法の計算はしない）
+import { partsReferencing } from '../engine/dimensions/resolve'
 import type { Adjust, Axis, Part, PartDimensions } from '../engine/types'
 import { dimCell, type DimCell } from './partCells'
 
@@ -64,4 +65,48 @@ export type TableDimCell = { kind: 'empty' } | DimCell
 export function tableDimCell(part: Part, dims: PartDimensions | undefined, axis: Axis, adjusts: readonly Adjust[]): TableDimCell {
   if (part.expr[axis].trim() === '') return { kind: 'empty' }
   return dimCell(part, dims, axis, 'finished', adjusts)
+}
+
+/** 木取りのタブの W・H の欄：空、または木取り寸法（仕上がり ＋ 切り代）の欄 */
+export function cutDimCell(part: Part, dims: PartDimensions | undefined, axis: Axis, adjusts: readonly Adjust[]): TableDimCell {
+  if (part.expr[axis].trim() === '') return { kind: 'empty' }
+  return dimCell(part, dims, axis, 'cut', adjusts)
+}
+
+/** 木取りのタブの枚数の欄：空は空、0 は「切らない」 */
+export function cutQuantityText(q: number | null): string {
+  if (q === null) return ''
+  return q === 0 ? '切らない' : String(q)
+}
+
+/** 「全部回転してよい」の今の状態：全部回転してよい・一部・なし（部材が無ければなし） */
+export type RotationState = 'all' | 'some' | 'none'
+
+export function rotationState(parts: readonly Pick<Part, 'rotatable'>[]): RotationState {
+  const n = parts.filter((p) => p.rotatable).length
+  if (n === 0) return 'none'
+  return n === parts.length ? 'all' : 'some'
+}
+
+/**
+ * 消す部材（partIds）の寸法を式で使っている、残る部材（engine の partsReferencing をまとめただけ。並びは部材の順）。
+ * 消す部材どうしの参照は数えない。空なら確認なしで消してよい
+ */
+export function referencingOthers(parts: readonly Part[], partIds: readonly string[]): { partId: string; name: string; axes: Axis[] }[] {
+  const ids = new Set(partIds)
+  const found = new Map<string, Set<Axis>>()
+  const names = new Map<string, string>()
+  for (const id of partIds) {
+    for (const r of partsReferencing(parts, id)) {
+      if (ids.has(r.partId)) continue
+      const axes = found.get(r.partId) ?? new Set<Axis>()
+      for (const a of r.axes) axes.add(a)
+      found.set(r.partId, axes)
+      names.set(r.partId, r.name)
+    }
+  }
+  const order: Axis[] = ['W', 'H']
+  return parts
+    .filter((p) => found.has(p.id))
+    .map((p) => ({ partId: p.id, name: names.get(p.id)!, axes: order.filter((a) => found.get(p.id)!.has(a)) }))
 }
