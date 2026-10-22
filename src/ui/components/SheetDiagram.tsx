@@ -16,6 +16,8 @@ interface Props {
   colorOf: (partId: string) => number
   /** チェックした片の pieceId（グレーにして「済」の印を付ける） */
   checked?: readonly string[]
+  /** 部材の今の表示名（無い部材・渡さないときは片に写した名前を使う） */
+  labelOf?: (partId: string) => string | undefined
 }
 
 /** 部材の色の数（index.css の --pc0〜--pc5） */
@@ -78,7 +80,7 @@ function LabelText({ r, label, className }: { r: Rect; label: Label; className: 
   )
 }
 
-export function SheetDiagram({ layout, no, colorOf, checked = [] }: Props) {
+export function SheetDiagram({ layout, no, colorOf, checked = [], labelOf }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
   const landscape = layout.orientation === 'landscape'
   // 図の横（W）と縦（L）。横長なら長手が横
@@ -146,7 +148,8 @@ export function SheetDiagram({ layout, no, colorOf, checked = [] }: Props) {
       {layout.placements.map((p, i) => {
         const r = flipY(p, L)
         const isDone = done.has(p.pieceId)
-        const name = isDone ? `済 ${p.name}` : p.name
+        const current = labelOf?.(p.partId) ?? p.name
+        const name = isDone ? `済 ${current}` : current
         const label = fitLabel(
           r.w,
           r.h,

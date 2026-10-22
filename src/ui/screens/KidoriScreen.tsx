@@ -7,6 +7,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
 import { packJob } from '../../engine/packing'
+import { partLabels } from '../../engine/parts'
 import { compareStandardSizes, type SizeSummary, type StandardSize } from '../../engine/packing/sizes'
 import type { SheetTarget } from '../../engine/progress/checks'
 import { frozenSheetViews, type FrozenSheetView } from '../../engine/progress/frozen'
@@ -114,6 +115,9 @@ export function KidoriScreen() {
   const finished = entries.filter((e) => e.view?.complete)
   const count = entries.length
   const colorOf = (partId: string) => Math.max(0, job.parts.findIndex((p) => p.id === partId))
+  // 配置図の部材名は今の表示名（固定した1枚も、名前の変更や「#行番号」のずれについてくる）
+  const labels = partLabels(job.parts)
+  const labelOf = (partId: string) => labels.get(partId)
   const empty = count === 0 && result.unplaced.length === 0 && result.skipped.length === 0
 
   const pickSize = (kind: StandardSize) => {
@@ -143,6 +147,7 @@ export function KidoriScreen() {
       entry={e}
       count={count}
       colorOf={colorOf}
+      labelOf={labelOf}
       error={checkError?.key === e.key ? checkError.message : null}
       onToggle={(row, el) => toggle(e, row, el)}
     />
@@ -349,11 +354,12 @@ interface SheetCardProps {
   entry: SheetEntry
   count: number
   colorOf: (partId: string) => number
+  labelOf: (partId: string) => string | undefined
   error: string | null
   onToggle: (row: SheetPartRow, el: HTMLElement) => void
 }
 
-function SheetCard({ entry, count, colorOf, error, onToggle }: SheetCardProps) {
+function SheetCard({ entry, count, colorOf, labelOf, error, onToggle }: SheetCardProps) {
   const { layout, no } = entry
   const landscape = layout.orientation === 'landscape'
   const complete = entry.view?.complete === true
@@ -377,7 +383,7 @@ function SheetCard({ entry, count, colorOf, error, onToggle }: SheetCardProps) {
       <p className="band-note num">
         {entry.board}（{fmt(layout.boardWidth)}×{fmt(layout.boardLength)}）・{cutModeLabel(entry.mode)}・部材 {layout.placements.length}枚
       </p>
-      <SheetDiagram layout={layout} no={no} colorOf={colorOf} checked={entry.checked} />
+      <SheetDiagram layout={layout} no={no} colorOf={colorOf} labelOf={labelOf} checked={entry.checked} />
       <p className="dg-legend">
         {layout.trims.length > 0 && (
           <span>
