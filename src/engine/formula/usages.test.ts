@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MELAMINE_ID, SHEET_ID, shelfJob } from '../fixtures/shelf'
-import { adjustIdsInExpr, adjustUsages, adjustUsagesOf, partsUsingAdjust, partsUsingAdjusts } from './usages'
+import { adjustIdsInExpr, adjustUsages, adjustUsagesOf, partsUsingAdjust, partsUsingAdjusts, remapAdjustIds } from './usages'
 
 describe('adjustIdsInExpr（式に出てくる調整寸法の id）', () => {
   it('出てきた順に、同じものも出てきた回数だけ', () => {
@@ -106,5 +106,16 @@ describe('adjustUsagesOf（いくつかの調整寸法をまとめて調べる�
     jobs[2].parts[3].expr.W = '379'
     const ids = new Set(adjustUsagesOf({ jobs }, [MELAMINE_ID]).map((u) => u.jobId))
     expect(ids.size).toBe(2)
+  })
+})
+
+describe('remapAdjustIds（式の調整寸法の id のつけ替え。共有・バックアップの取り込み用）', () => {
+  it('表にある id だけつけ替え、ほかの部分はそのまま', () => {
+    const map = new Map([['a', 'x'], ['b', 'y']])
+    expect(remapAdjustIds('天板.W - {n:a} + {n:c} - {n:b} - {n:a}', map)).toBe('天板.W - {n:x} + {n:c} - {n:y} - {n:x}')
+  })
+
+  it('読めない式の中・全角の ｛ ｝ もつけ替える。部材の参照は変えない', () => {
+    expect(remapAdjustIds('a.W + ｛n:a｝ @', new Map([['a', 'x']]))).toBe('a.W + {n:x} @')
   })
 })

@@ -94,3 +94,21 @@ export function adjustUsagesOf(
   }
   return out
 }
+
+/**
+ * 式の中の調整寸法 {n:…} の id を map でつけ替える（共有・バックアップの取り込み用。kidori の remapRefIds から厚みを外したもの）。
+ * map に無い id・部材の参照・ほかの部分はそのまま。読めない式の中でもつけ替える
+ */
+export function remapAdjustIds(expr: string, map: ReadonlyMap<string, string>): string {
+  let out = ''
+  let last = 0
+  for (const item of splitChunks(expr)) {
+    if ('type' in item || !isBraceText(item.text)) continue
+    const b = parseBraceText(item.text)
+    const to = b ? map.get(b.id) : undefined
+    if (to === undefined) continue
+    out += expr.slice(last, item.start) + `{n:${to}}`
+    last = item.end
+  }
+  return out + expr.slice(last)
+}

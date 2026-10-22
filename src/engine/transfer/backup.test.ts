@@ -1,0 +1,35 @@
+// バックアップのファイル（仕様書 15.4。kidori の store/transfer/backup.test.ts を参考に作り直したもの）
+import { describe, expect, it } from 'vitest'
+import { freezeAt } from '../fixtures/progress'
+import { shelfAdjusts, shelfJob } from '../fixtures/shelf'
+import { backupFile, backupFileName, buildBackupFile } from './backup'
+
+describe('backupFile・buildBackupFile', () => {
+  it('外側は app: kidori-lite・kind: backup・version 1・jobs・adjusts だけ。空白なしの JSON', () => {
+    const text = buildBackupFile({ jobs: [shelfJob()], adjusts: shelfAdjusts() })
+    const data = JSON.parse(text)
+    expect(Object.keys(data).sort()).toEqual(['adjusts', 'app', 'jobs', 'kind', 'version'])
+    expect([data.app, data.kind, data.version]).toEqual(['kidori-lite', 'backup', 1])
+    expect(text).not.toMatch(/\n/)
+  })
+
+  it('全部の仕事（切り出しチェック・仕上がりの完了も）と、調整寸法の一覧を全部そのまま', () => {
+    const used = freezeAt(shelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 1 })
+    used.parts[1] = { ...used.parts[1], finishedDone: true }
+    const adjusts = [...shelfAdjusts(), { id: 'adjust-hozo', name: 'ほぞ', value: 15 }]
+    const f = backupFile({ jobs: [used, shelfJob('job-b', '棚B')], adjusts })
+    expect(f.jobs).toEqual([used, shelfJob('job-b', '棚B')])
+    expect(f.adjusts).toEqual(adjusts)
+  })
+
+  it('仕事が無くても作れる', () => {
+    expect(backupFile({ jobs: [], adjusts: [] })).toEqual({ app: 'kidori-lite', kind: 'backup', version: 1, jobs: [], adjusts: [] })
+  })
+})
+
+describe('backupFileName', () => {
+  it('kidori-lite-バックアップ-YYYY-MM-DD.json（端末の日付。月・日は2桁）', () => {
+    expect(backupFileName(new Date(2026, 9, 22, 23, 59))).toBe('kidori-lite-バックアップ-2026-10-22.json')
+    expect(backupFileName(new Date(2027, 0, 5, 0, 0))).toBe('kidori-lite-バックアップ-2027-01-05.json')
+  })
+})
