@@ -68,10 +68,10 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
     others.map((p) => p.name),
   )
   const qty = parseNum(qtyText)
+  // 枚数は空でもよい（第1.1版：計算に入れない）。W・H も表と同じく空のまま保存できる
   const qtyError =
-    qty === null || Number.isNaN(qty) || !Number.isInteger(qty) || qty < 0 ? '枚数は 0 以上の整数を入れてください' : null
-  const emptyAxes = AXES.filter((a) => draft.expr[a].trim() === '')
-  const blocker = nameError ?? (emptyAxes.length > 0 ? `${emptyAxes.join('・')} を入れてください` : null) ?? qtyError
+    qty !== null && (Number.isNaN(qty) || !Number.isInteger(qty) || qty < 0) ? '枚数は 0 以上の整数を入れてください' : null
+  const blocker = nameError ?? qtyError
   const dirty =
     !original ||
     original.name !== draft.name ||
@@ -87,7 +87,7 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
       setError(blocker === nameError && name !== '' ? null : blocker)
       return false
     }
-    const fields = { name, expr: { ...draft.expr }, quantity: qty ?? 0, rotatable: draft.rotatable }
+    const fields = { name, expr: { ...draft.expr }, quantity: qty, rotatable: draft.rotatable }
     const r = original
       ? dispatch({ type: 'updatePart', partId: original.id, patch: fields })
       : dispatch({ type: 'addPart', part: { ...fields, finishedDone: false } })
@@ -210,6 +210,26 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
           onChange={(v) => patch({ rotatable: v === 'free' })}
         />
       </div>
+
+      {original && (
+        <div className="field">
+          <Help className="label" title="仕上がりの完了">
+            仕上げ終わった部材の印です。印を付けた行は表でグレーになります（木取りの計算には影響しません）。押すとすぐ変わります
+          </Help>
+          <Segmented<'open' | 'done'>
+            ariaLabel="仕上がりの完了"
+            value={original.finishedDone ? 'done' : 'open'}
+            options={[
+              { value: 'open', label: 'まだ' },
+              { value: 'done', label: '仕上がった' },
+            ]}
+            onChange={(v) => {
+              const r = dispatch({ type: 'updatePart', partId: original.id, patch: { finishedDone: v === 'done' } })
+              if (!r.ok) setError(r.message)
+            }}
+          />
+        </div>
+      )}
 
       {error && (
         <p className="msg err" role="alert">

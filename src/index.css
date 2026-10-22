@@ -1924,3 +1924,236 @@ button.part-main,
   color: var(--ok);
   font-weight: 700;
 }
+
+/* ---------- 部材の表（第1.1版 仕様書 15.1）：番号・名前・W・H・枚数。375px に横スクロールなしで収める ---------- */
+.pt {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  overflow: hidden;
+}
+.pt-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 46px;
+  min-width: 0;
+}
+.pt-item + .pt-item {
+  border-top: 1px solid var(--line);
+}
+.pt-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.pt-head > span {
+  padding: 4px 6px 2px;
+  text-align: center;
+}
+.pt-head > span:nth-child(2) {
+  text-align: left;
+}
+.pt-cell {
+  appearance: none;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  min-height: 46px;
+  min-width: 0;
+  padding: 0 6px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  touch-action: manipulation;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pt-cell:first-child {
+  border-left: 0;
+}
+.pt-cell:disabled {
+  cursor: default;
+}
+.pt-no {
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--sunk);
+  padding: 0 2px;
+}
+.pt-no.muted {
+  opacity: 0.6;
+}
+.pt-rot {
+  color: var(--fin);
+  font-weight: 700;
+}
+.pt-name {
+  justify-content: flex-start;
+  font-weight: 700;
+  font-size: 15px;
+  text-overflow: ellipsis;
+}
+.pt-input {
+  width: 100%;
+  outline: none;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.pt-input::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+  opacity: 0.6;
+}
+.pt-dim,
+.pt-qty {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fin);
+}
+.pt-qty {
+  justify-content: center;
+  color: var(--ink);
+}
+.pt-f {
+  font-size: 11px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+  align-self: flex-start;
+  margin-top: 9px;
+}
+.pt-dim.bad {
+  color: var(--err);
+  background: var(--err-soft);
+  font-size: 14px;
+  justify-content: center;
+}
+/* 選んでいる欄は枠を付ける */
+.pt-cell.on {
+  box-shadow: inset 0 0 0 3px var(--accent);
+  background: var(--accent-soft);
+}
+.pt-input.on.bad {
+  box-shadow: inset 0 0 0 3px var(--err);
+}
+.pt-row.sel .pt-no {
+  color: var(--accent);
+  font-weight: 700;
+}
+/* 枚数が空の行は薄く（木取りに入らない） */
+.pt-row.noqty .pt-name,
+.pt-row.noqty .pt-dim,
+.pt-row.noqty .pt-qty {
+  opacity: 0.5;
+}
+.pt-row.noqty .pt-cell.on {
+  opacity: 1;
+}
+/* 仕上げ終わった部材の行はグレー */
+.pt-row.done {
+  background: var(--sunk);
+}
+.pt-row.done .pt-name,
+.pt-row.done .pt-dim,
+.pt-row.done .pt-qty {
+  color: var(--muted);
+  font-weight: 400;
+}
+.pt-row.empty .pt-cell {
+  cursor: pointer;
+}
+.pt-row.picked {
+  background: var(--accent-soft);
+}
+.pt.picking .pt-row.empty {
+  opacity: 0.4;
+}
+.pt-pick .check-box {
+  margin: 0;
+}
+.pt-pick.on .check-box {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.pt-msg {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--err);
+  background: var(--err-soft);
+}
+
+/* 表のアプリのキー（画面の下に出す） */
+.pt-pad .pad {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.pt-pad .pad-refs {
+  height: 92px;
+}
+.pt-show {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 0 4px;
+  min-height: 28px;
+  min-width: 0;
+}
+.pt-show-name {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pt-show-name b {
+  color: var(--fin);
+}
+.pt-show-expr {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.pt-show-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+.pt-show-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fin);
+  white-space: nowrap;
+  margin-left: auto;
+}
+.pt-show-val.small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.pt-show-err {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--err);
+}
+.pad-keys.qty-keys .pad-key {
+  min-height: 48px;
+  background: var(--surface);
+}
