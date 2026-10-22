@@ -26,6 +26,7 @@ import {
   type AdjustsResult,
   type OpResult,
 } from './jobs'
+import { sampleJob } from './sample'
 import type { LoadResult } from './storage'
 
 export interface StoreState {
@@ -57,6 +58,11 @@ export type StoreAction =
   | { type: 'renameJob'; jobId: string; name: string }
   /** 仕事をコピーする（設定を引き継ぐ）。開かない */
   | { type: 'copyJob'; jobId: string }
+  /**
+   * 見本（6章の棚「見本 棚」）を仕事の一覧に足す（仕様書 16.7）。開いている仕事は変えない。
+   * 調整寸法にメラミン1 が無ければ足す
+   */
+  | { type: 'addSample' }
   /** 仕事を消す。開いていた仕事なら、何も開いていない状態にする */
   | { type: 'deleteJob'; jobId: string }
   | ({ type: 'updateSettings'; patch: Partial<Omit<Settings, 'sheet'>> } & OnJob)
@@ -161,6 +167,10 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       if (!src) return fail('仕事が見つかりません')
       const job = copyJob(src, env.now, env.newId('job'), env.newId)
       return done({ ...state, data: { ...state.data, jobs: [...state.data.jobs, job] } }, job.id)
+    }
+    case 'addSample': {
+      const r = sampleJob(state.data.adjusts, env.now, env.newId)
+      return done({ ...state, data: { ...state.data, jobs: [...state.data.jobs, r.job], adjusts: r.adjusts } }, r.job.id)
     }
     case 'deleteJob': {
       if (!state.data.jobs.some((j) => j.id === action.jobId)) return fail('仕事が見つかりません')

@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { customSheet, defaultSettings } from '../engine/defaults'
+import { customSheet } from '../engine/defaults'
 import { parseNum } from './format'
-import { groupUsages, settingsSummary, sheetLabel } from './settings'
+import { groupUsages, sheetLabel } from './settings'
 
-describe('設定の見出しの1行', () => {
-  it('初めの設定は 4×8・刃厚3・端切り5・切り代10・縦切り優先', () => {
-    expect(settingsSummary(defaultSettings())).toBe('4×8・刃厚3・端切り5・切り代10・縦切り優先')
-  })
+describe('板の呼び名', () => {
   it('自由入力の板は大きさも出す（小さいほうが妻手）', () => {
     expect(sheetLabel(customSheet(2000, 1000))).toBe('自由入力 1000×2000')
   })

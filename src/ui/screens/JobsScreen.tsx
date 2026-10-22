@@ -159,6 +159,18 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
     }
   }
 
+  /** 見本（棚）を足す（仕様書 16.7）。開いている仕事は変えず、一覧に足すだけ */
+  const addSample = () => {
+    reset()
+    const r = dispatch({ type: 'addSample' })
+    if (!r.ok) {
+      setError(r.message)
+      return
+    }
+    const made = r.state.data.jobs.find((j) => j.id === r.id)
+    setNotice(`「${made?.name ?? ''}」を足しました`)
+  }
+
   const remove = (job: Job) => {
     const r = dispatch({ type: 'deleteJob', jobId: job.id })
     reset()
@@ -202,6 +214,15 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
           ＋ 新しい仕事を作る
         </button>
       )}
+
+      <div className="sample-row">
+        <button type="button" className="btn wide" onClick={addSample}>
+          見本（棚）を追加
+        </button>
+        <Help className="lead" title="見本について">
+          試しに使える見本です。ふつうの仕事と同じく直したり消したりできます
+        </Help>
+      </div>
 
       {notice && (
         <p className="msg ok banner" role="status">

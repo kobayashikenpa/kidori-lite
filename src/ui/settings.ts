@@ -1,7 +1,7 @@
 // 設定と調整寸法の画面に出す文字（画面から切り離して試せるようにする。計算はしない）
 import { adjustName } from '../engine/defaults'
 import type { AdjustUsage } from '../engine/formula/usages'
-import type { Adjust, BoardSizeKind, CutMode, Settings, Sheet } from '../engine/types'
+import type { Adjust, BoardSizeKind, CutMode, Sheet } from '../engine/types'
 import { fmt } from './format'
 
 export const SHEET_KINDS: { value: BoardSizeKind; label: string }[] = [
@@ -29,17 +29,6 @@ export function sheetSizeText(sheet: Sheet): string {
 export function sheetLabel(sheet: Sheet): string {
   if (sheet.sizeKind === 'custom') return `自由入力 ${sheetSizeText(sheet)}`
   return SHEET_KINDS.find((k) => k.value === sheet.sizeKind)?.label ?? sheetSizeText(sheet)
-}
-
-/** たたんだ設定の見出しに出す1行（例：4×8・刃厚3・端切り5・切り代10・縦切り優先） */
-export function settingsSummary(s: Settings): string {
-  return [
-    sheetLabel(s.sheet),
-    `刃厚${fmt(s.kerf)}`,
-    `端切り${fmt(s.trim)}`,
-    `切り代${fmt(s.allowance)}`,
-    cutModeLabel(s.cutMode),
-  ].join('・')
 }
 
 /** 調整寸法の名前のボタン（［逃げ］［ほぞ］のほかは自由入力） */
