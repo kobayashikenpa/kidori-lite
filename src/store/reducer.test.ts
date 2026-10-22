@@ -20,7 +20,7 @@ function env(now = T0): Env {
 function start(): StoreState {
   return initialState({
     status: 'ok',
-    data: { version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), clipboard: null },
+    data: { version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null },
     currentJobId: 'job-shelf',
     canSave: true,
   })
@@ -103,13 +103,14 @@ describe('部材の操作（開いている仕事）', () => {
     expect(job.parts.at(-1)).toMatchObject({ id: r.id, name: '棚板のコピー' })
   })
 
-  it('上に行を入れる・まとめて消す・全部回転', () => {
+  it('上に行を入れる・行を削除・全部回転', () => {
     let r = run(start(), { type: 'insertPart', index: 2, part: { name: '', quantity: null } })
     let job = currentJob(r.state)!
     expect(job.parts[2]).toMatchObject({ id: r.id, name: '', quantity: null })
-    r = run(r.state, { type: 'removeParts', partIds: [r.id!, 'part-zentai'] })
+    r = run(r.state, { type: 'deleteRows', cells: [{ row: 2, col: 'W' }, { row: 0, col: 'qty' }] })
     job = currentJob(r.state)!
     expect(job.parts.map((p) => p.name)).toEqual(['天板', '側板', '棚板'])
+    expect(reduce(r.state, { type: 'deleteRows', cells: [{ row: 8, col: 'W' }] }, env())).toEqual({ ok: false, message: '削除する行を選んでください' })
     r = run(r.state, { type: 'setAllRotatable', rotatable: true })
     expect(currentJob(r.state)!.parts.every((p) => p.rotatable)).toBe(true)
   })
@@ -127,18 +128,47 @@ describe('部材の操作（開いている仕事）', () => {
   })
 })
 
-describe('コピーと貼り付け', () => {
-  it('コピーした部材をほかの仕事に貼ると、足せるものだけ後ろに足す', () => {
-    let s = run(start(), { type: 'copyParts', partIds: ['part-zentai', 'part-tenita'] }).state
-    expect(s.data.clipboard?.map((c) => c.name)).toEqual(['全体', '天板'])
-    s = run(s, { type: 'createJob', name: '別' }).state
-    s = run(s, { type: 'addPart', part: { name: '天板', expr: { W: '1', H: '1' } } }).state
-    s = run(s, { type: 'pasteParts' }).state
-    expect(currentJob(s)!.parts.map((p) => p.name)).toEqual(['天板', '全体'])
+describe('セルのコピーと貼り付け（第1.2版）', () => {
+  it('セルをコピーするとアプリが覚え（仕事は変えない）、ほかの仕事の選んだセルに貼れる。行が足りなければ部材が増える', () => {
+    const s0 = start()
+    let r = run(s0, { type: 'copyCells', cells: [{ row: 1, col: 'name' }, { row: 1, col: 'W' }, { row: 2, col: 'name' }, { row: 2, col: 'W' }] })
+    expect(r.state.data.cellClip).toEqual({ rows: 2, cols: 2, cells: [['天板', '全体.W'], ['側板', '全体.W']] })
+    expect(r.state.data.jobs).toBe(s0.data.jobs)
+    r = run(r.state, { type: 'createJob', name: '別' })
+    r = run(r.state, { type: 'addPart', part: { name: '天板', expr: { W: '1', H: '1' }, quantity: 1 } })
+    r = run(r.state, { type: 'pasteCells', cells: [{ row: 0, col: 'name' }] }, env(T1))
+    expect(currentJob(r.state)!.parts.map((p) => [p.name, p.expr.W])).toEqual([
+      ['天板', '全体.W'],
+      ['側板', '全体.W'],
+    ])
+    expect(r.paste).toEqual({ pasted: 4, skipped: [] })
+    expect(currentJob(r.state)!.updatedAt).toBe(T1.toISOString())
   })
 
-  it('何も選ばずにコピーはできない', () => {
-    expect(reduce(start(), { type: 'copyParts', partIds: [] }, env()).ok).toBe(false)
+  it('貼れなかったセルが結果に返る', () => {
+    let s = run(start(), { type: 'copyCells', cells: [{ row: 1, col: 'W' }] }).state
+    const r = run(s, { type: 'pasteCells', cells: [{ row: 0, col: 'qty' }, { row: 2, col: 'H' }] })
+    s = r.state
+    expect(r.paste?.pasted).toBe(1)
+    expect(r.paste?.skipped.map((x) => [x.cell, x.reason])).toEqual([[{ row: 0, col: 'qty' }, 'notQuantity']])
+    expect(currentJob(s)!.parts[2].expr.H).toBe('全体.W')
+  })
+
+  it('離れたセルはコピーできない。コピーが無ければ貼れない', () => {
+    expect(reduce(start(), { type: 'copyCells', cells: [{ row: 0, col: 'W' }, { row: 2, col: 'W' }] }, env())).toEqual({
+      ok: false,
+      message: 'コピーは1つのセルか、四角い範囲を選んでください',
+    })
+    expect(reduce(start(), { type: 'pasteCells', cells: [{ row: 0, col: 'W' }] }, env())).toEqual({ ok: false, message: 'コピーしたセルがありません' })
+  })
+
+  it('消す：中身を空に。全部空になった部材は消える', () => {
+    const r = run(start(), { type: 'clearCells', cells: [{ row: 0, col: 'name' }, { row: 0, col: 'W' }, { row: 0, col: 'H' }, { row: 0, col: 'qty' }, { row: 1, col: 'H' }] })
+    expect(currentJob(r.state)!.parts.map((p) => [p.name, p.expr.H])).toEqual([
+      ['天板', ''],
+      ['側板', '700'],
+      ['棚板', '天板.H - 20 × 2'],
+    ])
   })
 })
 
@@ -194,7 +224,7 @@ describe('読み込みの知らせ', () => {
   it('閉じられる', () => {
     const s = initialState({
       status: 'error',
-      data: { version: 1, jobs: [], adjusts: [], clipboard: null },
+      data: { version: 1, jobs: [], adjusts: [], cellClip: null },
       currentJobId: null,
       message: '保存データを読めませんでした',
       canSave: false,
@@ -224,7 +254,7 @@ describe('取り込んだデータに置き換える', () => {
   })
 
   it('開いている仕事が新しいデータに無ければ閉じる', () => {
-    const s = run(start(), { type: 'replaceData', data: { version: 1, jobs: [], adjusts: [], clipboard: null } }).state
+    const s = run(start(), { type: 'replaceData', data: { version: 1, jobs: [], adjusts: [], cellClip: null } }).state
     expect(s.currentJobId).toBeNull()
   })
 })

@@ -1,128 +1,14 @@
-// 部材のコピー・まとめて貼り付け・複製（仕様書 5.3。アプリの中だけ）。新しく作ったもの（kidori には無い）。
-// - コピーは式のまま持つ（部材は名前で参照するので、貼った部材どうしの参照はそのまま使える。調整寸法 {n:id} はアプリ全体の一覧なのでそのまま）
-// - 貼り付けは、今の部材と同じ名前のもの・貼る部材どうしで2つ目からの同じ名前を足さない（normalizePartName で比べる）
-// - 同じ仕事の中で部材を増やすときは複製（名前は「棚板のコピー」「棚板のコピー2」…）
+// 部材の複製（番号のメニューの「複製」。仕様書 15.1）。新しく作ったもの（kidori には無い）。
+// 第1.1版の部材まるごとのコピー・貼り付け（copyParts・previewPaste・applyPaste）は第1.2版でなくした
+// （セルのコピーと貼り付けは cells.ts。仕様書 16.1）。
 // 仕事は書き換えず、新しい仕事を返す（updatedAt は保存の側で付ける）
-import { adjustIdsInExpr } from '../formula/usages'
-import { isBraceText, normalizePartName, parseRefText, splitChunks } from '../formula/tokenize'
+import { normalizePartName } from '../formula/tokenize'
 import { hasName } from '../parts'
-import { AXES, type Adjust, type CopiedPart, type Job, type Part } from '../types'
+import type { Job, Part } from '../types'
 
 /** 名前のある部材の、そろえた名前（重なりの判定は名前のある部材どうしだけ） */
 function namesOf(parts: readonly Pick<Part, 'name'>[]): Set<string> {
   return new Set(parts.filter(hasName).map((p) => normalizePartName(p.name)))
-}
-
-function copyOf(p: Pick<Part, 'name' | 'expr' | 'quantity' | 'rotatable'>): CopiedPart {
-  return { name: p.name, expr: { W: p.expr.W, H: p.expr.H }, quantity: p.quantity, rotatable: p.rotatable }
-}
-
-/** 選んだ部材をコピーする（並びは画面＝job.parts の順。無い id は無視する）。id・仕上がりの完了は持たない */
-export function copyParts(job: Pick<Job, 'parts'>, partIds: readonly string[]): CopiedPart[] {
-  const ids = new Set(partIds)
-  return job.parts.filter((p) => ids.has(p.id)).map(copyOf)
-}
-
-/** 貼り付けの確認の1行 */
-export type PasteRow =
-  | { part: CopiedPart; ok: true; warnings: string[] }
-  | {
-      part: CopiedPart
-      ok: false
-      /** duplicateName：今の部材か、先に貼る部材と同じ名前 */
-      reason: 'duplicateName'
-      /** 画面に出す理由（例：「棚板 はもうあります」） */
-      message: string
-      warnings: string[]
-    }
-
-export interface PastePreview {
-  /** コピーした並び */
-  rows: PasteRow[]
-  /** 足せる部材の数（「5件を追加します」） */
-  addCount: number
-  /** 足せない部材の数（「足せないもの 1件」） */
-  skipCount: number
-  /** 注意のある行がある（「式に無い部材があります」） */
-  hasWarnings: boolean
-}
-
-/** 式で参照している部材名（書いたままの名前・出てきた順・重なりなし。読めない式の中でも探す） */
-function partRefsInExpr(expr: string): { key: string; text: string }[] {
-  const out: { key: string; text: string }[] = []
-  for (const item of splitChunks(expr)) {
-    if ('type' in item || isBraceText(item.text)) continue
-    const ref = parseRefText(item.text)
-    if (!ref || out.some((r) => r.key === ref.part)) continue
-    const dot = Math.max(item.text.lastIndexOf('.'), item.text.lastIndexOf('．'))
-    out.push({ key: ref.part, text: dot > 0 ? item.text.slice(0, dot) : ref.part })
-  }
-  return out
-}
-
-/**
- * 1つの部材を貼ったときの注意。known は貼ったあとにある部材名（normalizePartName した名前）。
- * 無い部材の参照 →「全体 がありません」（部材ごとに1つ、W → H の順）、削除した調整寸法 →「削除した調整寸法を使っています」
- */
-function warningsOf(part: CopiedPart, known: ReadonlySet<string>, adjustIds: ReadonlySet<string>): string[] {
-  const missing: string[] = []
-  const seen = new Set<string>()
-  let unknownAdjust = false
-  for (const axis of AXES) {
-    for (const r of partRefsInExpr(part.expr[axis])) {
-      if (known.has(r.key) || seen.has(r.key)) continue
-      seen.add(r.key)
-      missing.push(`${r.text} がありません`)
-    }
-    if (adjustIdsInExpr(part.expr[axis]).some((id) => !adjustIds.has(id))) unknownAdjust = true
-  }
-  return unknownAdjust ? [...missing, '削除した調整寸法を使っています'] : missing
-}
-
-/**
- * 貼り付けの確認（すぐには足さない）。行ごとに足せるか・足せない理由・注意を出す。
- * - 今の部材と同じ名前は足せない（「棚板 はもうあります」）。貼る部材どうしで同じ名前なら2つ目から足せない。
- *   名前が空の部材は重なりとみなさない
- * - 式が、貼ったあとの仕事に無い部材を参照していれば注意（足すことはできる。足したあと式のエラーになる）
- * - adjusts（アプリ全体の調整寸法）に無い調整寸法を使っていれば注意
- */
-export function previewPaste(job: Pick<Job, 'parts'>, copied: readonly CopiedPart[], adjusts: readonly Adjust[]): PastePreview {
-  const existing = namesOf(job.parts)
-  const known = new Set([...existing, ...namesOf(copied)])
-  const adjustIds = new Set(adjusts.map((a) => a.id))
-  const taken = new Set(existing)
-  const rows = copied.map((part): PasteRow => {
-    const key = normalizePartName(part.name)
-    const warnings = warningsOf(part, known, adjustIds)
-    // 名前が空の部材はほかと重ならない
-    if (!hasName(part)) return { part, ok: true, warnings }
-    if (taken.has(key)) {
-      const message = existing.has(key) ? `${part.name} はもうあります` : `${part.name} は貼る部材の中にもうあります`
-      return { part, ok: false, reason: 'duplicateName', message, warnings }
-    }
-    taken.add(key)
-    return { part, ok: true, warnings }
-  })
-  const addCount = rows.filter((r) => r.ok).length
-  return { rows, addCount, skipCount: rows.length - addCount, hasWarnings: rows.some((r) => r.warnings.length > 0) }
-}
-
-/**
- * 足せる部材だけを今の部材の後ろに足した仕事（並びはコピーした並び）。
- * id は newId('part')、仕上がりの完了は外す。足せるかは previewPaste と同じ決まり
- */
-export function applyPaste(job: Job, copied: readonly CopiedPart[], newId: (prefix: string) => string): Job {
-  const taken = namesOf(job.parts)
-  const added: Part[] = []
-  for (const c of copied) {
-    if (hasName(c)) {
-      const key = normalizePartName(c.name)
-      if (taken.has(key)) continue
-      taken.add(key)
-    }
-    added.push({ id: newId('part'), ...copyOf(c), finishedDone: false })
-  }
-  return { ...job, parts: [...job.parts, ...added] }
 }
 
 const COPY = 'のコピー'
@@ -153,6 +39,13 @@ export function duplicatePart(job: Job, partId: string, newId: (prefix: string) 
   const i = job.parts.findIndex((p) => p.id === partId)
   if (i < 0) return { ok: false, message: '部材が見つかりません' }
   const src = job.parts[i]
-  const part: Part = { id: newId('part'), ...copyOf(src), name: duplicateName(job, src.name), finishedDone: false }
+  const part: Part = {
+    id: newId('part'),
+    name: duplicateName(job, src.name),
+    expr: { W: src.expr.W, H: src.expr.H },
+    quantity: src.quantity,
+    rotatable: src.rotatable,
+    finishedDone: false,
+  }
   return { ok: true, job: { ...job, parts: [...job.parts.slice(0, i + 1), part, ...job.parts.slice(i + 1)] }, partId: part.id }
 }

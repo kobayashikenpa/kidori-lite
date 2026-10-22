@@ -1,5 +1,6 @@
 // 部材の表（仕様書 15.1）の行と欄の決まり。画面から切り離して試せるようにする（寸法の計算はしない）
 import { partsReferencing } from '../engine/dimensions/resolve'
+import { isBlankPart } from '../engine/parts'
 import type { Adjust, Axis, Part, PartDimensions } from '../engine/types'
 import { dimCell, type DimCell } from './partCells'
 
@@ -20,10 +21,8 @@ export function tableRowCount(partCount: number): number {
   return Math.max(TABLE_MIN_ROWS, partCount + 1)
 }
 
-/** 何も入っていない部材か（名前・W・H が空で、枚数も空）。この部材は表から外す（保存しない） */
-export function isBlankPart(part: Pick<Part, 'name' | 'expr' | 'quantity'>): boolean {
-  return part.name.trim() === '' && part.expr.W.trim() === '' && part.expr.H.trim() === '' && part.quantity === null
-}
+/** 何も入っていない部材か（engine の isBlankPart。第1.2版でセルの消す・貼り付けでも使うので engine に移した） */
+export { isBlankPart }
 
 /**
  * 押した行を、入力できる行にそろえる。部材の行はそのまま、空の行はいちばん上の空の行（部材の数の位置）にする

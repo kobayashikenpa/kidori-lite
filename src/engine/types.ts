@@ -105,12 +105,31 @@ export interface AppData {
   jobs: Job[]
   /** 調整寸法（アプリ全体で1つ）。初めは メラミン1・シート0.5 */
   adjusts: Adjust[]
-  /** 最後にコピーした部材。無ければ null */
-  clipboard: CopiedPart[] | null
+  /** 最後にコピーしたセル（第1.2版。仕様書 16.1）。無ければ null。ほかの仕事でも貼れる */
+  cellClip: CellClip | null
 }
 
-/** コピーした部材（id は持たない。式は式のまま。{n:id} の調整寸法はアプリ全体なのでそのまま使える） */
-export type CopiedPart = Omit<Part, 'id' | 'finishedDone'>
+// ---------- セルのコピーと貼り付け（第1.2版。仕様書 16.1） ----------
+
+/** 部材の表の欄（左から 名前・W・H・枚数） */
+export type CellCol = 'name' | 'W' | 'H' | 'qty'
+export const CELL_COLS: readonly CellCol[] = ['name', 'W', 'H', 'qty']
+
+/** 部材の表のセルの位置。row は表の行（0 から。job.parts の位置。部材の数以上は空の行） */
+export interface CellPos {
+  row: number
+  col: CellCol
+}
+
+/**
+ * コピーしたセル（四角い形）。cells[行][列] はセルの中身の文字（名前・式は書いたまま・枚数は数字の文字。空は ''）。
+ * 1つのセルなら rows = cols = 1
+ */
+export interface CellClip {
+  rows: number
+  cols: number
+  cells: string[][]
+}
 
 // ---------- 寸法の計算結果 ----------
 
