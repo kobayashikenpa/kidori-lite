@@ -9,6 +9,7 @@ import { currentJob } from '../../store/reducer'
 import { browserStorage } from '../../store/storage'
 import { useJobStore } from '../../store/useJobStore'
 import { toggleCell } from '../cellSelect'
+import { AdjustPanel } from '../components/AdjustPanel'
 import { CellBar } from '../components/CellBar'
 import { CutTable } from '../components/CutTable'
 import { Help } from '../components/Help'
@@ -73,6 +74,7 @@ export function PartsScreen() {
 
   return (
     <section>
+      <AdjustPanel />
       <SettingsPanel />
       <h2>
         <Help title="部材">

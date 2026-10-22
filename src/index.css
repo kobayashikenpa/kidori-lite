@@ -1793,7 +1793,8 @@ h3 > .help {
   align-items: baseline;
   gap: 2px 8px;
   padding: 0 4px;
-  min-height: 28px;
+  /* W・H と枚数でキーの全体の高さが変わらないよう、ふつうの1行より少し高くしておく */
+  min-height: 30px;
   min-width: 0;
 }
 .pt-show-name {
@@ -1838,13 +1839,97 @@ h3 > .help {
   font-weight: 700;
   color: var(--err);
 }
-.pad-keys.qty-keys .pad-key {
-  min-height: 48px;
-  background: var(--surface);
+/* 枚数のキーも W・H と同じ並び（第1.2版 16.2）。使わないキーは薄く出して押せない */
+.pad-key:disabled,
+.pad-tab:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
-/* 枚数のキーの「次へ」も、式のキーと同じ色にする（上の背景の指定で白地に白い文字にならないように） */
-.pad-keys.qty-keys .pad-key.done {
-  background: var(--accent);
+.pad.qty .pad-refs {
+  overflow: hidden;
+}
+
+/* 式のキーの「調整寸法」のタブの「＋ 追加」と、キーの所に出す追加の欄（第1.2版 16.5） */
+.pad-ref.add {
+  align-items: center;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--ok);
+  color: var(--ok);
+}
+.pad-add {
+  /* 「部材｜調整寸法」のタブ（44px）＋ 間（6px）＋ 一覧（92px）と同じ高さにして、下のキーの位置を変えない */
+  height: 142px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pad-add-names {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.pad-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+}
+.pad-add-name.label-box,
+.pad-add-size {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 16px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pad-add-name.label-box {
+  font-weight: 700;
+  color: var(--ok);
+}
+.pad-add-name.label-box.muted {
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--muted);
+}
+.pad-add-size {
+  justify-content: flex-end;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  font-weight: 700;
+}
+.pad-add-size .unit {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.pad-add-msg {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+  overflow: hidden;
+}
+.pad-add-msg.bad {
+  color: var(--err);
+  font-weight: 700;
+}
+
+/* 表の下の「＋ 5行足す」（第1.2版 16.6） */
+.btn.add-rows {
+  width: 100%;
+  margin-top: 8px;
+  border-style: dashed;
+  color: var(--fin);
+  font-weight: 700;
 }
 
 /* ---------- 番号のメニュー・全部回転・木取りの表（第1.1版 U-12） ---------- */

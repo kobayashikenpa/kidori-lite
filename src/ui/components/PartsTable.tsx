@@ -24,11 +24,14 @@ import type { Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
 import {
+  addRowsMin,
   inputRow,
   isBlankPart,
   nextCell,
   quantityFromText,
   quantityText,
+  sessionTableMinRows,
+  setSessionTableMinRows,
   tableDimCell,
   tableRowCount,
   type TableCell,
@@ -80,7 +83,19 @@ const keep = (e: ReactPointerEvent) => e.preventDefault()
 
 export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCell, onOpenMenu, onError, ref }: Props) {
   const parts = job.parts
-  const rowCount = tableRowCount(parts.length)
+  // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ、仕事ごとに覚える。保存しない）
+  const [minRows, setMinRows] = useState(() => sessionTableMinRows(job.id))
+  const [minRowsJob, setMinRowsJob] = useState(job.id)
+  if (minRowsJob !== job.id) {
+    setMinRowsJob(job.id)
+    setMinRows(sessionTableMinRows(job.id))
+  }
+  const rowCount = tableRowCount(parts.length, minRows)
+  const addRows = () => {
+    const next = addRowsMin(parts.length, minRows)
+    setSessionTableMinRows(job.id, next)
+    setMinRows(next)
+  }
   // 選んでいる欄。部材の id で持つ（行の番号は、部材を外すとずれるため）。partId が null なら いちばん上の空の行
   const [selS, setSelS] = useState<Sel | null>(null)
   const sel = cellOf(selS, parts)
@@ -533,6 +548,11 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
           )
         })}
       </div>
+      {!selecting && (
+        <button type="button" className="btn add-rows" onClick={addRows}>
+          ＋ 5行足す
+        </button>
+      )}
       {padOpen && <div className="pt-spacer" style={{ height: padH }} aria-hidden="true" />}
       {padOpen &&
         sel &&
@@ -541,8 +561,10 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
             <div className="numpad-in">
               {sel.field === 'qty' ? (
                 <QtyKeys
+                  key={`${sel.row}-qty`}
                   label={selLabel}
                   quantity={selPart?.quantity ?? null}
+                  adjusts={adjusts}
                   onKey={(k) => pressQty(sel.row, k)}
                   onNext={goNext}
                   onClose={() => selectCell(null)}
@@ -561,6 +583,10 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
                   adjusts={adjusts}
                   parts={referableParts(parts.filter((p) => p.id !== selPart?.id))}
                   finishedOf={(id) => dimsOf(id)?.finishedByAxis ?? {}}
+                  onAddAdjust={(draft) => {
+                    const r = run({ type: 'addAdjust', ...draft })
+                    return r.ok && r.id ? { ok: true, id: r.id } : { ok: false, message: r.ok ? '追加できませんでした' : r.message }
+                  }}
                   onNext={goNext}
                   onClose={() => selectCell(null)}
                 />
@@ -585,12 +611,41 @@ interface ExprKeysProps {
   adjusts: readonly Adjust[]
   parts: Parameters<typeof FormulaKeys>[0]['parts']
   finishedOf: (partId: string) => Partial<Record<Axis, number>>
+  onAddAdjust: NonNullable<Parameters<typeof FormulaKeys>[0]['onAddAdjust']>
   onNext: () => void
   onClose: () => void
 }
 
+/** 「閉じる」「次へ」（W・H・枚数で同じ位置） */
+function PadActions({ onNext, onClose }: { onNext: () => void; onClose: () => void }) {
+  return (
+    <>
+      <button type="button" className="pad-key" onPointerDown={keep} onClick={onClose}>
+        閉じる
+      </button>
+      <button type="button" className="pad-key done span2" onPointerDown={keep} onClick={onNext}>
+        次へ
+      </button>
+    </>
+  )
+}
+
 /** W・H のキー：上の1行に式の全文と計算した寸法（エラーなら赤で理由）、その下に式のボタン */
-function ExprKeys({ label, axis, value, cursor, onEdit, finished, errors, adjusts, parts, finishedOf, onNext, onClose }: ExprKeysProps) {
+function ExprKeys({
+  label,
+  axis,
+  value,
+  cursor,
+  onEdit,
+  finished,
+  errors,
+  adjusts,
+  parts,
+  finishedOf,
+  onAddAdjust,
+  onNext,
+  onClose,
+}: ExprKeysProps) {
   const empty = value.trim() === ''
   const shownErrors = empty ? [] : errors
   return (
@@ -616,16 +671,8 @@ function ExprKeys({ label, axis, value, cursor, onEdit, finished, errors, adjust
         parts={parts}
         finishedOf={finishedOf}
         ariaLabel={`${axis} の式のボタン`}
-        actions={
-          <>
-            <button type="button" className="pad-key" onPointerDown={keep} onClick={onClose}>
-              閉じる
-            </button>
-            <button type="button" className="pad-key done span2" onPointerDown={keep} onClick={onNext}>
-              次へ
-            </button>
-          </>
-        }
+        onAddAdjust={onAddAdjust}
+        actions={<PadActions onNext={onNext} onClose={onClose} />}
       />
     </>
   )
@@ -634,18 +681,17 @@ function ExprKeys({ label, axis, value, cursor, onEdit, finished, errors, adjust
 interface QtyKeysProps {
   label: string
   quantity: number | null
+  adjusts: readonly Adjust[]
   onKey: (key: string) => void
   onNext: () => void
   onClose: () => void
 }
 
-/** 枚数のキー：数字・1字消す・全部消す・次へ・閉じる だけ（式・部材のボタンは出さない） */
-function QtyKeys({ label, quantity, onKey, onNext, onClose }: QtyKeysProps) {
-  const key = (text: string, k: string) => (
-    <button type="button" className="pad-key num" onPointerDown={keep} onClick={() => onKey(k)}>
-      {text}
-    </button>
-  )
+/**
+ * 枚数のキー（仕様書 16.2）：W・H のキーと同じ並び・同じ高さ。数字・1字消す・全部消す・閉じる・次へ は同じ位置で、
+ * 使わないキー（部材｜調整寸法のタブ・記号・◀▶・小数点）は薄く出して押せない
+ */
+function QtyKeys({ label, quantity, adjusts, onKey, onNext, onClose }: QtyKeysProps) {
   return (
     <>
       <div className="pt-show" aria-live="polite">
@@ -657,32 +703,17 @@ function QtyKeys({ label, quantity, onKey, onNext, onClose }: QtyKeysProps) {
           {quantity === null ? '空（木取りに入れません）' : quantity === 0 ? '寸法だけ（切らない）' : `${quantity}枚`}
         </span>
       </div>
-      <div className="pad-keys qty-keys">
-        {key('7', '7')}
-        {key('8', '8')}
-        {key('9', '9')}
-        <button type="button" className="pad-key" onPointerDown={keep} onClick={() => onKey('back')}>
-          1字消す
-        </button>
-        {key('4', '4')}
-        {key('5', '5')}
-        {key('6', '6')}
-        <button type="button" className="pad-key" onPointerDown={keep} onClick={() => onKey('clear')}>
-          全部消す
-        </button>
-        {key('1', '1')}
-        {key('2', '2')}
-        {key('3', '3')}
-        <button type="button" className="pad-key" onPointerDown={keep} onClick={onClose}>
-          閉じる
-        </button>
-        <button type="button" className="pad-key num span3" onPointerDown={keep} onClick={() => onKey('0')}>
-          0
-        </button>
-        <button type="button" className="pad-key done" onPointerDown={keep} onClick={onNext}>
-          次へ
-        </button>
-      </div>
+      <FormulaKeys
+        value=""
+        cursor={0}
+        onEdit={() => {}}
+        adjusts={adjusts}
+        parts={[]}
+        finishedOf={() => ({})}
+        quantity={{ onKey }}
+        ariaLabel="枚数のボタン"
+        actions={<PadActions onNext={onNext} onClose={onClose} />}
+      />
     </>
   )
 }

@@ -411,3 +411,10 @@ export interface CellClip { rows: number; cols: number; cells: string[][] } // c
 - **保存データ**：`store/storage.ts` の `parseAppData` は `cellClip` を `shape.ts` の `isCellClip` で確かめ、形が違えば null（仕事は読める）。第1.1版までの `clipboard` はあっても読んで捨てる。バックアップ・共有のファイルには入れない
 - **store**（`reducer.ts`）：`{ type: 'copyCells', cells }`（`cellClip` を置き換える。仕事は変えない）、`{ type: 'pasteCells', cells }`（結果の `paste: { pasted, skipped }`）、`{ type: 'clearCells', cells }`、`{ type: 'deleteRows', cells }`（空の行だけなら「削除する行を選んでください」）。どれも `jobId` を省くと開いている仕事。古い `copyParts`・`pasteParts`・`removeParts` と `jobs.ts` の `removeParts` はなくした
 - 画面の古い「選んでコピー」「貼り付け（◯件）」「選んで削除」と `PastePreview.tsx` は外した。新しい画面は U-14
+
+### 8.2 枚数のキー・行を足す・調整寸法（U-15。spec 16.2・16.5・16.6）
+
+- 枚数のキーも `FormulaKeys.tsx` を使う（`quantity: { onKey }` を渡すと数字・1字消す・全部消す だけ押せ、「部材｜調整寸法」のタブ・記号・◀▶・小数点は同じ場所に薄く出して押せない）。「閉じる」「次へ」は W・H・枚数で同じ部品（`PartsTable.tsx` の `PadActions`）
+- 「調整寸法」のタブの「＋ 追加」：`FormulaKeys` の `onAddAdjust(draft)`（`PartsTable` が store の `addAdjust` を呼び、足した id を返す）。重なりの判定は `store/jobs.ts` の `validateAdjust`。足したら `{n:id}` をカーソルの位置に入れる
+- 「＋ 5行足す」：`ui/partsTable.ts` の `tableRowCount(partCount, minRows)`・`addRowsMin`。足した行の下限は `sessionTableMinRows`／`setSessionTableMinRows`（モジュールの中の Map。仕事ごと・保存しない）
+- 部材の画面の上のたたんだ欄は `AdjustPanel.tsx`（中身は `AdjustList.tsx`）

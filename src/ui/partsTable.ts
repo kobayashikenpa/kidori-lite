@@ -16,9 +16,33 @@ export interface TableCell {
 /** 空の行で埋める行の数（10行に満たないときは10行まで） */
 export const TABLE_MIN_ROWS = 10
 
-/** 表の行の数：部材の数 ＋ いつも空の行1つ、ただし 10 行に満たなければ 10 行 */
-export function tableRowCount(partCount: number): number {
-  return Math.max(TABLE_MIN_ROWS, partCount + 1)
+/** 「＋ 5行足す」で足す空の行の数（仕様書 16.6） */
+export const ADD_ROWS = 5
+
+/**
+ * 表の行の数：部材の数 ＋ いつも空の行1つ、ただし minRows（初めは 10 行。「＋ 5行足す」で増える）に満たなければ minRows 行
+ */
+export function tableRowCount(partCount: number, minRows: number = TABLE_MIN_ROWS): number {
+  return Math.max(TABLE_MIN_ROWS, minRows, partCount + 1)
+}
+
+/** 「＋ 5行足す」を押したあとの、表の行の数の下限（今の行の数 ＋ 5） */
+export function addRowsMin(partCount: number, minRows: number = TABLE_MIN_ROWS): number {
+  return tableRowCount(partCount, minRows) + ADD_ROWS
+}
+
+/**
+ * 足した空の行は、アプリを開いている間だけ仕事ごとに覚える（保存しない。仕様書 16.6）。
+ * 部材の画面を離れて戻っても残るよう、画面の外（このモジュール）に持つ
+ */
+const sessionMinRows = new Map<string, number>()
+
+export function sessionTableMinRows(jobId: string): number {
+  return sessionMinRows.get(jobId) ?? TABLE_MIN_ROWS
+}
+
+export function setSessionTableMinRows(jobId: string, minRows: number): void {
+  sessionMinRows.set(jobId, minRows)
 }
 
 /** 何も入っていない部材か（engine の isBlankPart。第1.2版でセルの消す・貼り付けでも使うので engine に移した） */
