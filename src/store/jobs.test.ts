@@ -6,13 +6,16 @@ import {
   addAdjust,
   addPart,
   copyJob,
+  insertPart,
   defaultJobName,
   deleteJob,
   makeJob,
   newPart,
   removeAdjusts,
   removePart,
+  removeParts,
   renameJob,
+  setAllRotatable,
   setSheet,
   updateAdjust,
   updatePart,
@@ -154,6 +157,28 @@ describe('部材', () => {
     job = okJob(addPart(job, newPart('p1', { name: '', quantity: null })))
     const c = copyJob(job, NOW, 'job2', counter())
     expect(c.parts[0]).toMatchObject({ name: '', quantity: null })
+  })
+
+  it('上に行を入れる：指定した位置に足す（範囲外は最後）。同じ名前は断る', () => {
+    let job = shelfJob()
+    job = okJob(insertPart(job, 1, newPart('n1', { name: '', quantity: null })))
+    expect(job.parts.map((p) => p.id)).toEqual(['part-zentai', 'n1', 'part-tenita', 'part-gawaita', 'part-tanaita'])
+    job = okJob(insertPart(job, 99, newPart('n2', { name: '地板' })))
+    expect(job.parts.at(-1)?.id).toBe('n2')
+    expect(insertPart(job, 0, newPart('n3', { name: '天板' })).ok).toBe(false)
+  })
+
+  it('選んだ部材をまとめて消す。1つも無ければ断る', () => {
+    const job = okJob(removeParts(shelfJob(), ['part-zentai', 'part-tanaita', 'nothing']))
+    expect(job.parts.map((p) => p.id)).toEqual(['part-tenita', 'part-gawaita'])
+    expect(removeParts(shelfJob(), ['nothing']).ok).toBe(false)
+  })
+
+  it('全部回転してよい／全部回転しない。変わらなければ同じ仕事を返す', () => {
+    const job = okJob(setAllRotatable(shelfJob(), true))
+    expect(job.parts.every((p) => p.rotatable)).toBe(true)
+    expect(okJob(setAllRotatable(job, true))).toBe(job)
+    expect(okJob(setAllRotatable(job, false)).parts.every((p) => !p.rotatable)).toBe(true)
   })
 
   it('名前を変えると、使っている式もつけ替わる', () => {

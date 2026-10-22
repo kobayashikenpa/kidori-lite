@@ -9,12 +9,15 @@ import {
   addAdjust,
   addPart,
   copyJob,
+  insertPart,
   deleteJob,
   makeJob,
   newPart,
   removeAdjusts,
   removePart,
+  removeParts,
   renameJob,
+  setAllRotatable,
   setSheet,
   updateAdjust,
   updatePart,
@@ -63,6 +66,12 @@ export type StoreAction =
   | ({ type: 'addPart'; part: Partial<Omit<Part, 'id'>> } & OnJob)
   | ({ type: 'updatePart'; partId: string; patch: Partial<Omit<Part, 'id'>> } & OnJob)
   | ({ type: 'removePart'; partId: string } & OnJob)
+  /** 部材を index の位置（その部材の上）に入れる（id は作る。番号のメニューの「上に行を入れる」） */
+  | ({ type: 'insertPart'; index: number; part: Partial<Omit<Part, 'id'>> } & OnJob)
+  /** 選んだ部材をまとめて消す（「選んで削除」） */
+  | ({ type: 'removeParts'; partIds: string[] } & OnJob)
+  /** 全部の部材を回転してよい（true）／回転しない（false）にする */
+  | ({ type: 'setAllRotatable'; rotatable: boolean } & OnJob)
   /** 部材の複製（元のすぐ後ろ。名前は「棚板のコピー」） */
   | ({ type: 'duplicatePart'; partId: string } & OnJob)
   /** 選んだ部材をコピーする（アプリが覚える。最後の1回分だけ） */
@@ -154,6 +163,14 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       return onJob(state, action.jobId, env, (j) => updatePart(j, action.partId, action.patch))
     case 'removePart':
       return onJob(state, action.jobId, env, (j) => removePart(j, action.partId))
+    case 'insertPart': {
+      const id = env.newId('part')
+      return onJob(state, action.jobId, env, (j) => insertPart(j, action.index, newPart(id, action.part)), id)
+    }
+    case 'removeParts':
+      return onJob(state, action.jobId, env, (j) => removeParts(j, action.partIds))
+    case 'setAllRotatable':
+      return onJob(state, action.jobId, env, (j) => setAllRotatable(j, action.rotatable))
     case 'duplicatePart': {
       let id: string | undefined
       const r = onJob(state, action.jobId, env, (j) => {

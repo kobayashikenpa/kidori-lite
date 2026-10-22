@@ -377,3 +377,6 @@ const READ_FAILED = '読み込めませんでした'
 - 名前は `<input>`（スマホのキーボード）。書きかけは画面に持ち、確定（キーボードの「次へ」・ほかの欄・表の外・キーボードを閉じる）で `updatePart` / `addPart`。W・H・枚数は `<button>` で、押すと画面の下にアプリのキー（`FormulaKeys.tsx`：編集シートの式の入力と同じ部品。枚数は数字だけ）。キーを押すたびに `updatePart`（空の行なら `addPart`。枚数は空から）
 - 何も入っていない部材（`isBlankPart`）は、選んでいない間に `removePart` で外す。途中の空の行を押すと、いちばん上の空の行に入る（`inputRow`）
 - 「次へ」は `nextCell`。名前へ移るときは、押した操作の中で次の行の `<input>` に注目を移す（スマホのキーボードが出るように）
+- 番号を押すとメニュー（`PartMenu.tsx`。下から出るシート）：回転・仕上がりの完了は `updatePart`、複製は `duplicatePart`、上に行を入れるは `insertPart`（その位置に空の部材を入れ、`PartsTable` の `editName` で名前の欄を選ぶ）、削除は `removePart`（`partsReferencing` で使われていれば確認）（U-12）
+- 「全部回転してよい」は `rotationState`（全部／一部／なし）と `setAllRotatable`。「選んで削除」は `removeParts`（確認の注意は `referencingOthers`＝`partsReferencing` をまとめたもの）（U-12）
+- ［木取り］のタブは `CutTable.tsx`（同じ表の形で見るだけ。`cutDimCell`・`cutQuantityText`・`partCutProgress`）。部材の編集シート（PartEditor）・古い一覧（PartRow）・式の欄（FormulaInput）はなくした（U-12）

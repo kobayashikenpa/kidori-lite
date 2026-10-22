@@ -1,5 +1,5 @@
 // 式のボタンの並び（仕様書 5.4・15.1）：「部材｜調整寸法」のタブ・数字・記号・◀▶・1字消す・全部消す。
-// 部材の編集シートの式の欄（FormulaInput）と、部材の表のアプリのキー（PartsTable）の両方で使う。
+// 部材の表のアプリのキー（PartsTable）で使う。
 // 計算はしない（式の文字とカーソルを変えるだけ。formulaEdit.ts）。kidori の ui/components/FormulaInput.tsx のボタンの部分をもとにしたもの
 import { useState, type PointerEvent, type ReactNode } from 'react'
 import { adjustName } from '../../engine/defaults'
