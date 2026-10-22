@@ -9,12 +9,13 @@ import { Help } from '../components/Help'
 import { PartEditor } from '../components/PartEditor'
 import { PastePreview } from '../components/PastePreview'
 import { PartRow } from '../components/PartRow'
+import { PartsTable } from '../components/PartsTable'
 import { SettingsPanel } from '../components/SettingsPanel'
 import { fmt } from '../format'
 import { loadPartsTab, PARTS_TABS, savePartsTab, type PartsTab } from '../partsTab'
 
-/** 編集している部材（null は新しく足す） */
-type Editing = { partId: string | null } | null
+/** 編集シートを開いている部材（番号を押したとき） */
+type Editing = { partId: string } | null
 
 export function PartsScreen() {
   const { job, data, dispatch } = useJobStore()
@@ -76,8 +77,8 @@ export function PartsScreen() {
       <SettingsPanel />
       <h2>
         <Help title="部材">
-          部材の名前・W・H・枚数を、仕上がり寸法で入れます（入力は［仕上がり］のタブだけ）。木取り寸法（仕上がり寸法 ＋
-          切り代）は［木取り］のタブで見られます。式で入れた寸法は、式の隣に計算した寸法が出ます。式が長いときやエラーのときは、寸法の欄を押すと全文・理由が出ます。「選んでコピー」で部材を選んでコピーすると、ほかの仕事の「貼り付け」でまとめて足せます（同じ名前の部材は足しません。同じ仕事の中で増やすときは、部材の編集の「複製」）。
+          部材の名前・W・H・枚数を、［仕上がり］のタブの表に仕上がり寸法で入れます。木取り寸法（仕上がり寸法 ＋
+          切り代）は［木取り］のタブで見られます。「選んでコピー」で部材を選んでコピーすると、ほかの仕事の「貼り付け」でまとめて足せます（同じ名前の部材は足しません。同じ仕事の中で増やすときは、番号を押して「複製」）。
         </Help>
       </h2>
 
@@ -99,7 +100,7 @@ export function PartsScreen() {
       <div className={`parts-band ${finishedTab ? 'fin' : 'cut'}`}>
         {finishedTab ? (
           <Help title="仕上がり寸法">
-            家具として完成したときの寸法です。行を押すと編集できます。左のチェックは仕上げ終わった部材の印です（木取りの計算には影響しません）。
+            家具として完成したときの寸法です。名前の欄を押すとスマホのキーボード、W・H・枚数の欄を押すと下にアプリのキーが出ます（W・H は数字のほか、部材の寸法・調整寸法を使った式も入れられます）。「次へ」で 名前 → W → H → 枚数 → 次の行 と進みます。式で入れた欄は計算した寸法に「ƒ」が付き、エラーは赤で「エラー」と出ます（押すとキーの上に理由）。枚数が空の行は薄く出て、木取りに入りません（0 は寸法だけの行）。番号を押すと、回転・仕上がりの完了・複製・削除ができます。何も入っていない行は保存しません。
           </Help>
         ) : (
           <Help title={`木取り寸法（仕上がり ＋ 切り代 ${fmt(job.settings.allowance)}）`}>
@@ -108,17 +109,27 @@ export function PartsScreen() {
         )}
       </div>
 
-      {job.parts.length === 0 ? (
+      {finishedTab ? (
+        <PartsTable
+          job={job}
+          dims={dims}
+          adjusts={adjusts}
+          dispatch={dispatch}
+          picking={picking}
+          onTogglePick={togglePick}
+          onOpenPart={(id) => setEditing({ partId: id })}
+          onError={setError}
+        />
+      ) : job.parts.length === 0 ? (
         <p className="placeholder">部材はまだありません</p>
       ) : (
         <>
-          <div className={`part-row part-colhead ${finishedTab ? 'fin has-lead' : 'cut'}`} aria-hidden="true">
-            {finishedTab && <span />}
+          <div className="part-row part-colhead cut" aria-hidden="true">
             <span>部材</span>
             <span>W</span>
             <span>H</span>
           </div>
-          <ul className={`part-list ${finishedTab ? 'fin' : 'cut'}`}>
+          <ul className="part-list cut">
             {job.parts.map((p) => (
               <PartRow
                 key={p.id}
@@ -129,7 +140,6 @@ export function PartsScreen() {
                 progress={progress.find((x) => x.partId === p.id)}
                 onEdit={() => setEditing({ partId: p.id })}
                 onToggleDone={() => toggleDone(p.id, !p.finishedDone)}
-                select={picking ? { on: picking.has(p.id), onToggle: () => togglePick(p.id) } : undefined}
               />
             ))}
           </ul>
@@ -160,9 +170,6 @@ export function PartsScreen() {
       )}
       {finishedTab && !picking && (
         <>
-          <button type="button" className="btn wide parts-add" onClick={() => setEditing({ partId: null })}>
-            ＋ 部材を追加
-          </button>
           <div className="parts-copy">
             <button type="button" className="btn" disabled={job.parts.length === 0} onClick={startPicking}>
               選んでコピー
@@ -192,7 +199,7 @@ export function PartsScreen() {
       )}
       {editing && (
         <PartEditor
-          key={editing.partId ?? 'new'}
+          key={editing.partId}
           partId={editing.partId}
           onClose={() => setEditing(null)}
           onOpenPart={(id) => setEditing({ partId: id })}

@@ -370,3 +370,10 @@ const READ_FAILED = '読み込めませんでした'
   - バックアップ（`kind: 'backup'`）：固定した1枚（片の `partId`・`pieceId`・`checked` を新しい部材の id につけ替える）・仕上がりの完了も戻す。作った日・変えた日はファイルのまま
   - `message`：「「本棚」を取り込みました」／「3件の仕事を追加しました」。保存（`updatedAt` を付けない・開く仕事を変えない）は store の側で行う
 - **形の確かめ**（`src/engine/shape.ts`）：仕事・部材・調整寸法・コピーした部材の形の確かめ（`isJob`・`isAdjust`・`isCopiedPart`・`isRecord`）を `store/storage.ts` から engine に移し、保存データの読み込みとファイルの読み込みで同じものを使う
+
+### 7.3 部材の表（U-11。`src/ui/components/PartsTable.tsx`・`src/ui/partsTable.ts`）
+
+- ［仕上がり］のタブは部材の表（番号・名前・W・H・枚数）。行の数は `tableRowCount`（10行か、部材の数 ＋ 空の行1つ）。選んでいる欄は部材の id で持つ（空の行は id なし）
+- 名前は `<input>`（スマホのキーボード）。書きかけは画面に持ち、確定（キーボードの「次へ」・ほかの欄・表の外・キーボードを閉じる）で `updatePart` / `addPart`。W・H・枚数は `<button>` で、押すと画面の下にアプリのキー（`FormulaKeys.tsx`：編集シートの式の入力と同じ部品。枚数は数字だけ）。キーを押すたびに `updatePart`（空の行なら `addPart`。枚数は空から）
+- 何も入っていない部材（`isBlankPart`）は、選んでいない間に `removePart` で外す。途中の空の行を押すと、いちばん上の空の行に入る（`inputRow`）
+- 「次へ」は `nextCell`。名前へ移るときは、押した操作の中で次の行の `<input>` に注目を移す（スマホのキーボードが出るように）
