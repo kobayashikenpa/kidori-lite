@@ -5,7 +5,13 @@
 // 仕事は書き換えず、新しい仕事を返す（updatedAt は保存の側で付ける）
 import { adjustIdsInExpr } from '../formula/usages'
 import { isBraceText, normalizePartName, parseRefText, splitChunks } from '../formula/tokenize'
+import { hasName } from '../parts'
 import { AXES, type Adjust, type CopiedPart, type Job, type Part } from '../types'
+
+/** 名前のある部材の、そろえた名前（重なりの判定は名前のある部材どうしだけ） */
+function namesOf(parts: readonly Pick<Part, 'name'>[]): Set<string> {
+  return new Set(parts.filter(hasName).map((p) => normalizePartName(p.name)))
+}
 
 function copyOf(p: Pick<Part, 'name' | 'expr' | 'quantity' | 'rotatable'>): CopiedPart {
   return { name: p.name, expr: { W: p.expr.W, H: p.expr.H }, quantity: p.quantity, rotatable: p.rotatable }
@@ -75,18 +81,21 @@ function warningsOf(part: CopiedPart, known: ReadonlySet<string>, adjustIds: Rea
 
 /**
  * 貼り付けの確認（すぐには足さない）。行ごとに足せるか・足せない理由・注意を出す。
- * - 今の部材と同じ名前は足せない（「棚板 はもうあります」）。貼る部材どうしで同じ名前なら2つ目から足せない
+ * - 今の部材と同じ名前は足せない（「棚板 はもうあります」）。貼る部材どうしで同じ名前なら2つ目から足せない。
+ *   名前が空の部材は重なりとみなさない
  * - 式が、貼ったあとの仕事に無い部材を参照していれば注意（足すことはできる。足したあと式のエラーになる）
  * - adjusts（アプリ全体の調整寸法）に無い調整寸法を使っていれば注意
  */
 export function previewPaste(job: Pick<Job, 'parts'>, copied: readonly CopiedPart[], adjusts: readonly Adjust[]): PastePreview {
-  const existing = new Set(job.parts.map((p) => normalizePartName(p.name)))
-  const known = new Set([...existing, ...copied.map((c) => normalizePartName(c.name))])
+  const existing = namesOf(job.parts)
+  const known = new Set([...existing, ...namesOf(copied)])
   const adjustIds = new Set(adjusts.map((a) => a.id))
   const taken = new Set(existing)
   const rows = copied.map((part): PasteRow => {
     const key = normalizePartName(part.name)
     const warnings = warningsOf(part, known, adjustIds)
+    // 名前が空の部材はほかと重ならない
+    if (!hasName(part)) return { part, ok: true, warnings }
     if (taken.has(key)) {
       const message = existing.has(key) ? `${part.name} はもうあります` : `${part.name} は貼る部材の中にもうあります`
       return { part, ok: false, reason: 'duplicateName', message, warnings }
@@ -103,12 +112,14 @@ export function previewPaste(job: Pick<Job, 'parts'>, copied: readonly CopiedPar
  * id は newId('part')、仕上がりの完了は外す。足せるかは previewPaste と同じ決まり
  */
 export function applyPaste(job: Job, copied: readonly CopiedPart[], newId: (prefix: string) => string): Job {
-  const taken = new Set(job.parts.map((p) => normalizePartName(p.name)))
+  const taken = namesOf(job.parts)
   const added: Part[] = []
   for (const c of copied) {
-    const key = normalizePartName(c.name)
-    if (taken.has(key)) continue
-    taken.add(key)
+    if (hasName(c)) {
+      const key = normalizePartName(c.name)
+      if (taken.has(key)) continue
+      taken.add(key)
+    }
     added.push({ id: newId('part'), ...copyOf(c), finishedDone: false })
   }
   return { ...job, parts: [...job.parts, ...added] }
@@ -119,12 +130,13 @@ const COPY = 'のコピー'
 /**
  * 複製の名前：「棚板のコピー」、あれば「棚板のコピー2」「棚板のコピー3」…（空いている一番小さい番号）。
  * 「棚板のコピー」「棚板のコピー2」を複製するときも「棚板」をもとにする（のコピーのコピー にしない）。
- * 今の部材と比べるのは normalizePartName でそろえた名前
+ * 今の部材と比べるのは normalizePartName でそろえた名前。名前が空なら空のまま（仕様書 15.1）
  */
 export function duplicateName(job: Pick<Job, 'parts'>, name: string): string {
+  if (name.trim() === '') return ''
   const m = new RegExp(`^(.+)${COPY}[0-9０-９]*$`).exec(name)
   const base = m ? m[1] : name
-  const taken = new Set(job.parts.map((p) => normalizePartName(p.name)))
+  const taken = namesOf(job.parts)
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? `${base}${COPY}` : `${base}${COPY}${n}`
     if (!taken.has(normalizePartName(candidate))) return candidate

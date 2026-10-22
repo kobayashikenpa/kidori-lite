@@ -3,6 +3,7 @@
 // kidori の progress/frozen.ts をもとに、材料（boardId・材料名・厚み）・木目・重ね切り・手持ち・端材の行・
 // 材料ごとのまとめ（materialSummaries ほか）と、残りの材料の表示（sheetProgress）を外したもの
 import { normalizeSheet } from '../defaults'
+import { cutQuantity, partLabels } from '../parts'
 import { round1 } from '../round'
 import type { DimensionResult, FrozenSheet, Job, PartDimensions, SheetLayout } from '../types'
 
@@ -47,9 +48,9 @@ export function frozenDemand(job: Pick<Job, 'frozenSheets'>): Map<string, number
 
 export interface FrozenDrift {
   partId: string
-  /** 今の部材名（部材が無ければ写しの名前） */
+  /** 今の部材の表示用の名前（名前が空なら #行番号。部材が無ければ写しの名前） */
   name: string
-  /** size：木取り寸法が違う（エラーで出ないときも）／count：固定した片の数 ＞ 今の枚数／removed：部材が無い */
+  /** size：木取り寸法が違う（エラーで出ないときも）／count：固定した片の数 ＞ 今の枚数（枚数が空は 0 とみなす）／removed：部材が無い */
   reason: 'size' | 'count' | 'removed'
 }
 
@@ -74,6 +75,7 @@ function currentSizeLabel(d: PartDimensions | undefined): string | null {
 export function frozenSheetViews(job: Pick<Job, 'parts' | 'frozenSheets'>, dims: DimensionResult): FrozenSheetView[] {
   const demand = frozenDemand(job)
   const partById = new Map(job.parts.map((p) => [p.id, p]))
+  const labels = partLabels(job.parts)
   const dimById = new Map(dims.parts.map((d) => [d.partId, d]))
   return job.frozenSheets.map((sheet): FrozenSheetView => {
     const drift: FrozenDrift[] = []
@@ -84,13 +86,13 @@ export function frozenSheetViews(job: Pick<Job, 'parts' | 'frozenSheets'>, dims:
       const part = partById.get(pl.partId)
       let reason: FrozenDrift['reason'] | null = null
       if (!part) reason = 'removed'
-      else if ((demand.get(pl.partId) ?? 0) > part.quantity) reason = 'count'
+      else if ((demand.get(pl.partId) ?? 0) > cutQuantity(part.quantity)) reason = 'count'
       else {
         const label = currentSizeLabel(dimById.get(part.id))
         const labels = sheet.layout.placements.filter((x) => x.partId === pl.partId).map((x) => x.sizeLabel)
         if (label === null || labels.some((l) => l !== label)) reason = 'size'
       }
-      if (reason) drift.push({ partId: pl.partId, name: part?.name ?? pl.name, reason })
+      if (reason) drift.push({ partId: pl.partId, name: labels.get(pl.partId) ?? pl.name, reason })
     }
     return { sheet, drift, complete: sheet.completedAt !== undefined }
   })

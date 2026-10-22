@@ -117,8 +117,10 @@ describe('validatePartName（部材名に使えるか）', () => {
     expect(validatePartName('2段目棚板')).toBeNull()
   })
 
-  it('空の名前は使えない', () => {
-    expect(validatePartName('')).not.toBeNull()
+  it('空の名前は使える（第1.1版）。空どうしは重ならない', () => {
+    expect(validatePartName('')).toBeNull()
+    expect(validatePartName('', ['', '天板'])).toBeNull()
+    expect(validatePartName('天板', ['', '天板'])).not.toBeNull()
   })
 
   it.each(['側+板', '側-板', '側*板', '側/板', '側(板', '側)板', '側.板', '側 板', '側　板'])(

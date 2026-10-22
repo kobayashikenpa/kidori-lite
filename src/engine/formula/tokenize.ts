@@ -183,17 +183,19 @@ export function normalizePartName(name: string): string {
 /**
  * 部材名に使えるかを調べる。使えれば null、使えなければ理由（日本語）を返す。
  * 式の区切りになる記号（+ - * / ( ) . { }）と空白は使えない（全角の ＋ や × ÷ − なども、式では記号になるので使えない）。
- * otherNames と同じ名前（全角・半角の違いだけのものも含む）も使えない
+ * otherNames と同じ名前（全角・半角の違いだけのものも含む）も使えない。
+ * 空の名前は使える（第1.1版。仕様書 15.1）。空の名前どうしは重なりとみなさない
  */
 export function validatePartName(name: string, otherNames: readonly string[] = []): string | null {
-  if (name.length === 0) return '部材名を入れてください'
+  // 空の名前はよい（第1.1版。空どうしは重ならない）
+  if (name.length === 0) return null
   if ([...name].some((ch) => isSpace(ch) || isSpace(normalizeFormulaText(ch)))) return '部材名に空白は使えません'
   const bad = [...name].find((ch) => [...normalizeFormulaText(ch)].some((n) => SYMBOL_SET.has(n) || n === '.'))
   if (bad !== undefined) return `部材名に「${bad}」は使えません（+ - * / ( ) . × ÷ は式で使う記号のため）`
   const brace = [...name].find((ch) => isOpenBrace(ch) || isCloseBrace(ch))
   if (brace !== undefined) return `部材名に「${brace}」は使えません（{ } は式で調整寸法を表すため）`
   const key = normalizePartName(name)
-  const same = otherNames.find((n) => normalizePartName(n) === key)
+  const same = otherNames.find((n) => n.trim() !== '' && normalizePartName(n) === key)
   if (same !== undefined) return `「${same}」という部材はすでにあります`
   return null
 }

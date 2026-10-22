@@ -4,6 +4,7 @@
 import { round1 } from '../round'
 import type { DimensionResult, Job, PackingResult, UnplacedReason } from '../types'
 import { usableSides, type BoardSize, type StripMode } from './sheet'
+import { cutQuantity } from '../parts'
 
 /**
  * 板の辺に対する片の向き（置き方＝縦長／横長によらない）。x：妻手方向の大きさ、y：長手方向の大きさ。
@@ -67,7 +68,8 @@ function fmt(v: number): string {
 
 /**
  * 部材を片の並びにする（部材の並び）。
- * - 枚数0 の行（全体 など）は片にせず、除いた一覧にも出さない
+ * - 枚数0 の行（全体 など）と枚数が空（null）の行は片にせず、除いた一覧にも出さない
+ * - 名前は表示用の名前（dims の name。名前が空なら #行番号）
  * - 固定した1枚（frozen）の片の数は、部材の枚数から数だけで引く（寸法は見ない。0 未満にはしない）。
  *   引いて 0 になった部材は、寸法のエラーがあっても除いた一覧に出さない（kidori と同じ）
  * - 寸法のエラーがある部材（木取り寸法が出ない）は skipped（dimensionError）
@@ -77,8 +79,9 @@ export function expandPieces(job: Pick<Job, 'parts'>, dims: DimensionResult, fro
   const runs: PieceRun[] = []
   const skipped: ExpandResult['skipped'] = []
   for (const d of dims.parts) {
-    if (d.quantity < 1) continue
-    const count = Math.max(0, d.quantity - (frozen.get(d.partId) ?? 0))
+    const quantity = cutQuantity(d.quantity)
+    if (quantity < 1) continue
+    const count = Math.max(0, quantity - (frozen.get(d.partId) ?? 0))
     if (count === 0) continue
     if (d.errors.length > 0 || !d.cut) {
       skipped.push({ partId: d.partId, name: d.name, reason: 'dimensionError' })

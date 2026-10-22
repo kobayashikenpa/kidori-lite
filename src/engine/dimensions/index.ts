@@ -3,6 +3,7 @@
 // 木取り寸法を「仕上がり ＋ settings.allowance（W・H に1回ずつ）」にしたもの
 import { evaluate } from '../formula/evaluate'
 import { normalizePartName } from '../formula/tokenize'
+import { hasName, partLabels } from '../parts'
 import { round1 } from '../round'
 import {
   AXES,
@@ -28,15 +29,16 @@ type Value = { ok: true; value: number } | { ok: false; error: DimensionError }
  * - エラーのある寸法を参照している寸法は計算せず、元のエラーの寸法を from で示す
  * - 木取り寸法 ＝ 仕上がり ＋ settings.allowance（W・H それぞれに1回）。仕上がりが出ない軸は出さない
  * - finished・cut は W・H の両方が計算できたときだけ。片方だけのときは finishedByAxis・cutByAxis に入る
+ * - 名前の無い部材も寸法を計算する（式からは参照できない）。name は表示用の名前（空なら #行番号）。枚数が空（null）の部材も計算する
  */
 export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts: readonly Adjust[]): DimensionResult {
   const res = resolve(job.parts)
-  const partById = new Map(job.parts.map((p) => [p.id, p]))
   const adjustById = new Map(adjusts.map((a) => [a.id, a.value]))
   const allowance = job.settings.allowance
   // 全角・半角をそろえた部材名 → id（式の中の参照は、そろえた名前で出てくる）
   const idByName = new Map<string, string>()
   for (const p of job.parts) {
+    if (!hasName(p)) continue
     const key = normalizePartName(p.name)
     if (!idByName.has(key)) idByName.set(key, p.id)
   }
@@ -47,7 +49,8 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
   }
 
   const memo = new Map<string, Value>()
-  const label = (d: DimRef) => `${partById.get(d.partId)!.name}.${d.axis}`
+  const labels = partLabels(job.parts)
+  const label = (d: DimRef) => `${labels.get(d.partId)}.${d.axis}`
 
   /** 参照先のエラーを、参照している寸法のエラーとして伝える */
   const propagate = (d: DimRef, depError: DimensionError): DimensionError => {
@@ -133,7 +136,7 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
     }
     return {
       partId: p.id,
-      name: p.name,
+      name: labels.get(p.id)!,
       quantity: p.quantity,
       finished: isComplete(finishedByAxis) ? finishedByAxis : null,
       cut: isComplete(cutByAxis) ? cutByAxis : null,

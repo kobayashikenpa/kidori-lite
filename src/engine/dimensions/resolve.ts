@@ -3,6 +3,7 @@
 import { refsOf } from '../formula/evaluate'
 import { parse, type Expr } from '../formula/parse'
 import { normalizePartName } from '../formula/tokenize'
+import { hasName, partLabels } from '../parts'
 import { AXES, type Axis, type DimensionError, type Part } from '../types'
 
 /** 部材の1つの寸法（部材.W など） */
@@ -34,13 +35,15 @@ export function dimKey(partId: string, axis: Axis): string {
 
 /** 部材の式から依存関係を作り、計算順と、存在しない部材・循環参照を求める */
 export function resolve(parts: readonly Part[]): Resolution {
-  // そろえた部材名 → 部材（名前は重複しない前提。重複していれば先のものを使う）
+  // そろえた部材名 → 部材（名前は重複しない前提。重複していれば先のものを使う）。名前の無い部材は参照できない
   const byName = new Map<string, Part>()
   for (const p of parts) {
+    if (!hasName(p)) continue
     const key = normalizePartName(p.name)
     if (!byName.has(key)) byName.set(key, p)
   }
-  const nameOf = new Map(parts.map((p) => [p.id, p.name]))
+  // 表示用の名前（名前が空なら #行番号）
+  const nameOf = partLabels(parts)
 
   const nodes = new Map<string, DimNode>()
   const ownErrors = new Map<string, DimensionError[]>()
@@ -166,14 +169,15 @@ export function resolve(parts: readonly Part[]): Resolution {
   return { nodes, order, errors }
 }
 
-/** その部材の寸法を式で使っている、ほかの部材（部材の並び順。軸は W→H）。部材の削除の前の確認に使う */
+/** その部材の寸法を式で使っている、ほかの部材（部材の並び順。軸は W→H。name は表示用の名前）。部材の削除の前の確認に使う */
 export function partsReferencing(parts: readonly Part[], partId: string): { partId: string; name: string; axes: Axis[] }[] {
   const { nodes } = resolve(parts)
+  const labels = partLabels(parts)
   const out: { partId: string; name: string; axes: Axis[] }[] = []
   for (const p of parts) {
     if (p.id === partId) continue
     const axes = AXES.filter((a) => nodes.get(dimKey(p.id, a))?.deps.some((d) => d.partId === partId))
-    if (axes.length > 0) out.push({ partId: p.id, name: p.name, axes })
+    if (axes.length > 0) out.push({ partId: p.id, name: labels.get(p.id)!, axes })
   }
   return out
 }

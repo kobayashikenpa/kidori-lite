@@ -121,11 +121,12 @@ export function newPart(id: string, p: Partial<Omit<Part, 'id'>> = {}): Part {
 }
 
 function validatePartFields(part: Part): string | null {
-  if (!(Number.isInteger(part.quantity) && part.quantity >= 0)) return '枚数は 0 以上の整数を入れてください'
+  // 枚数は空（null。計算に入れない）でもよい（第1.1版）
+  if (part.quantity !== null && !(Number.isInteger(part.quantity) && part.quantity >= 0)) return '枚数は 0 以上の整数を入れてください'
   return null
 }
 
-/** 部材を最後に足す。使えない名前・同じ名前（全角・半角の違いを含む）の部材があれば断る */
+/** 部材を最後に足す。使えない名前・同じ名前（全角・半角の違いを含む）の部材があれば断る。名前が空の部材はいくつでも足せる */
 export function addPart(job: Job, part: Part): OpResult {
   const name = part.name.trim()
   if (job.parts.some((p) => p.id === part.id)) return fail('同じ id の部材があります')

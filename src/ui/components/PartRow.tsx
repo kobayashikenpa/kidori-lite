@@ -38,6 +38,8 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
   const [detail, setDetail] = useState<Axis | null>(null)
   const formulaRefs = useRef<Partial<Record<Axis, HTMLSpanElement | null>>>({})
   const noCut = part.quantity === 0
+  // 表示用の名前（名前が空なら #行番号。engine の computeDimensions が付ける）
+  const label = dims?.name ?? part.name
   const done = finishedTab && part.finishedDone && !select
 
   const pressCell = (axis: Axis) => {
@@ -51,13 +53,13 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
   }
 
   const sub = [
-    noCut ? (finishedTab ? '寸法だけ' : '切らない') : `×${part.quantity}枚`,
+    part.quantity === null ? '枚数なし' : noCut ? (finishedTab ? '寸法だけ' : '切らない') : `×${part.quantity}枚`,
     !finishedTab && progress ? `切った ${progress.done}/${progress.total}` : null,
   ].filter((s) => s !== null)
 
   const main = (
     <>
-      <span className="part-name">{part.name}</span>
+      <span className="part-name">{label}</span>
       <span className="part-sub">
         {sub.map((s) => (
           <span key={s} className={s.startsWith('切った') && progress && progress.done >= progress.total ? 'part-cut-done' : undefined}>
@@ -77,7 +79,7 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
             type="button"
             className={`part-check sel${select.on ? ' on' : ''}`}
             aria-pressed={select.on}
-            aria-label={`${part.name} をコピーに選ぶ`}
+            aria-label={`${label} をコピーに選ぶ`}
             onClick={select.onToggle}
           >
             <span className="check-box" aria-hidden="true">
@@ -90,7 +92,7 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
             type="button"
             className={`part-check${part.finishedDone ? ' on' : ''}`}
             aria-pressed={part.finishedDone}
-            aria-label={`${part.name} の仕上がりの完了`}
+            aria-label={`${label} の仕上がりの完了`}
             onClick={onToggleDone}
           >
             <span className="check-box" aria-hidden="true">
@@ -103,7 +105,7 @@ export function PartRow({ part, dims, tab, adjusts, progress, onEdit, onToggleDo
           <button
             type="button"
             className="part-main"
-            aria-label={select ? `${part.name} をコピーに選ぶ` : `${part.name} を編集`}
+            aria-label={select ? `${label} をコピーに選ぶ` : `${label} を編集`}
             aria-pressed={select ? select.on : undefined}
             onClick={press}
           >

@@ -84,8 +84,8 @@ function isCopiedPart(v: unknown): v is CopiedPart {
     isRecord(v) &&
     isString(v.name) &&
     isExpr(v.expr) &&
-    Number.isInteger(v.quantity) &&
-    (v.quantity as number) >= 0 &&
+    // 枚数は 0 以上の整数か、空（null。第1.1版）
+    (v.quantity === null || (Number.isInteger(v.quantity) && (v.quantity as number) >= 0)) &&
     typeof v.rotatable === 'boolean'
   )
 }

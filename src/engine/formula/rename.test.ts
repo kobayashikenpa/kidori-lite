@@ -82,7 +82,8 @@ describe('renamePart（部材名の変更と参照のつけ替え）', () => {
     expect(renamePart(parts, 'part-zentai', '側板　').ok).toBe(false)
     expect(renamePart(parts, 'part-zentai', '全 体').ok).toBe(false)
     expect(renamePart(parts, 'part-zentai', '全体.W').ok).toBe(false)
-    expect(renamePart(parts, 'part-zentai', '').ok).toBe(false)
+    // 空の名前には変えられる（第1.1版）
+    expect(renamePart(parts, 'part-zentai', '').ok).toBe(true)
   })
 
   it('全角・半角だけが違うほかの部材の名前には変えられない', () => {

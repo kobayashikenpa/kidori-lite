@@ -1,6 +1,7 @@
 // 調整寸法を式で使っている部材の一覧（1つの仕事の中・全部の仕事から）
 // kidori の formula/usages.ts をもとに、材料の厚み・id のつけ替え・共有用の id 集めを外し、
 // 調整寸法がアプリ全体で1つの一覧になったので、全部の仕事から探す adjustUsages を足したもの
+import { partLabelAt } from '../parts'
 import { AXES, type AppData, type Axis, type Job } from '../types'
 import { isBraceText, parseBraceText, splitChunks } from './tokenize'
 
@@ -23,9 +24,9 @@ function axesUsing(expr: Readonly<Record<Axis, string>>, ids: ReadonlySet<string
 /** 式で ids のどれかを使っている部材を「部材名（軸）」で返す（部材の並び順・部材ごとに1つ。軸が両方なら 棚板（W・H）） */
 function partsUsing(job: Pick<Job, 'parts'>, ids: ReadonlySet<string>): string[] {
   const out: string[] = []
-  for (const p of job.parts) {
+  for (const [i, p] of job.parts.entries()) {
     const axes = axesUsing(p.expr, ids)
-    if (axes.length > 0) out.push(`${p.name}（${axes.join('・')}）`)
+    if (axes.length > 0) out.push(`${partLabelAt(p, i)}（${axes.join('・')}）`)
   }
   return out
 }
@@ -45,6 +46,7 @@ export interface AdjustUsage {
   jobId: string
   jobName: string
   partId: string
+  /** 表示用の名前（名前が空なら #行番号） */
   partName: string
   /** 使っている軸（W→H の順） */
   axes: Axis[]
@@ -76,7 +78,7 @@ export function adjustUsagesOf(
   if (adjustIds.length === 0) return out
   const wanted = new Set(adjustIds)
   for (const job of data.jobs) {
-    for (const p of job.parts) {
+    for (const [i, p] of job.parts.entries()) {
       const axes = axesUsing(p.expr, wanted)
       if (axes.length === 0) continue
       const used = new Set(AXES.flatMap((a) => adjustIdsInExpr(p.expr[a])))
@@ -84,7 +86,7 @@ export function adjustUsagesOf(
         jobId: job.id,
         jobName: job.name,
         partId: p.id,
-        partName: p.name,
+        partName: partLabelAt(p, i),
         axes,
         adjustIds: [...new Set(adjustIds)].filter((id) => used.has(id)),
       })

@@ -39,8 +39,10 @@ export function PastePreview({ onClose, onPasted, onError }: Props) {
         {preview.rows.map((row, i) => (
           <li key={i} className={`paste-row${row.ok ? '' : ' skip'}`}>
             <div className="paste-head">
-              <span className="paste-name">{row.part.name}</span>
-              <span className="paste-qty num">{row.part.quantity === 0 ? '寸法だけ' : `×${row.part.quantity}枚`}</span>
+              <span className="paste-name">{row.part.name || '（名前なし）'}</span>
+              <span className="paste-qty num">
+                {row.part.quantity === null ? '枚数なし' : row.part.quantity === 0 ? '寸法だけ' : `×${row.part.quantity}枚`}
+              </span>
               {row.part.rotatable && <span className="part-rot">回転可</span>}
             </div>
             <div className="paste-dims">

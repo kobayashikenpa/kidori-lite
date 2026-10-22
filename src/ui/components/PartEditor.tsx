@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
 import { partsReferencing } from '../../engine/dimensions/resolve'
 import { validatePartName } from '../../engine/formula/tokenize'
+import { partLabel, referableParts } from '../../engine/parts'
 import { AXES, type Axis, type Part } from '../../engine/types'
 import { newPart } from '../../store/jobs'
 import { useJobStore } from '../../store/useJobStore'
@@ -36,7 +37,7 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
   const { job, data, dispatch } = useJobStore()
   const original = job?.parts.find((p) => p.id === partId) ?? null
   const [draft, setDraft] = useState<Part>(() => original ?? newPart(DRAFT_ID))
-  const [qtyText, setQtyText] = useState(() => String((original ?? newPart(DRAFT_ID)).quantity))
+  const [qtyText, setQtyText] = useState(() => String((original ?? newPart(DRAFT_ID)).quantity ?? ''))
   const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<'delete' | 'discard' | null>(null)
   // ボタンの並びを開いている欄（1つだけ）
@@ -131,7 +132,7 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
   const referencing = original ? partsReferencing(job.parts, original.id) : []
 
   return (
-    <Sheet title={original ? `部材の編集：${original.name}` : '部材を追加'} onClose={requestClose}>
+    <Sheet title={original ? `部材の編集：${partLabel(job, original.id)}` : '部材を追加'} onClose={requestClose}>
       <div className="field">
         <label className="label" htmlFor="part-name">
           名前
@@ -170,7 +171,7 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
             value={draft.expr[axis]}
             onChange={(v) => patch({ expr: { ...draft.expr, [axis]: v } })}
             adjusts={adjusts}
-            parts={others}
+            parts={referableParts(others)}
             finishedOf={finishedOf}
             finished={mine?.finishedByAxis[axis] ?? null}
             errors={mine?.errors.filter((e) => e.axis === axis) ?? []}
@@ -248,7 +249,7 @@ export function PartEditor({ partId, onClose, onOpenPart }: Props) {
                 の式がこの部材の寸法を使っています。削除すると、その式はエラーになります。
               </p>
             )}
-            <p className="confirm-text">「{original.name}」を削除しますか？</p>
+            <p className="confirm-text">「{partLabel(job, original.id)}」を削除しますか？</p>
             <div className="foot">
               <button type="button" className="btn" onClick={() => setConfirm(null)}>
                 やめる

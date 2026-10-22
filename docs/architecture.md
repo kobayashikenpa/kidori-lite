@@ -311,3 +311,31 @@ export interface PackingResult {
 
 - GitHub Pages。`main` に入ったら、チェック → ビルド → 公開（kidori の `.github/workflows/deploy.yml` と同じ）
 - ホーム画面に追加できるよう `public/manifest.webmanifest` とアイコンを置く（アイコンは kidori と同じ。名前・短い名前は「Kidori Lite」。オーナー決定）
+
+## 7. 第1.1版の変更（仕様書 15章）
+
+### 7.1 名前が空の部材・枚数が空の部材（E-10。`src/engine/parts.ts`）
+
+```ts
+export interface Part {
+  id: string
+  name: string                  // 空でもよい。重なりの判定は名前のある部材どうしだけ。空の部材は式から参照できない
+  expr: Record<Axis, string>
+  quantity: number | null       // null＝枚数が空（寸法は計算するが、木取り・必要な枚数・進み具合・比べに入れない）。0 は寸法だけの行
+  rotatable: boolean
+  finishedDone: boolean
+}
+// PartDimensions.quantity も number | null。PartDimensions.name は表示用の名前（下の partLabelAt）
+```
+
+- `hasName(part)`：名前があるか（前後の空白を外して空でない）
+- `partLabel(job, partId)` → 名前があれば名前、空なら「#行番号」（`job.parts` の並びで 1 から）。部材が無ければ `''`
+- `partLabelAt(part, index)`・`partLabels(parts)`（id → 表示用の名前の Map）：たくさん出すとき用
+- `referableParts(parts)`：式の「部材」のボタンに出す部材（名前のある部材だけ）
+- `cutQuantity(quantity)`：切り出す枚数（null と 0 は 0）
+- 表示用の名前を使う所：`computeDimensions` の `PartDimensions.name`（→ `Placement.name`・`unplaced`・`skipped`）、エラーの文の `部材.W`、`partsReferencing`、`adjustUsages`・`partsUsingAdjust` の部材名、`sheetChecklist`・`sheetPartChecklist`、`frozenSheetViews` の drift、`partCutProgress`
+- 行番号は今の並び順なので、上に行を入れると変わる。チェックの一覧・進み具合・drift は今の行番号で出す。固定した1枚の写しの `Placement.name` は固定したときの表示名のまま（部材を消したときだけ使う）
+- 名前の重なり：`validatePartName('')` は null（使える）。`otherNames` の空の名前とは比べない。`previewPaste`・`applyPaste` も名前のある部材どうしだけ比べる。`duplicateName(job, '')` は `''`（複製しても空のまま）
+- `renamePart` で空にする／空から名前を付けるときは、ほかの式を書き換えない（空にした部材を参照していた式は元の名前のまま残り、`unknownRef` になる）（暫定）
+- 枚数が空：`expandPieces` で片にしない（エラーがあっても `skipped` に出さない）。`partCutProgress` に入れない。固定した片がある部材の枚数を空にすると drift は `count`（0 枚とみなす）（暫定）
+- 保存データ：`store/storage.ts` の形の確かめは `quantity: null` と `name: ''` を通す。第1版のデータ（名前も枚数も入っている）はそのまま読める（`version` は 1 のまま）
