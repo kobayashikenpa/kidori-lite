@@ -1,4 +1,5 @@
-// 木取りの画面（仕様書 8）：上に必要な板の枚数・全体の歩留まり（大きく）・今の板と切り方、3×6 と 4×8 の比べ（押すとそのサイズにして仕事に保存）、
+// 木取りの画面（仕様書 8・16.3）：上に板（［3×6］［4×8］［自由入力］。それぞれの枚数・歩留まり）・刃厚・端切り・切り代の表示・切り方（BoardSettings）、
+// その下に必要な板の枚数・全体の歩留まり（大きく）、
 // 板に収まらない部材・計算から外した部材の知らせ、板1枚ごとの配置図・歩留まり・端材の一覧・切り出しチェック、部材ごとの進み具合。切る順番は出さない。
 // 計算はすべて engine（computeDimensions → packJob・compareStandardSizes・frozenSheetViews・sheetPartChecklist・partCutProgress）、
 // チェックの付け外しは store の setPartCheck（engine の setPartCheck）。
@@ -8,19 +9,20 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
 import { packJob } from '../../engine/packing'
 import { partLabels } from '../../engine/parts'
-import { compareStandardSizes, type SizeSummary, type StandardSize } from '../../engine/packing/sizes'
+import { compareStandardSizes } from '../../engine/packing/sizes'
 import type { SheetTarget } from '../../engine/progress/checks'
 import { frozenSheetViews, type FrozenSheetView } from '../../engine/progress/frozen'
 import { partCutProgress } from '../../engine/progress/partProgress'
 import { sheetPartChecklist, type SheetPartRow } from '../../engine/progress/sheetChecklist'
-import { BOARD_SIZES, type SheetLayout } from '../../engine/types'
+import type { SheetLayout } from '../../engine/types'
 import { useJobStore } from '../../store/useJobStore'
+import { BoardSettings } from '../components/BoardSettings'
 import { Help } from '../components/Help'
 import { SheetChecklist } from '../components/SheetChecklist'
 import { SheetDiagram } from '../components/SheetDiagram'
 import { fmt } from '../format'
 import { pct, scrapLabel } from '../kidoriView'
-import { cutModeLabel, sheetLabel, sheetSizeText } from '../settings'
+import { cutModeLabel, sheetLabel } from '../settings'
 
 /** 画面に出す1枚（固定した1枚、または計算した1枚） */
 interface SheetEntry {
@@ -49,8 +51,6 @@ const DRIFT_REASON: Record<FrozenSheetView['drift'][number]['reason'], string> =
   removed: '部材の削除',
 }
 
-const SIZE_LABEL: Record<StandardSize, string> = { saburoku: '3×6', shihachi: '4×8' }
-
 export function KidoriScreen() {
   const { job, data, dispatch } = useJobStore()
   const adjusts = data.adjusts
@@ -68,7 +68,6 @@ export function KidoriScreen() {
     }
   }, [job, adjusts])
   const [openFinished, setOpenFinished] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   // チェックで失敗したときの知らせ（その1枚の中に出す）
   const [checkError, setCheckError] = useState<{ key: string; message: string } | null>(null)
   // チェックを付け外しすると1枚の並びが変わる（計算した1枚が固定した1枚になって前に来る）ので、押した行が画面の同じ位置に残るようにスクロールを戻す
@@ -120,13 +119,6 @@ export function KidoriScreen() {
   const labelOf = (partId: string) => labels.get(partId)
   const empty = count === 0 && result.unplaced.length === 0 && result.skipped.length === 0
 
-  const pickSize = (kind: StandardSize) => {
-    if (s.sheet.sizeKind === kind) return
-    const [width, length] = BOARD_SIZES[kind]
-    const r = dispatch({ type: 'setSheet', sheet: { sizeKind: kind, width, length } })
-    setError(r.ok ? null : r.message)
-  }
-
   const toggle = (e: SheetEntry, row: SheetPartRow, el: HTMLElement) => {
     const top = el.getBoundingClientRect().top
     const before = new Set(job.frozenSheets.map((f) => f.id))
@@ -157,12 +149,14 @@ export function KidoriScreen() {
     <section>
       <h2>
         <Help title="木取り">
-          部材の木取り寸法（仕上がり寸法 ＋ 切り代）を板に並べた結果です。板のサイズ・刃厚・端切り・切り代・切り方は、部材の画面の「設定」で変えられます。
+          部材の木取り寸法（仕上がり寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブで変えます）。
           部材は右（端切りをした側）の上から詰め、端材は左下に残ります。
           部材を切ったら、配置図の下の切り出しチェックを押します。1つ目のチェックで、その1枚の並べ方を固定します（部材や設定を変えても、その1枚は変わりません）。
           全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。
         </Help>
       </h2>
+
+      <BoardSettings job={job} compare={compare} result={result} empty={empty} dispatch={dispatch} />
 
       {empty ? (
         <div className="card placeholder">切り出す部材がありません。部材の画面で、部材と枚数を入れてください。</div>
@@ -181,50 +175,15 @@ export function KidoriScreen() {
               <span className="kd-v num">{result.sheetCount > 0 ? pct(result.yieldRate) : '―'}</span>
             </div>
           </div>
-          <p className="kd-board">
-            <span>
-              板：<b>{sheetLabel(s.sheet)}</b>
-              {s.sheet.sizeKind !== 'custom' && <span className="num">（{sheetSizeText(s.sheet)}）</span>}
-            </span>
-            <span>
-              切り方：<b>{cutModeLabel(result.mode)}</b>
-              {s.cutMode === 'auto' && <span className="chip ok">おまかせで選択</span>}
-            </span>
-          </p>
-          <p className="kd-board-sub num">
-            刃厚 {fmt(s.kerf)}・端切り {fmt(s.trim)}・切り代 {fmt(s.allowance)}
-          </p>
-        </div>
-      )}
-
-      {!empty && (
-        <section className="kd-compare" aria-label="3×6 と 4×8 の比べ">
-          <h3>
-            <Help title="3×6 と 4×8 の比べ">
-              同じ部材を 3×6（910×1820）と 4×8（1220×2430）で計算した、必要な板の枚数と歩留まりです。押すと、その板のサイズに切り替わります（仕事に保存します）。
-            </Help>
-          </h3>
-          <div className="kd-sizes">
-            {compare.options.map((o) => (
-              <SizeButton
-                key={o.kind}
-                o={o}
-                current={s.sheet.sizeKind === o.kind}
-                fewer={compare.fewer === o.kind}
-                higher={compare.higher === o.kind}
-                onPick={() => pickSize(o.kind)}
-              />
-            ))}
-          </div>
-          {s.sheet.sizeKind === 'custom' && (
-            <p className="band-note num">今の板は 自由入力（{sheetSizeText(s.sheet)}）です。押すと 3×6・4×8 に切り替わります</p>
-          )}
-          {error && (
-            <p className="msg err" role="alert">
-              {error}
+          {s.cutMode === 'auto' && (
+            <p className="kd-board">
+              <span>
+                切り方：<b>{cutModeLabel(result.mode)}</b>
+                <span className="chip ok">おまかせで選択</span>
+              </span>
             </p>
           )}
-        </section>
+        </div>
       )}
 
       {result.unplaced.length > 0 && (
@@ -309,44 +268,6 @@ export function KidoriScreen() {
         </>
       )}
     </section>
-  )
-}
-
-interface SizeButtonProps {
-  o: SizeSummary
-  current: boolean
-  fewer: boolean
-  higher: boolean
-  onPick: () => void
-}
-
-function SizeButton({ o, current, fewer, higher, onPick }: SizeButtonProps) {
-  const label = SIZE_LABEL[o.kind]
-  return (
-    <button
-      type="button"
-      className="kd-size"
-      aria-pressed={current}
-      aria-label={`${label}：必要な板 ${o.sheetCount}枚、歩留まり ${pct(o.yieldRate)}${o.unplacedCount > 0 ? `、収まらない部材 ${o.unplacedCount}件` : ''}${current ? '（今の板）' : ''}`}
-      onClick={onPick}
-    >
-      <span className="kd-size-name">
-        {label}
-        {current && <span className="kd-size-now">今の板</span>}
-      </span>
-      <span className="kd-size-count num">
-        {o.sheetCount}
-        <small>枚</small>
-      </span>
-      <span className="kd-size-yield num">歩留まり {o.sheetCount > 0 ? pct(o.yieldRate) : '―'}</span>
-      {(fewer || higher || o.unplacedCount > 0) && (
-        <span className="kd-size-tags">
-          {fewer && <span className="chip ok">枚数が少ない</span>}
-          {higher && <span className="chip ok">歩留まりが高い</span>}
-          {o.unplacedCount > 0 && <span className="chip bad">収まらない {o.unplacedCount}件</span>}
-        </span>
-      )}
-    </button>
   )
 }
 

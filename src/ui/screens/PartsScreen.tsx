@@ -1,4 +1,5 @@
-// 部材の画面（仕様書 5.1・5.2・9・15.1）：上にたたんだ設定、その下に［仕上がり］［木取り］のタブと部材の表。
+// 部材の画面（仕様書 5.1・5.2・9・15.1・16）：上にたたんだ調整寸法、その下に［仕上がり］［木取り］のタブと部材の表。
+// ［木取り］のタブのときだけ、表の上に切り代（数字キーで変える。仕様書 16.4）。
 // ［仕上がり］は入力できる表（番号を押すとメニュー）、［木取り］は同じ形の表を見るだけ。
 // 寸法の計算は engine（computeDimensions）、切り出しの進み具合は engine（partCutProgress）に任せる
 import { useMemo, useRef, useState } from 'react'
@@ -15,7 +16,7 @@ import { CutTable } from '../components/CutTable'
 import { Help } from '../components/Help'
 import { PartMenu } from '../components/PartMenu'
 import { PartsTable, type PartsTableHandle } from '../components/PartsTable'
-import { SettingsPanel } from '../components/SettingsPanel'
+import { NumberField } from '../components/NumberField'
 import { fmt } from '../format'
 import { rotationState } from '../partsTable'
 import { loadPartsTab, PARTS_TABS, savePartsTab, type PartsTab } from '../partsTab'
@@ -54,6 +55,11 @@ export function PartsScreen() {
     setError(r.ok ? null : r.message)
   }
 
+  const commitAllowance = (v: number): string | null => {
+    const r = dispatch({ type: 'updateSettings', patch: { allowance: v } })
+    return r.ok ? null : r.message
+  }
+
   const toggleSelecting = () => {
     setNotice(null)
     setError(null)
@@ -75,7 +81,6 @@ export function PartsScreen() {
   return (
     <section>
       <AdjustPanel />
-      <SettingsPanel />
       <h2>
         <Help title="部材">
           部材の名前・W・H・枚数を、［仕上がり］のタブの表に仕上がり寸法で入れます。木取り寸法（仕上がり寸法 ＋
@@ -153,7 +158,15 @@ export function PartsScreen() {
           />
         </>
       ) : (
-        <CutTable job={job} dims={dims} adjusts={adjusts} progress={progress} />
+        <>
+          <div className="allowance-row">
+            <Help className="allowance-label" title={<span className="label cut-ink">切り代</span>}>
+              あとで削り仕上げるための余分です。木取り寸法 ＝ 仕上がり寸法 ＋ 切り代（W・H に同じだけ足す）。変えると、下の表の木取り寸法がすぐ変わります。この仕事に保存します（木取りの画面でも変えられ、同じ値です）。
+            </Help>
+            <NumberField label="切り代" value={job.settings.allowance} onCommit={commitAllowance} onError={setError} />
+          </div>
+          <CutTable job={job} dims={dims} adjusts={adjusts} progress={progress} />
+        </>
       )}
       {error && (
         <p className="msg err" role="alert">

@@ -2066,3 +2066,47 @@ h3 > .help {
   color: var(--muted);
   list-style: none;
 }
+
+/* ---------- 木取りの画面の上の板と切り方（第1.2版 16.3）・部材の画面の切り代（16.4） ---------- */
+.kd-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.kd-settings .settings-sec > h3 {
+  margin: 0;
+}
+.kd-settings .msg {
+  margin: 0;
+}
+.kd-sizes.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.kd-sizes.three .kd-size {
+  padding: 6px 8px;
+}
+.kd-sizes.three .kd-size-tags .chip {
+  font-size: 11px;
+  padding: 0 6px;
+}
+.kd-size-hint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.allowance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--cut);
+  border-radius: 8px;
+  background: var(--cut-soft);
+}
+.allowance-row .unit-input {
+  width: 150px;
+  flex: none;
+}

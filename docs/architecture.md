@@ -60,7 +60,8 @@ src/
       PartsScreen.tsx    設定（たたむ）・［仕上がり］［木取り］のタブ・部材の一覧
       KidoriScreen.tsx   木取りの結果・切り出しチェック
     components/
-      SettingsPanel.tsx  板のサイズ・刃厚・端切り・切り代・切り方
+      BoardSettings.tsx  木取りの画面の上の板（3×6・4×8・自由入力）・刃厚・端切り・切り代・切り方（第1.2版。SettingsPanel.tsx はなくした）
+      AdjustPanel.tsx    部材の画面の上のたたんだ「調整寸法」（第1.2版）
       AdjustList.tsx     調整寸法の一覧・追加（逃げ／ほぞ／自由入力）
       PartRow.tsx        部材の1行（式 ｜ 計算した寸法、仕上がりの完了）
       PartEditor.tsx     部材の編集（名前・W・H・枚数・回転・複製）
@@ -418,3 +419,9 @@ export interface CellClip { rows: number; cols: number; cells: string[][] } // c
 - 「調整寸法」のタブの「＋ 追加」：`FormulaKeys` の `onAddAdjust(draft)`（`PartsTable` が store の `addAdjust` を呼び、足した id を返す）。重なりの判定は `store/jobs.ts` の `validateAdjust`。足したら `{n:id}` をカーソルの位置に入れる
 - 「＋ 5行足す」：`ui/partsTable.ts` の `tableRowCount(partCount, minRows)`・`addRowsMin`。足した行の下限は `sessionTableMinRows`／`setSessionTableMinRows`（モジュールの中の Map。仕事ごと・保存しない）
 - 部材の画面の上のたたんだ欄は `AdjustPanel.tsx`（中身は `AdjustList.tsx`）
+
+### 8.3 板〜切り方を木取りの画面へ・切り代（U-16。spec 16.3・16.4）
+
+- 木取りの画面の上は `BoardSettings.tsx`：［3×6］［4×8］は `compareStandardSizes` の枚数・歩留まり、［自由入力］は今の板の `packJob` の結果。押すと `setSheet`。刃厚・端切り・切り代・切り方は `updateSettings`。「3×6 と 4×8 の比べ」の別の欄はなくした
+- 部材の画面の［木取り］のタブのときだけ、表の上に切り代の欄（`NumberField`・`updateSettings`）。木取りの画面の切り代と同じ `job.settings.allowance`
+- 部材の画面の `SettingsPanel.tsx` はなくした
