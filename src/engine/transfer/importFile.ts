@@ -7,7 +7,7 @@ import type { Adjust, AppData, FrozenSheet, Job, Part } from '../types'
 import type { TransferFile } from './envelope'
 
 export interface ImportResult {
-  /** 取り込んだあとの保存データ（仕事は後ろに足す。今ある仕事・コピーした部材は変えない） */
+  /** 取り込んだあとの保存データ（仕事は後ろに足す。今ある仕事・コピーしたセルは変えない） */
   data: AppData
   /** 足した仕事の id（足した順） */
   jobIds: string[]

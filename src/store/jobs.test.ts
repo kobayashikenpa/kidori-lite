@@ -13,7 +13,6 @@ import {
   newPart,
   removeAdjusts,
   removePart,
-  removeParts,
   renameJob,
   setAllRotatable,
   setSheet,
@@ -166,12 +165,6 @@ describe('部材', () => {
     job = okJob(insertPart(job, 99, newPart('n2', { name: '地板' })))
     expect(job.parts.at(-1)?.id).toBe('n2')
     expect(insertPart(job, 0, newPart('n3', { name: '天板' })).ok).toBe(false)
-  })
-
-  it('選んだ部材をまとめて消す。1つも無ければ断る', () => {
-    const job = okJob(removeParts(shelfJob(), ['part-zentai', 'part-tanaita', 'nothing']))
-    expect(job.parts.map((p) => p.id)).toEqual(['part-tenita', 'part-gawaita'])
-    expect(removeParts(shelfJob(), ['nothing']).ok).toBe(false)
   })
 
   it('全部回転してよい／全部回転しない。変わらなければ同じ仕事を返す', () => {

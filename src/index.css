@@ -1024,21 +1024,7 @@ h3 > .help {
   background: var(--accent);
 }
 
-/* ---------- 部材のコピーと貼り付け（仕様書 5.3） ---------- */
-.parts-copy {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.parts-copy {
-  flex-wrap: wrap;
-}
-.parts-copy .btn {
-  flex: 1 1 auto;
-  padding: 8px 6px;
-  min-width: 0;
-  font-size: 14px;
-}
+/* ---------- 選んでいるときの下のバー（U-14 で作り直す） ---------- */
 .pick-bar {
   position: sticky;
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 8px);
@@ -1061,83 +1047,6 @@ h3 > .help {
   background: var(--warn-soft);
   color: var(--warn);
   margin: 0;
-}
-.paste-sum {
-  margin: 0;
-  font-size: 17px;
-}
-.paste-skip {
-  color: var(--err);
-  font-weight: 700;
-}
-.paste-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-left: 5px solid var(--fin);
-  border-radius: 8px;
-  background: var(--surface);
-}
-.paste-row {
-  padding: 8px 10px;
-  min-width: 0;
-}
-.paste-row + .paste-row {
-  border-top: 1px solid var(--line);
-}
-.paste-row.skip {
-  background: var(--sunk);
-  color: var(--muted);
-}
-.paste-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0 8px;
-}
-.paste-name {
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-.paste-row.skip .paste-name {
-  text-decoration: line-through;
-}
-.paste-qty {
-  font-size: 13px;
-  color: var(--muted);
-}
-.paste-dims {
-  display: flex;
-  flex-direction: column;
-  font-size: 14px;
-  color: var(--fin);
-}
-.paste-row.skip .paste-dims {
-  color: var(--muted);
-}
-.paste-dim {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.paste-axis {
-  flex: none;
-  font-weight: 700;
-  width: 1.2em;
-}
-.paste-reason {
-  margin: 4px 0 0;
-  color: var(--err);
-  font-weight: 700;
-  font-size: 14px;
-}
-.paste-warn {
-  margin: 4px 0 0;
-  color: var(--warn);
-  font-weight: 700;
-  font-size: 14px;
 }
 
 /* ---------- 木取りの画面（仕様書 8） ---------- */

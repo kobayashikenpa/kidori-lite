@@ -28,7 +28,7 @@ function readFile(text: string): TransferFile {
 
 /** 受け取る人の保存データ（調整寸法の id は送る人と違う） */
 function receiver(adjusts: Adjust[] = [{ id: 'r-mel', name: 'メラミン', value: 1 }, { id: 'r-sheet', name: 'シート', value: 0.5 }]): AppData {
-  return { version: 1, jobs: [shelfJob('job-mine', '自分の仕事')], adjusts, clipboard: null }
+  return { version: 1, jobs: [shelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null }
 }
 
 /** 寸法の値（名前・仕上がり・木取り・エラーの種類）。調整寸法の id によらず比べられる */
@@ -52,7 +52,7 @@ describe('仕事1つのファイルを取り込む', () => {
     expect(got.parts.map((p) => [p.name, p.quantity, p.rotatable])).toEqual(src.parts.map((p) => [p.name, p.quantity, p.rotatable]))
     expect(dimsOf(got, r.data.adjusts)).toEqual(dimsOf(src, shelfAdjusts()))
     expect(packJob(got, computeDimensions(got, r.data.adjusts)).sheetCount).toBe(packJob(src, computeDimensions(src, shelfAdjusts())).sheetCount)
-    expect(r.data.clipboard).toBeNull()
+    expect(r.data.cellClip).toBeNull()
   })
 
   it('仕事と部材の id は新しくする。作った日・変えた日は取り込んだ時刻', () => {
@@ -136,7 +136,7 @@ describe('バックアップを取り込む', () => {
     const used = freezeAt(shelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 2 })
     used.parts[1] = { ...used.parts[1], finishedDone: true }
     used.parts[2].expr.H = `700 - {n:${SHEET_ID}}`
-    return { version: 1, jobs: [used, shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), clipboard: null }
+    return { version: 1, jobs: [used, shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null }
   }
 
   it('全部の仕事がコピーとして足され、切り出しチェック・仕上がりの完了も戻る', () => {
@@ -197,7 +197,7 @@ describe('バックアップを取り込む', () => {
   })
 
   it('バックアップの中で同じ名前の仕事どうしも重ならない名前にする', () => {
-    const src: AppData = { version: 1, jobs: [shelfJob('a', '棚'), shelfJob('b', '棚')], adjusts: shelfAdjusts(), clipboard: null }
+    const src: AppData = { version: 1, jobs: [shelfJob('a', '棚'), shelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null }
     const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
     expect(r.data.jobs.map((j) => j.name)).toEqual(['自分の仕事', '棚', '棚のコピー'])
   })

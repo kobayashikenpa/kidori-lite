@@ -3,7 +3,7 @@
 import type { AppData } from '../types'
 import { TRANSFER_APP, TRANSFER_VERSION, type BackupFile } from './envelope'
 
-/** バックアップの中身：全部の仕事（切り出しチェック・仕上がりの完了も）と調整寸法の一覧をそのまま。コピーした部材は入れない */
+/** バックアップの中身：全部の仕事（切り出しチェック・仕上がりの完了も）と調整寸法の一覧をそのまま。コピーしたセルは入れない */
 export function backupFile(data: Pick<AppData, 'jobs' | 'adjusts'>): BackupFile {
   return { app: TRANSFER_APP, kind: 'backup', version: TRANSFER_VERSION, jobs: data.jobs, adjusts: data.adjusts }
 }

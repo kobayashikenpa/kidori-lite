@@ -1,6 +1,6 @@
 // 保存データ・共有とバックアップのファイルの中身の形の確かめ（store/storage.ts から移した。第1.1版 E-11）。
 // 手で書き換えたデータや途中までのデータで画面が真っ白にならないよう、形が違えば「読めない」とする
-import type { Adjust, CopiedPart, FrozenSheet, Job, Part, Settings, Sheet } from './types'
+import { CELL_COLS, type Adjust, type CellClip, type FrozenSheet, type Job, type Part, type Settings, type Sheet } from './types'
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -34,19 +34,30 @@ function isExpr(v: unknown): v is Part['expr'] {
   return isRecord(v) && isString(v.W) && isString(v.H)
 }
 
-export function isCopiedPart(v: unknown): v is CopiedPart {
+export function isPart(v: unknown): v is Part {
   return (
     isRecord(v) &&
+    isString(v.id) &&
     isString(v.name) &&
     isExpr(v.expr) &&
     // 枚数は 0 以上の整数か、空（null。第1.1版）
     (v.quantity === null || (Number.isInteger(v.quantity) && (v.quantity as number) >= 0)) &&
-    typeof v.rotatable === 'boolean'
+    typeof v.rotatable === 'boolean' &&
+    typeof v.finishedDone === 'boolean'
   )
 }
 
-export function isPart(v: unknown): v is Part {
-  return isCopiedPart(v) && isString((v as Record<string, unknown>).id) && typeof (v as Record<string, unknown>).finishedDone === 'boolean'
+/** コピーしたセル（第1.2版）：1〜部材の表の列の数の四角い形で、中身は全部文字 */
+export function isCellClip(v: unknown): v is CellClip {
+  if (!isRecord(v) || !Number.isInteger(v.rows) || !Number.isInteger(v.cols)) return false
+  const rows = v.rows as number
+  const cols = v.cols as number
+  if (rows < 1 || cols < 1 || cols > CELL_COLS.length) return false
+  return (
+    Array.isArray(v.cells) &&
+    v.cells.length === rows &&
+    v.cells.every((r) => Array.isArray(r) && r.length === cols && r.every(isString))
+  )
 }
 
 /** 固定した1枚は計算の写しなので、画面が使う所（id・板・1枚の片・チェック）だけ確かめる */

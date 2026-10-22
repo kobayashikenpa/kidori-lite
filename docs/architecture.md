@@ -43,7 +43,8 @@ src/
       sheetChecklist.ts  1枚ごとのチェックの一覧（同じ部材を1行）← kidori：sheetChecklist.ts
       partProgress.ts    部材ごとの進み具合（2/5）               ← kidori：partProgress.ts
     clipboard/
-      copy.ts            部材のコピー（式のまま）・貼り付けの確認（足せる／足せない）・複製の名前  ← 新しく作る
+      copy.ts            部材の複製・複製の名前（第1.1版の部材まるごとのコピー・貼り付けは第1.2版でなくした）  ← 新しく作る
+      cells.ts           セルのコピーと貼り付け・消す・行を削除（第1.2版 E-12。8.1）  ← 新しく作る
     parts.ts             表示用の名前（空なら #行番号）・式から参照できる部材・切り出す枚数（第1.1版 E-10。7.1）
     shape.ts             仕事・部材・調整寸法の形の確かめ（保存データとファイルの読み込みで使う。第1.1版 E-11）
     transfer/            共有とバックアップのファイル（envelope・share・backup・read・importFile。第1.1版 E-11。7.2） ← kidori：store/transfer/ を参考に作り直す
@@ -65,7 +66,7 @@ src/
       PartEditor.tsx     部材の編集（名前・W・H・枚数・回転・複製）
       FormulaInput.tsx   式の入力（ボタン・カーソル・部材｜調整寸法のタブ）← kidori の操作を参考
       Numpad.tsx         数字キー
-      PastePreview.tsx   貼り付けの確認
+      PastePreview.tsx   貼り付けの確認（第1.2版でなくした）
       SheetDiagram.tsx   配置図（SVG）
       SheetChecklist.tsx 1枚ごとの切り出しチェック
       Help.tsx           「ⓘ」の説明
@@ -152,11 +153,8 @@ export interface AppData {
   version: 1
   jobs: Job[]
   adjusts: Adjust[]             // 初めは メラミン1・シート0.5
-  clipboard: CopiedPart[] | null // 最後にコピーした部材
+  cellClip: CellClip | null     // 最後にコピーしたセル（第1.2版。8.1。第1.1版までは clipboard: CopiedPart[] | null）
 }
-
-/** コピーした部材（id は持たない。式は式のまま。{n:id} の調整寸法はアプリ全体なのでそのまま使える） */
-export type CopiedPart = Omit<Part, 'id' | 'finishedDone'>
 
 // ---------- 寸法の計算結果 ----------
 
@@ -276,6 +274,8 @@ export interface PackingResult {
 
 ### 3.6 コピーと貼り付け（`clipboard/copy.ts`）— 新しく作る
 
+> 第1.2版で `copyParts`・`previewPaste`・`applyPaste`・`CopiedPart`・`AppData.clipboard` はなくした（セルのコピーと貼り付けに替えた。8.1）。残っているのは `duplicateName`・`duplicatePart` だけ。下は第1.1版の記録
+
 - `copyParts(job, partIds)` → `CopiedPart[]`（並び順は画面の順。式は式のまま。id・仕上がりの完了は持たない）
 - `previewPaste(job, copied, adjusts)` → `{ rows, addCount, skipCount, hasWarnings }`
   - `rows` は行ごとに `{ part, ok: true, warnings }` か `{ part, ok: false, reason: 'duplicateName', message: '棚板 はもうあります', warnings }`
@@ -380,3 +380,34 @@ const READ_FAILED = '読み込めませんでした'
 - 番号を押すとメニュー（`PartMenu.tsx`。下から出るシート）：回転・仕上がりの完了は `updatePart`、複製は `duplicatePart`、上に行を入れるは `insertPart`（その位置に空の部材を入れ、`PartsTable` の `editName` で名前の欄を選ぶ）、削除は `removePart`（`partsReferencing` で使われていれば確認）（U-12）
 - 「全部回転してよい」は `rotationState`（全部／一部／なし）と `setAllRotatable`。「選んで削除」は `removeParts`（確認の注意は `referencingOthers`＝`partsReferencing` をまとめたもの）（U-12）
 - ［木取り］のタブは `CutTable.tsx`（同じ表の形で見るだけ。`cutDimCell`・`cutQuantityText`・`partCutProgress`）。部材の編集シート（PartEditor）・古い一覧（PartRow）・式の欄（FormulaInput）はなくした（U-12）
+
+## 8. 第1.2版の変更（仕様書 16章）
+
+### 8.1 セルのコピーと貼り付け（E-12。`src/engine/clipboard/cells.ts`）
+
+```ts
+// types.ts
+export type CellCol = 'name' | 'W' | 'H' | 'qty'                 // 表の列（左から）
+export const CELL_COLS: readonly CellCol[] = ['name', 'W', 'H', 'qty']
+export interface CellPos { row: number; col: CellCol }           // row は表の行（0 から。job.parts の位置。部材の数以上は空の行）
+export interface CellClip { rows: number; cols: number; cells: string[][] } // cells[行][列]。名前・式は書いたまま、枚数は数字の文字、空は ''
+// AppData.cellClip: CellClip | null（最後の1回分。ほかの仕事でも貼れる）
+```
+
+| 関数 | 内容 |
+|---|---|
+| `selectionShape(cells)` | `{ kind: 'none' }`／`{ kind: 'range', top, left, rows, cols }`（1つのセルは 1×1。left は列の位置 0〜3）／`{ kind: 'scattered' }`。押した順・同じセルの重なりは問わない |
+| `cellText(job, pos)` | セルの中身の文字（空の行は ''） |
+| `copyCells(job, cells)` | `{ ok: true, clip }`／`{ ok: false, message: 'コピーは1つのセルか、四角い範囲を選んでください' }` |
+| `pasteCells(job, clip, cells, newId)` | `{ ok: true, job, pasted, skipped: { cell, reason, message }[] }`／`{ ok: false, message: '貼るセルを選んでください' }`。reason は `duplicateName`（同じ名前は貼れません）・`invalidName`（名前に使えない文字。validatePartName の文）・`notQuantity`（枚数には 0 以上の整数だけ貼れます） |
+| `clearCells(job, cells)` | 中身を空に（枚数は null）。行の全部の欄が空になった部材（`parts.ts` の `isBlankPart`）は消す |
+| `deleteRows(job, cells)` | 選んだセルのある行の部材をまとめて消す。`selectedPartIds(job, cells)` で消す部材の id（式で使われているかは `ui/partsTable` の `referencingOthers`＝`partsReferencing` で確かめる） |
+
+- **貼り付け**：1×1 のコピーは選んだセル全部に同じもの。範囲のコピーは選んだセルの一番左上（いちばん上の行・いちばん左の列。四角でない選び方なら外枠の左上）から同じ形。枚数の右にはみ出す列は貼らない（貼れなかった数にも入れない）
+- 空の行（部材の数以上）に貼ると部材を作る（`newId('part')`・名前と W・H は空・枚数は空・回転しない）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）。空だけを貼った行は作らない
+- 名前は前後の空白を外して入れる。貼ったあとに名前のある部材どうしで同じ名前（`normalizePartName`）になるものは貼らない：元のまま残る名前と重なる名前は貼らず、貼るものどうしで重なるときは上（左）の1つだけ貼る（入れ替え A・B → B・A は貼れる）。ほかの式の参照は書き換えない（名前の変更ではない）
+- W・H は文字のまま式として入れる（読めなければ計算のエラー）。枚数は 0 以上の整数（全角の数字も）だけ、空は空に
+- 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
+- **保存データ**：`store/storage.ts` の `parseAppData` は `cellClip` を `shape.ts` の `isCellClip` で確かめ、形が違えば null（仕事は読める）。第1.1版までの `clipboard` はあっても読んで捨てる。バックアップ・共有のファイルには入れない
+- **store**（`reducer.ts`）：`{ type: 'copyCells', cells }`（`cellClip` を置き換える。仕事は変えない）、`{ type: 'pasteCells', cells }`（結果の `paste: { pasted, skipped }`）、`{ type: 'clearCells', cells }`、`{ type: 'deleteRows', cells }`（空の行だけなら「削除する行を選んでください」）。どれも `jobId` を省くと開いている仕事。古い `copyParts`・`pasteParts`・`removeParts` と `jobs.ts` の `removeParts` はなくした
+- 画面の古い「選んでコピー」「貼り付け（◯件）」「選んで削除」と `PastePreview.tsx` は外した。新しい画面は U-14

@@ -127,7 +127,7 @@ describe('defaultAppData（初めて開いたときの保存データ）', () =>
     expect(d.version).toBe(1)
     expect(d.jobs).toEqual([])
     expect(d.adjusts.map(adjustName)).toEqual(['メラミン1', 'シート0.5'])
-    expect(d.clipboard).toBeNull()
+    expect(d.cellClip).toBeNull()
   })
 })
 

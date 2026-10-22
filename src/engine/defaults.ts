@@ -54,9 +54,9 @@ export function createJob(args: { id: string; name: string; now: string; setting
   }
 }
 
-/** 初めて開いたときの保存データ：仕事なし・調整寸法は初期値・コピーした部材なし */
+/** 初めて開いたときの保存データ：仕事なし・調整寸法は初期値・コピーしたセルなし */
 export function defaultAppData(newId: (prefix: string) => string): AppData {
-  return { version: 1, jobs: [], adjusts: defaultAdjusts(newId), clipboard: null }
+  return { version: 1, jobs: [], adjusts: defaultAdjusts(newId), cellClip: null }
 }
 
 /**

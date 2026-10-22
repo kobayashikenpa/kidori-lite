@@ -1,6 +1,6 @@
 // 名前が空の部材・枚数が空の部材（第1.1版 E-10。仕様書 15.1・15.2）
 import { describe, expect, it } from 'vitest'
-import { applyPaste, duplicatePart, previewPaste } from './clipboard/copy'
+import { duplicatePart } from './clipboard/copy'
 import { computeDimensions } from './dimensions'
 import { partsReferencing } from './dimensions/resolve'
 import { freezeAt, withPart } from './fixtures/progress'
@@ -129,20 +129,6 @@ describe('名前が空の部材', () => {
     expect(partsReferencing(job.parts, 'part-tenita').map((r) => r.name)).toContain('#5')
     const u = adjustUsages({ jobs: [job] }, adjusts[0].id)
     expect(u.map((x) => x.partName)).toEqual(['棚板', '#5'])
-  })
-
-  it('貼り付け：名前が空の部材は、今の部材にも貼る部材どうしにも重ならない', () => {
-    const job = withParts(part('p5', '', '300', '400', 1))
-    const copied = [
-      { name: '', expr: { W: '100', H: '100' }, quantity: 1, rotatable: false },
-      { name: '', expr: { W: '200', H: '200' }, quantity: null, rotatable: false },
-    ]
-    const prev = previewPaste(job, copied, adjusts)
-    expect(prev.addCount).toBe(2)
-    expect(prev.skipCount).toBe(0)
-    const after = applyPaste(job, copied, (p) => `${p}-new-${Math.random()}`)
-    expect(after.parts).toHaveLength(7)
-    expect(after.parts[6].quantity).toBeNull()
   })
 
   it('複製：名前が空なら空のまま', () => {

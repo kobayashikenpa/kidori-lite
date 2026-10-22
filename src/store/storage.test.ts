@@ -22,7 +22,7 @@ const ids = () => {
   let n = 0
   return (p: string) => `${p}-${++n}`
 }
-const sample = (): AppData => ({ version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), clipboard: null })
+const sample = (): AppData => ({ version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null })
 
 describe('キー', () => {
   it('すべて kidori-lite. で始まる', () => {
@@ -78,7 +78,34 @@ describe('保存と読み込み', () => {
     st.setItem(DATA_KEY, v1)
     const r = loadSaved(st, ids(), NOW)
     expect(r.status).toBe('ok')
-    expect(r.data).toEqual(JSON.parse(v1))
+    // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）
+    const { clipboard: _old, ...rest } = JSON.parse(v1) as Record<string, unknown>
+    expect(r.data).toEqual({ ...rest, cellClip: null })
+    expect('clipboard' in r.data).toBe(false)
+  })
+
+  it('第1.1版の保存データ（名前・枚数が空・コピーした部材が空）も読める', () => {
+    const data = { ...sample(), clipboard: null } as Record<string, unknown>
+    delete data.cellClip
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(data))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data).toEqual(sample())
+  })
+
+  it('コピーしたセル（第1.2版）を保存して読み戻せる。形が違うコピーは捨てて、仕事は読める', () => {
+    const data = sample()
+    data.cellClip = { rows: 2, cols: 2, cells: [['棚板', '天板.W - 20'], ['', '3']] }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+    for (const bad of [{ rows: 2, cols: 1, cells: [['1']] }, { rows: 1, cols: 5, cells: [['', '', '', '', '']] }, { rows: 1, cols: 1, cells: [[3]] }, 'x']) {
+      st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: bad }))
+      const r = loadSaved(st, ids(), NOW)
+      expect(r.status).toBe('ok')
+      expect(r.data).toEqual({ ...data, cellClip: null })
+    }
   })
 
   it('名前が空・枚数が空（null）の部材も保存して読み戻せる（第1.1版）', () => {
@@ -87,7 +114,6 @@ describe('保存と読み込み', () => {
       { id: 'p5', name: '', expr: { W: '300', H: '400' }, quantity: null, rotatable: false, finishedDone: false },
       { id: 'p6', name: '', expr: { W: '300', H: '400' }, quantity: 1, rotatable: false, finishedDone: false },
     )
-    data.clipboard = [{ name: '', expr: { W: '1', H: '2' }, quantity: null, rotatable: false }]
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     const r = loadSaved(st, ids(), NOW)
@@ -123,7 +149,7 @@ describe('保存と読み込み', () => {
 describe('壊れた保存データ', () => {
   it.each([
     ['JSON でない', '{こわれた'],
-    ['形が違う', JSON.stringify({ version: 1, jobs: 'x', adjusts: [], clipboard: null })],
+    ['形が違う', JSON.stringify({ version: 1, jobs: 'x', adjusts: [], cellClip: null })],
     ['版が違う', JSON.stringify({ ...sample(), version: 2 })],
     ['部材の枚数がおかしい', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: -1 }] }] })],
     ['部材の枚数が文字', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: '1' }] }] })],

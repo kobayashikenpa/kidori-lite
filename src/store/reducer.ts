@@ -2,9 +2,10 @@
 // kidori の store/reducer.ts を参考に作り直したもの。
 // 操作の中で id・時刻を作るので、reduce は「id の作り方と今の時刻（env）」を引数で受ける純粋関数にする。
 // 画面からは JobStore の dispatch で1回だけ当てる（React が reducer を2回呼んでも id がずれないように、結果の状態を置き換える）
-import { applyPaste, copyParts, duplicatePart } from '../engine/clipboard/copy'
+import { clearCells, copyCells, deleteRows, pasteCells, type PasteSkip } from '../engine/clipboard/cells'
+import { duplicatePart } from '../engine/clipboard/copy'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
-import type { AppData, Job, Part, Settings, Sheet } from '../engine/types'
+import type { AppData, CellPos, Job, Part, Settings, Sheet } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -15,7 +16,6 @@ import {
   newPart,
   removeAdjusts,
   removePart,
-  removeParts,
   renameJob,
   setAllRotatable,
   setSheet,
@@ -68,16 +68,21 @@ export type StoreAction =
   | ({ type: 'removePart'; partId: string } & OnJob)
   /** 部材を index の位置（その部材の上）に入れる（id は作る。番号のメニューの「上に行を入れる」） */
   | ({ type: 'insertPart'; index: number; part: Partial<Omit<Part, 'id'>> } & OnJob)
-  /** 選んだ部材をまとめて消す（「選んで削除」） */
-  | ({ type: 'removeParts'; partIds: string[] } & OnJob)
   /** 全部の部材を回転してよい（true）／回転しない（false）にする */
   | ({ type: 'setAllRotatable'; rotatable: boolean } & OnJob)
   /** 部材の複製（元のすぐ後ろ。名前は「棚板のコピー」） */
   | ({ type: 'duplicatePart'; partId: string } & OnJob)
-  /** 選んだ部材をコピーする（アプリが覚える。最後の1回分だけ） */
-  | ({ type: 'copyParts'; partIds: string[] } & OnJob)
-  /** コピーした部材のうち足せるものを、今の部材の後ろに足す */
-  | ({ type: 'pasteParts' } & OnJob)
+  /**
+   * 選んだセルをコピーする（1つのセルか四角い範囲だけ。アプリが覚える＝AppData.cellClip。最後の1回分だけ）。
+   * 仕事は変えない（updatedAt も付けない）
+   */
+  | ({ type: 'copyCells'; cells: CellPos[] } & OnJob)
+  /** コピーしたセルを、選んだセルに貼る（engine の pasteCells）。結果の paste に貼った数・貼れなかったセル */
+  | ({ type: 'pasteCells'; cells: CellPos[] } & OnJob)
+  /** 選んだセルの中身を消す（行の全部の欄が空になった部材は消える） */
+  | ({ type: 'clearCells'; cells: CellPos[] } & OnJob)
+  /** 選んだセルのある行の部材をまとめて消す（式で使われているかの確認は画面の側で先に行う） */
+  | ({ type: 'deleteRows'; cells: CellPos[] } & OnJob)
   /** 切り出しチェック（その1枚の、ある部材の片をまとめて付け外し） */
   | ({ type: 'setPartCheck'; target: SheetTarget; partId: string; done: boolean } & OnJob)
   /** 切り出しチェック（片1つ） */
@@ -95,8 +100,14 @@ export type StoreAction =
   /** 読み込みの知らせを閉じる */
   | { type: 'dismissLoadError' }
 
-/** 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id */
-export type ReduceResult = { ok: true; state: StoreState; id?: string } | { ok: false; message: string }
+/** 貼り付けの結果（「◯つのセルに貼りました（貼れなかったもの ◯つ）」） */
+export interface PasteSummary {
+  pasted: number
+  skipped: PasteSkip[]
+}
+
+/** 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id。paste は貼り付け（pasteCells）のときだけ */
+export type ReduceResult = { ok: true; state: StoreState; id?: string; paste?: PasteSummary } | { ok: false; message: string }
 
 /** 読み込みの結果から最初の状態を作る */
 export function initialState(load: LoadResult): StoreState {
@@ -172,8 +183,6 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const id = env.newId('part')
       return onJob(state, action.jobId, env, (j) => insertPart(j, action.index, newPart(id, action.part)), id)
     }
-    case 'removeParts':
-      return onJob(state, action.jobId, env, (j) => removeParts(j, action.partIds))
     case 'setAllRotatable':
       return onJob(state, action.jobId, env, (j) => setAllRotatable(j, action.rotatable))
     case 'duplicatePart': {
@@ -186,21 +195,32 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       })
       return r.ok ? done(r.state, id) : r
     }
-    case 'copyParts': {
+    case 'copyCells': {
       const job = state.data.jobs.find((j) => j.id === (action.jobId ?? state.currentJobId))
       if (!job) return fail('仕事が開かれていません')
-      const copied = copyParts(job, action.partIds)
-      if (copied.length === 0) return fail('コピーする部材を選んでください')
-      return done({ ...state, data: { ...state.data, clipboard: copied } })
+      const r = copyCells(job, action.cells)
+      if (!r.ok) return fail(r.message)
+      return done({ ...state, data: { ...state.data, cellClip: r.clip } })
     }
-    case 'pasteParts': {
-      const copied = state.data.clipboard
-      if (!copied || copied.length === 0) return fail('コピーした部材がありません')
-      return onJob(state, action.jobId, env, (j) => {
-        const next = applyPaste(j, copied, env.newId)
-        return { ok: true, job: next.parts.length === j.parts.length ? j : next }
+    case 'pasteCells': {
+      const clip = state.data.cellClip
+      if (!clip) return fail('コピーしたセルがありません')
+      let paste: PasteSummary | undefined
+      const r = onJob(state, action.jobId, env, (j) => {
+        const p = pasteCells(j, clip, action.cells, env.newId)
+        if (!p.ok) return p
+        paste = { pasted: p.pasted, skipped: p.skipped }
+        return { ok: true, job: p.job }
       })
+      return r.ok && paste ? { ...r, paste } : r
     }
+    case 'clearCells':
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: clearCells(j, action.cells) }))
+    case 'deleteRows':
+      return onJob(state, action.jobId, env, (j) => {
+        const next = deleteRows(j, action.cells)
+        return next === j ? { ok: false, message: '削除する行を選んでください' } : { ok: true, job: next }
+      })
     case 'setPartCheck':
       return onJob(state, action.jobId, env, (j) =>
         setPartCheck(j, action.target, action.partId, action.done, env.now, env.newId('frozen')),

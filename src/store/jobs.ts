@@ -177,14 +177,6 @@ export function removePart(job: Job, partId: string): OpResult {
   return ok({ ...job, parts: job.parts.filter((p) => p.id !== partId) })
 }
 
-/** 選んだ部材をまとめて消す（無い id は無視する）。1つも無ければ断る */
-export function removeParts(job: Job, partIds: readonly string[]): OpResult {
-  const ids = new Set(partIds)
-  const parts = job.parts.filter((p) => !ids.has(p.id))
-  if (parts.length === job.parts.length) return fail('消す部材を選んでください')
-  return ok({ ...job, parts })
-}
-
 /** 全部の部材を「回転してよい」（true）か「回転しない」（false）にする。変わらなければ同じ仕事を返す */
 export function setAllRotatable(job: Job, rotatable: boolean): OpResult {
   if (job.parts.every((p) => p.rotatable === rotatable)) return ok(job)
