@@ -71,6 +71,38 @@ describe('仕事の操作', () => {
     expect(s.data.jobs).toEqual([])
     expect(s.currentJobId).toBeNull()
   })
+
+  it('見本を足す：「見本 棚」を一覧の最後に足し、開いている仕事は変えない（仕様書 16.7）', () => {
+    const r = run(start(), { type: 'addSample' })
+    expect(r.state.currentJobId).toBe('job-shelf')
+    expect(r.state.data.jobs).toHaveLength(2)
+    const sample = r.state.data.jobs[1]
+    expect(r.id).toBe(sample.id)
+    expect(sample.name).toBe('見本 棚')
+    // メラミン1 はもうあるので、調整寸法は変わらない
+    expect(r.state.data.adjusts).toEqual(shelfAdjusts())
+    expect(sample.parts[3].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
+    const p = packJob(sample, computeDimensions(sample, r.state.data.adjusts))
+    expect(p.sheets).toHaveLength(2)
+    expect(Math.round(p.yieldRate * 1000) / 10).toBe(57.2)
+  })
+
+  it('メラミン1 を消したあとで見本を足すと、メラミン1 が一覧に戻り、式はエラーにならない', () => {
+    const s = run(start(), { type: 'removeAdjusts', adjustIds: [MELAMINE_ID] }).state
+    const r = run(s, { type: 'addSample' })
+    const mel = r.state.data.adjusts.find((a) => a.name === 'メラミン' && a.value === 1)
+    expect(mel).toBeDefined()
+    const sample = r.state.data.jobs[1]
+    expect(sample.parts[3].expr.W).toBe(`天板.W - 20 - {n:${mel?.id}}`)
+    expect(computeDimensions(sample, r.state.data.adjusts).errors).toEqual([])
+  })
+
+  it('何回押しても1つずつ足す', () => {
+    const s = run(start(), { type: 'addSample' }).state
+    const r = run(s, { type: 'addSample' }, { newId: (p) => `${p}-x${Math.random()}`, now: T0 })
+    expect(r.state.data.jobs.map((j) => j.name)).toEqual(['棚', '見本 棚', '見本 棚'])
+    expect(r.state.data.adjusts).toHaveLength(2)
+  })
 })
 
 describe('部材の操作（開いている仕事）', () => {

@@ -1,0 +1,45 @@
+// 見本の仕事（仕様書 16.7・6章の棚：全体・天板・側板・棚板）を作る。kidori の store/sample.ts を参考にしたもの。
+// 設定は初期値。棚板の式で使う調整寸法「メラミン1」は、今の一覧から表示名で探し、無ければ足す
+import { adjustNameKey } from '../engine/defaults'
+import type { Adjust, Job, Part } from '../engine/types'
+import { makeJob } from './jobs'
+
+/** 見本の仕事の名前 */
+export const SAMPLE_NAME = '見本 棚'
+
+/** 見本で使う調整寸法 */
+export const SAMPLE_ADJUST = { name: 'メラミン', value: 1 } as const
+
+/**
+ * 見本の仕事を作る（純粋関数。押すたびに新しい id の仕事）。
+ * adjusts は今の調整寸法の一覧。メラミン1 があればその id を、無ければ最後に足した一覧を返す（元の一覧は書き換えない）
+ */
+export function sampleJob(
+  adjusts: readonly Adjust[],
+  now: Date,
+  newId: (prefix: string) => string,
+): { job: Job; adjusts: Adjust[] } {
+  const key = adjustNameKey(SAMPLE_ADJUST)
+  let list = [...adjusts]
+  let melamine = list.find((a) => adjustNameKey(a) === key)
+  if (!melamine) {
+    melamine = { id: newId('adjust'), ...SAMPLE_ADJUST }
+    list = [...list, melamine]
+  }
+  const job = makeJob(SAMPLE_NAME, now, newId('job'))
+  const part = (name: string, W: string, H: string, quantity: number): Part => ({
+    id: newId('part'),
+    name,
+    expr: { W, H },
+    quantity,
+    rotatable: false,
+    finishedDone: false,
+  })
+  job.parts = [
+    part('全体', '400', '1800', 0),
+    part('天板', '全体.W', '全体.H', 1),
+    part('側板', '全体.W', '700', 2),
+    part('棚板', `天板.W - 20 - {n:${melamine.id}}`, '天板.H - 20 × 2', 3),
+  ]
+  return { job, adjusts: list }
+}
