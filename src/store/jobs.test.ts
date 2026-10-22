@@ -128,6 +128,34 @@ describe('部材', () => {
     expect(addPart(job, newPart('p', { name: 'a', quantity: 0 })).ok).toBe(true)
   })
 
+  it('名前が空の部材は2つ以上足せる（空どうしは重ならない）。名前を空に変えられる（第1.1版）', () => {
+    let job = makeJob('x', NOW, 'job')
+    job = okJob(addPart(job, newPart('p1', { name: '', expr: { W: '100', H: '200' } })))
+    job = okJob(addPart(job, newPart('p2', { name: '  ', expr: { W: '100', H: '200' } })))
+    job = okJob(addPart(job, newPart('p3', { name: '天板' })))
+    expect(job.parts.map((p) => p.name)).toEqual(['', '', '天板'])
+    job = okJob(updatePart(job, 'p3', { name: '' }))
+    expect(job.parts[2].name).toBe('')
+    job = okJob(updatePart(job, 'p1', { name: '側板' }))
+    expect(updatePart(job, 'p2', { name: '側板' }).ok).toBe(false)
+  })
+
+  it('枚数は空（null）にできる（第1.1版）', () => {
+    let job = makeJob('x', NOW, 'job')
+    job = okJob(addPart(job, newPart('p1', { name: 'a', quantity: null })))
+    expect(job.parts[0].quantity).toBeNull()
+    job = okJob(updatePart(job, 'p1', { quantity: 2 }))
+    job = okJob(updatePart(job, 'p1', { quantity: null }))
+    expect(job.parts[0].quantity).toBeNull()
+  })
+
+  it('仕事のコピーは、名前が空・枚数が空の部材もそのまま写す', () => {
+    let job = makeJob('x', NOW, 'job')
+    job = okJob(addPart(job, newPart('p1', { name: '', quantity: null })))
+    const c = copyJob(job, NOW, 'job2', counter())
+    expect(c.parts[0]).toMatchObject({ name: '', quantity: null })
+  })
+
   it('名前を変えると、使っている式もつけ替わる', () => {
     const job = okJob(updatePart(shelfJob(), 'part-tenita', { name: '天板A' }))
     expect(job.parts[3].expr).toEqual({ W: `天板A.W - 20 - {n:${MELAMINE_ID}}`, H: '天板A.H - 20 × 2' })

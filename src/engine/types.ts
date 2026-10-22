@@ -70,12 +70,15 @@ export interface Adjust {
 /** 部材 */
 export interface Part {
   id: string
-  /** 仕事の中で重複不可（全角・半角の違いは同じとみなす）。式の参照に使う */
+  /**
+   * 仕事の中で重複不可（全角・半角の違いは同じとみなす）。式の参照に使う。
+   * 空でもよい（第1.1版）。空どうしは重ならず、画面では「#3」（行番号）と出す（parts.ts の partLabel）。空の部材は式から参照できない
+   */
   name: string
   /** 仕上がり寸法の入力（数値または式の文字列） */
   expr: Record<Axis, string>
-  /** 枚数（0 は切り出さない寸法だけの行） */
-  quantity: number
+  /** 枚数（0 は切り出さない寸法だけの行。null は枚数が空＝寸法は計算するが、木取り・必要な枚数・進み具合・比べに入れない） */
+  quantity: number | null
   /** 回転してよい（W・H を入れ替えて置いてよい）。初期値 false */
   rotatable: boolean
   /** 仕上がりの完了のチェック。木取りの計算には影響しない */
@@ -136,8 +139,10 @@ export interface DimensionError {
 
 export interface PartDimensions {
   partId: string
+  /** 表示用の名前（名前が空なら「#行番号」。parts.ts の partLabelAt） */
   name: string
-  quantity: number
+  /** 部材の枚数（null は枚数が空） */
+  quantity: number | null
   /** 仕上がり寸法（式の計算結果）。エラーがあれば null */
   finished: Record<Axis, number> | null
   /** 木取り寸法（仕上がり ＋ 切り代。W・H それぞれに1回）。エラーがあれば null */
@@ -183,6 +188,7 @@ export interface Placement extends Rect {
    */
   pieceId: string
   partId: string
+  /** 表示用の名前（並べたときの partLabel。名前が空なら「#行番号」） */
   name: string
   /** 部材の W を板の妻手方向に置いたとき false、W を長手方向に置いた（回転した）とき true（置き方によらない） */
   rotated: boolean
@@ -247,9 +253,9 @@ export interface PackingResult {
   sheetCount: number
   /** 全体の歩留まり */
   yieldRate: number
-  /** 板に収まらない部材 */
+  /** 板に収まらない部材（name は表示用の名前） */
   unplaced: { partId: string; name: string; reason: UnplacedReason }[]
-  /** 寸法のエラーで計算から外した部材 */
+  /** 寸法のエラーで計算から外した部材（name は表示用の名前。枚数が 0・空の部材は入れない） */
   skipped: { partId: string; name: string; reason: 'dimensionError' }[]
 }
 

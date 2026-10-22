@@ -44,6 +44,9 @@ src/
       partProgress.ts    部材ごとの進み具合（2/5）               ← kidori：partProgress.ts
     clipboard/
       copy.ts            部材のコピー（式のまま）・貼り付けの確認（足せる／足せない）・複製の名前  ← 新しく作る
+    parts.ts             表示用の名前（空なら #行番号）・式から参照できる部材・切り出す枚数（第1.1版 E-10。7.1）
+    shape.ts             仕事・部材・調整寸法の形の確かめ（保存データとファイルの読み込みで使う。第1.1版 E-11）
+    transfer/            共有とバックアップのファイル（envelope・share・backup・read・importFile。第1.1版 E-11。7.2） ← kidori：store/transfer/ を参考に作り直す
   store/
     storage.ts         localStorage の読み書き（try/catch）       ← kidori：storage.ts を参考に作り直す
     jobs.ts            仕事・部材・調整寸法の操作（純粋関数）
@@ -311,3 +314,59 @@ export interface PackingResult {
 
 - GitHub Pages。`main` に入ったら、チェック → ビルド → 公開（kidori の `.github/workflows/deploy.yml` と同じ）
 - ホーム画面に追加できるよう `public/manifest.webmanifest` とアイコンを置く（アイコンは kidori と同じ。名前・短い名前は「Kidori Lite」。オーナー決定）
+
+## 7. 第1.1版の変更（仕様書 15章）
+
+### 7.1 名前が空の部材・枚数が空の部材（E-10。`src/engine/parts.ts`）
+
+```ts
+export interface Part {
+  id: string
+  name: string                  // 空でもよい。重なりの判定は名前のある部材どうしだけ。空の部材は式から参照できない
+  expr: Record<Axis, string>
+  quantity: number | null       // null＝枚数が空（寸法は計算するが、木取り・必要な枚数・進み具合・比べに入れない）。0 は寸法だけの行
+  rotatable: boolean
+  finishedDone: boolean
+}
+// PartDimensions.quantity も number | null。PartDimensions.name は表示用の名前（下の partLabelAt）
+```
+
+- `hasName(part)`：名前があるか（前後の空白を外して空でない）
+- `partLabel(job, partId)` → 名前があれば名前、空なら「#行番号」（`job.parts` の並びで 1 から）。部材が無ければ `''`
+- `partLabelAt(part, index)`・`partLabels(parts)`（id → 表示用の名前の Map）：たくさん出すとき用
+- `referableParts(parts)`：式の「部材」のボタンに出す部材（名前のある部材だけ）
+- `cutQuantity(quantity)`：切り出す枚数（null と 0 は 0）
+- 表示用の名前を使う所：`computeDimensions` の `PartDimensions.name`（→ `Placement.name`・`unplaced`・`skipped`）、エラーの文の `部材.W`、`partsReferencing`、`adjustUsages`・`partsUsingAdjust` の部材名、`sheetChecklist`・`sheetPartChecklist`、`frozenSheetViews` の drift、`partCutProgress`
+- 行番号は今の並び順なので、上に行を入れると変わる。チェックの一覧・進み具合・drift は今の行番号で出す。固定した1枚の写しの `Placement.name` は固定したときの表示名のまま（部材を消したときだけ使う）
+- 名前の重なり：`validatePartName('')` は null（使える）。`otherNames` の空の名前とは比べない。`previewPaste`・`applyPaste` も名前のある部材どうしだけ比べる。`duplicateName(job, '')` は `''`（複製しても空のまま）
+- `renamePart` で空にする／空から名前を付けるときは、ほかの式を書き換えない（空にした部材を参照していた式は元の名前のまま残り、`unknownRef` になる）（暫定）
+- 枚数が空：`expandPieces` で片にしない（エラーがあっても `skipped` に出さない）。`partCutProgress` に入れない。固定した片がある部材の枚数を空にすると drift は `count`（0 枚とみなす）（暫定）
+- 保存データ：`store/storage.ts` の形の確かめは `quantity: null` と `name: ''` を通す。第1版のデータ（名前も枚数も入っている）はそのまま読める（`version` は 1 のまま）
+
+### 7.2 共有とバックアップのファイル（E-11。`src/engine/transfer/`）
+
+kidori の `store/transfer/`（envelope・share・backup・read）を参考に、engine の純粋関数として作り直した（材料・フラッシュ・重ね切りの組・版の移し替えは無い）。ブラウザの共有シート・ファイルの選択は画面（U-13）の側で行う。
+
+```ts
+// envelope.ts
+interface JobFile    { app: 'kidori-lite'; kind: 'job';    version: 1; job: Job;    adjusts: Adjust[] } // adjusts はその仕事の式で使っているものだけ
+interface BackupFile { app: 'kidori-lite'; kind: 'backup'; version: 1; jobs: Job[]; adjusts: Adjust[] } // 全部の仕事と調整寸法の一覧
+type TransferFile = JobFile | BackupFile
+const READ_FAILED = '読み込めませんでした'
+```
+
+| ファイル | 関数 | 内容 |
+|---|---|---|
+| `share.ts` | `jobFile(job, adjusts)` → `JobFile`、`buildJobFile(job, adjusts)` → JSON の文字列 | 切り出しチェック（`frozenSheets`）と仕上がりの完了を外す。調整寸法は式で使っているものだけ（アプリの一覧の並び） |
+| | `jobFileName(job)` → `本棚.kidori-lite.json` | 使えない文字（`\ / : * ? " < > |`・制御文字・空白）は `_` に置き換え、50 文字まで。空なら `仕事.kidori-lite.json`（暫定） |
+| `backup.ts` | `backupFile(data)`・`buildBackupFile(data)` | 全部の仕事（チェックも）と調整寸法の一覧をそのまま。コピーした部材（`clipboard`）は入れない |
+| | `backupFileName(now)` → `kidori-lite-バックアップ-2026-10-22.json` | 端末の日付 |
+| `read.ts` | `readTransferFile(text)` → `{ ok: true, kind: 'job', file, summary: { jobName, partCount } }` ／ `{ ok: true, kind: 'backup', file, summary: { jobCount, jobNames } }` ／ `{ ok: false, message: '読み込めませんでした' }` | 空・JSON でない・形が違う・`app` が違う（kidori のファイルを含む）・`version` が違う・20MB 超は読めない。例外を投げない。先頭の BOM は外す |
+| `importFile.ts` | `importTransfer(data, file, newId, now)` → `{ data, jobIds, addedAdjusts, message }` | 今の `AppData` に足した新しい `AppData`（下） |
+
+- **取り込み**（`importTransfer`）：仕事・部材・固定した1枚の id を `newId('job' | 'part' | 'frozen')` で振り直し、仕事の一覧の後ろにコピーとして足す（今ある仕事・コピーした部材は変えない）。仕事の名前が今の仕事と重なれば「棚のコピー」「棚のコピー2」（暫定）
+  - 調整寸法：ファイルの調整寸法ごとに、表示名（`adjustNameKey`）が同じものが今の一覧にあればその id、無ければ `newId('adjust')` で一覧の後ろに足す。式の `{n:id}` を `formula/usages.ts` の `remapAdjustIds(expr, map)` でつけ替える（ファイルに無い id＝削除した調整寸法はそのまま）
+  - 共有（`kind: 'job'`）：固定した1枚・仕上がりの完了は無し（ファイルに入っていても外す）。作った日・変えた日は `now`
+  - バックアップ（`kind: 'backup'`）：固定した1枚（片の `partId`・`pieceId`・`checked` を新しい部材の id につけ替える）・仕上がりの完了も戻す。作った日・変えた日はファイルのまま
+  - `message`：「「本棚」を取り込みました」／「3件の仕事を追加しました」。保存（`updatedAt` を付けない・開く仕事を変えない）は store の側で行う
+- **形の確かめ**（`src/engine/shape.ts`）：仕事・部材・調整寸法・コピーした部材の形の確かめ（`isJob`・`isAdjust`・`isCopiedPart`・`isRecord`）を `store/storage.ts` から engine に移し、保存データの読み込みとファイルの読み込みで同じものを使う

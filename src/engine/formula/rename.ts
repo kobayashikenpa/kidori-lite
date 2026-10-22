@@ -23,7 +23,8 @@ export type RenameResult = { ok: true; parts: Part[] } | { ok: false; message: s
 
 /**
  * 部材の名前を変え、すべての部材の式の参照をつけ替えた新しい一覧を返す（元の一覧は書き換えない）。
- * 使えない名前・ほかの部材と同じ名前ならエラー
+ * 使えない名前・ほかの部材と同じ名前ならエラー。空の名前にもできる（空どうしは重ならない。
+ * 空にした部材を参照していた式は、元の名前のまま残り「◯◯という部材はありません」のエラーになる）
  */
 export function renamePart(parts: readonly Part[], partId: string, newName: string): RenameResult {
   const target = parts.find((p) => p.id === partId)
@@ -35,6 +36,10 @@ export function renamePart(parts: readonly Part[], partId: string, newName: stri
     parts.filter((p) => p.id !== partId).map((p) => p.name),
   )
   if (invalid) return { ok: false, message: invalid }
+  // 名前が空の部材は参照されていない。空にするときは「.W」にしないよう、式はそのまま残す
+  if (oldName.trim() === '' || newName.trim() === '') {
+    return { ok: true, parts: parts.map((p) => (p.id === partId ? { ...p, name: newName } : p)) }
+  }
   return {
     ok: true,
     parts: parts.map((p) => ({

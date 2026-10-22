@@ -53,6 +53,48 @@ describe('保存と読み込み', () => {
     expect(r.currentJobId).toBe('job-shelf')
   })
 
+  it('第1版の保存データ（名前も枚数も入っている）をそのまま読める', () => {
+    // 第1版の形のまま文字で書いた保存データ
+    const v1 = JSON.stringify({
+      version: 1,
+      jobs: [
+        {
+          id: 'job-1',
+          name: '本棚',
+          settings: { sheet: { sizeKind: 'shihachi', width: 1220, length: 2430 }, kerf: 3, trim: 5, allowance: 10, cutMode: 'vertical' },
+          parts: [
+            { id: 'p1', name: '全体', expr: { W: '400', H: '1800' }, quantity: 0, rotatable: false, finishedDone: false },
+            { id: 'p2', name: '天板', expr: { W: '全体.W', H: '全体.H' }, quantity: 1, rotatable: false, finishedDone: true },
+          ],
+          frozenSheets: [],
+          createdAt: '2026-10-21T00:00:00.000Z',
+          updatedAt: '2026-10-21T00:00:00.000Z',
+        },
+      ],
+      adjusts: [{ id: 'a1', name: 'メラミン', value: 1 }],
+      clipboard: [{ name: '棚板', expr: { W: '300', H: '400' }, quantity: 2, rotatable: true }],
+    })
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, v1)
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data).toEqual(JSON.parse(v1))
+  })
+
+  it('名前が空・枚数が空（null）の部材も保存して読み戻せる（第1.1版）', () => {
+    const data = sample()
+    data.jobs[0].parts.push(
+      { id: 'p5', name: '', expr: { W: '300', H: '400' }, quantity: null, rotatable: false, finishedDone: false },
+      { id: 'p6', name: '', expr: { W: '300', H: '400' }, quantity: 1, rotatable: false, finishedDone: false },
+    )
+    data.clipboard = [{ name: '', expr: { W: '1', H: '2' }, quantity: null, rotatable: false }]
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data).toEqual(data)
+  })
+
   it('開いていた仕事が無ければ開いていない状態', () => {
     const st = new MemoryStorage()
     saveSaved(st, sample(), null)
@@ -84,6 +126,8 @@ describe('壊れた保存データ', () => {
     ['形が違う', JSON.stringify({ version: 1, jobs: 'x', adjusts: [], clipboard: null })],
     ['版が違う', JSON.stringify({ ...sample(), version: 2 })],
     ['部材の枚数がおかしい', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: -1 }] }] })],
+    ['部材の枚数が文字', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: '1' }] }] })],
+    ['部材の枚数が無い', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: undefined }] }] })],
     ['調整寸法が 0', JSON.stringify({ ...sample(), adjusts: [{ id: 'a', name: '逃げ', value: 0 }] })],
   ])('%s：空の一覧で始め「保存データを読めませんでした」。元のデータは書き換えず、控えに残す', (_label, raw) => {
     const st = new MemoryStorage()

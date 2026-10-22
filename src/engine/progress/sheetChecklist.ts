@@ -2,6 +2,7 @@
 // 並びは切る順番に取り出される順（その片を取り出す最後の工程の小さい順。同じなら layout.placements の順）。
 // kidori の progress/sheetChecklist.ts をもとにしたもの。取り出す工程（pieceReleaseSteps）は kidori の sheetProgress.ts から
 // この関数だけを持ってきた（残りの材料の表示は持ってこない）
+import { partLabels } from '../parts'
 import { round1 } from '../round'
 import type { Job, Rect, SheetLayout } from '../types'
 
@@ -32,7 +33,7 @@ export function pieceReleaseSteps(layout: Pick<SheetLayout, 'placements' | 'cuts
 export interface SheetChecklistRow {
   pieceId: string
   partId: string
-  /** 今の部材名（部材が無ければ写しの名前） */
+  /** 今の部材の表示用の名前（名前が空なら #行番号。部材が無ければ写しの名前） */
   name: string
   /** その1枚（固定した1枚の写し、または計算の結果）の木取り寸法 */
   sizeLabel: string
@@ -41,7 +42,7 @@ export interface SheetChecklistRow {
 
 /** 1枚の片を1行ずつ（切る順番に取り出される順） */
 export function sheetChecklist(job: Pick<Job, 'parts'>, layout: SheetLayout, checked: readonly string[]): SheetChecklistRow[] {
-  const names = new Map(job.parts.map((p) => [p.id, p.name]))
+  const names = partLabels(job.parts)
   const done = new Set(checked)
   const steps = pieceReleaseSteps(layout)
   const ordered = layout.placements
@@ -59,7 +60,7 @@ export function sheetChecklist(job: Pick<Job, 'parts'>, layout: SheetLayout, che
 
 export interface SheetPartRow {
   partId: string
-  /** 今の部材名（部材が無ければ写しの名前） */
+  /** 今の部材の表示用の名前（名前が空なら #行番号。部材が無ければ写しの名前） */
   name: string
   /** 木取り寸法（その1枚の最初の片の sizeLabel） */
   sizeLabel: string
