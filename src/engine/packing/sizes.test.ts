@@ -36,8 +36,8 @@ describe('compareStandardSizes（3×6 と 4×8 の比べ）', () => {
     ])
   })
 
-  it('見本の枚数と歩留まりは、それぞれのサイズで packJob した結果と同じ（縦切り優先・横切り優先・おまかせ）', () => {
-    for (const mode of ['vertical', 'horizontal', 'auto'] as CutMode[]) {
+  it('見本の枚数と歩留まりは、それぞれのサイズで packJob した結果と同じ（縦切り優先・横切り優先）', () => {
+    for (const mode of ['vertical', 'horizontal'] as CutMode[]) {
       const job = shelfJob()
       job.settings.cutMode = mode
       const [saburoku, shihachi] = compare(job).options
@@ -110,9 +110,9 @@ describe('compareStandardSizes（3×6 と 4×8 の比べ）', () => {
     expect([r.fewer, r.higher]).toEqual([null, null])
   })
 
-  it('部材150枚・おまかせで 1秒以内', () => {
+  it('部材150枚・横切り優先で 1秒以内', () => {
     const job = shelfJob()
-    job.settings.cutMode = 'auto'
+    job.settings.cutMode = 'horizontal'
     job.parts = Array.from({ length: 50 }, (_, i) =>
       part(`部材${i}`, String(100 + ((i * 37) % 400)), String(150 + ((i * 53) % 900)), 3, i % 3 === 0),
     )

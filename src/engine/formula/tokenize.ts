@@ -19,13 +19,16 @@ export type Token =
 
 export type TokenizeResult =
   | { ok: true; tokens: Token[] }
-  | { ok: false; message: string; start: number; end: number }
+  /** incomplete：入れている途中の形（式の終わりが「1.」のように小数点で終わっている。第1.4版。仕様書 18.5） */
+  | { ok: false; message: string; start: number; end: number; incomplete?: true }
 
 /** 部材名に使えない記号（式の区切りになる文字） */
 const SYMBOLS = ['+', '-', '*', '/', '(', ')'] as const
 const SYMBOL_SET: ReadonlySet<string> = new Set(SYMBOLS)
 
 const NUMBER_RE = /^\d+(?:\.\d+)?$/
+/** 小数点まで入れて、その後ろの数字をまだ入れていない数（1.） */
+const OPEN_DECIMAL_RE = /^\d+\.$/
 
 /** 1文字をそろえたうえで { か（全角の ｛ も） */
 function isOpenBrace(ch: string): boolean {
@@ -134,10 +137,14 @@ function isOtherAxisRef(raw: string): boolean {
   return /^[^.]+\.[A-Za-z]+$/.test(normalizeFormulaText(raw))
 }
 
-/** 式を字句に分ける。例外は投げず、読めない部分があればその位置とメッセージを返す */
+/**
+ * 式を字句に分ける。例外は投げず、読めない部分があればその位置とメッセージ（画面に見えている言葉。第1.4版）を返す。
+ * 式の終わりが「1.」（小数点の後ろの数字がまだ）なら、入れている途中の印 incomplete を付ける
+ */
 export function tokenize(expr: string): TokenizeResult {
   const tokens: Token[] = []
-  for (const item of splitChunks(expr)) {
+  const items = splitChunks(expr)
+  for (const [index, item] of items.entries()) {
     if ('type' in item) {
       tokens.push(item)
       continue
@@ -149,7 +156,9 @@ export function tokenize(expr: string): TokenizeResult {
         const closed = isCloseBrace(text[text.length - 1]) && text.length > 1
         return {
           ok: false,
-          message: closed ? `読めない参照があります（「${text}」）` : `「${text}」が読めません（「}」が足りません）`,
+          message: closed
+            ? `「${text}」は読めない参照です（調整寸法はキーの「調整寸法」から入れ直してください）`
+            : `「${text}」が読めません（調整寸法はキーの「調整寸法」から入れ直してください）`,
           start,
           end,
         }
@@ -162,6 +171,9 @@ export function tokenize(expr: string): TokenizeResult {
       tokens.push({ type: 'number', value: Number(normalized), start, end })
       continue
     }
+    if (OPEN_DECIMAL_RE.test(normalized) && index === items.length - 1) {
+      return { ok: false, message: `「${normalized}」の小数点の後ろに数字を入れてください`, start, end, incomplete: true }
+    }
     const ref = parseRefText(text)
     if (ref) {
       tokens.push({ type: 'ref', part: ref.part, axis: ref.axis, start, end })
@@ -169,6 +181,10 @@ export function tokenize(expr: string): TokenizeResult {
     }
     if (isOtherAxisRef(text)) {
       return { ok: false, message: `「${text}」は使えません（寸法は W・H だけです。「部材名.W」「部材名.H」で書いてください）`, start, end }
+    }
+    // 部材名だけ（.W・.H が無い）
+    if (!normalized.includes('.') && /\p{L}/u.test(normalized) && validatePartName(text) === null) {
+      return { ok: false, message: `「${text}」が読めません（部材の寸法は「${text}.W」「${text}.H」のように書きます）`, start, end }
     }
     return { ok: false, message: `「${text}」が読めません（数値か「部材名.W」「部材名.H」で書いてください）`, start, end }
   }

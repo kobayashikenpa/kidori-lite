@@ -36,7 +36,7 @@ src/
       scraps.ts          端材                                     ← kidori：scraps.ts（そのまま）
       yield.ts           歩留まり                                 ← kidori：yield.ts（そのまま）
       sizes.ts           3×6 と 4×8 の比べ                        ← kidori：sizes.ts（材料の行を外す）
-      index.ts           packJob(job, dims, options?)：おまかせ・固定した1枚を除いた入口 ← kidori：packing/index.ts
+      index.ts           packJob(job, dims, options?)：固定した1枚を除いた入口（第1.4版でおまかせをなくした） ← kidori：packing/index.ts
     progress/
       frozen.ts          固定した1枚・部材が変わったことの検出   ← kidori：progress/frozen.ts
       checks.ts          片のチェックの付け外し（1つ目で固定・全部で切り終わり・全部外すと固定を外す） ← kidori：store/jobs.ts の setPieceCheck・setPartCheck
@@ -88,7 +88,7 @@ export const AXES: readonly Axis[] = ['W', 'H']
 
 // ---------- 入力 ----------
 
-export type CutMode = 'vertical' | 'horizontal' | 'auto' // 縦切り優先 / 横切り優先 / おまかせ
+export type CutMode = 'vertical' | 'horizontal' // 縦切り優先 / 横切り優先（第1.4版で 'auto'＝おまかせをなくした。10.1）
 
 export type BoardSizeKind = 'saburoku' | 'shihachi' | 'custom' // 3×6 / 4×8 / 自由入力
 export const BOARD_SIZES = { saburoku: [910, 1820], shihachi: [1220, 2430] } as const // [妻手, 長手]
@@ -242,10 +242,10 @@ export interface PackingResult {
 - 片の向き（`Orientation` の x＝妻手方向、y＝長手方向）：
   - 回転しない：x ＝ 木取り W、y ＝ 木取り H
   - 回転してよい：両方の向きを試す（kidori の `any` と同じ）
-- 帯詰め・同じ幅の優先・右上から詰める・おまかせの比べ方・切る順番・端材（30mm 以上・大きい順）・歩留まりは kidori のまま
+- 帯詰め・同じ幅の優先・右上から詰める・切る順番・端材（30mm 以上・大きい順）・歩留まりは kidori のまま
 - 帯詰め（`guillotine.ts`）：`packGuillotine(pieces, usable, kerf, mode, sameWidthFirst = true)`。同じ幅を優先する並べ方（true）と、幅が収まる最初の帯に入れる並べ方（false。kidori 第2.4版まで）を持つ
-- 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は kidori と同じく、並べ方ごとに（おまかせなら縦切り・横切りを選んでから）`chooseWay` で比べる
-- 部材 → 片（`pieces.ts`）：`expandPieces(job, dims, frozen)` で部材ごとの片の並び（枚数0 は除く、寸法のエラーは `skipped`）、`piecesOf(runs, board, trim, mode)` で向きを決めて片にする（どう置いても入らない部材は `unplaced`＝tooLarge）。向きの判定は、おまかせなら広いほう（縦切り優先）の範囲（kidori と同じ。横切り優先で入らない片は並べるときに除かれ、おまかせの比べで数える）
+- 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は設定の切り方で、2つの並べ方を `chooseWay` で比べる（第1.4版でおまかせをなくした）
+- 部材 → 片（`pieces.ts`）：`expandPieces(job, dims, frozen)` で部材ごとの片の並び（枚数0 は除く、寸法のエラーは `skipped`）、`piecesOf(runs, board, trim, mode)` で向きを決めて片にする（どう置いても入らない部材は `unplaced`＝tooLarge）。向きの判定は設定の切り方の範囲
 - 入口は `packJob(job, dims, options?)`。`options.sameWidthFirst` を指定するとその並べ方だけで計算する（比べ・テスト用。ふつうは指定しない）。`unplaced` は部材の並び
 - 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から数だけで引いてから並べる（`progress/frozen.ts` の `frozenDemand(job)` → `expandPieces` の引数 `frozen`。kidori と同じ）
 - 全体の歩留まり（`yieldRate`）も、`sheetCount` と同じ1枚たち（固定した1枚（切り終わりを含む）＋ 計算した1枚）で出す（暫定）
@@ -400,13 +400,13 @@ export interface CellClip { rows: number; cols: number; cells: string[][] } // c
 | `selectionShape(cells)` | `{ kind: 'none' }`／`{ kind: 'range', top, left, rows, cols }`（1つのセルは 1×1。left は列の位置 0〜3）／`{ kind: 'scattered' }`。押した順・同じセルの重なりは問わない |
 | `cellText(job, pos)` | セルの中身の文字（空の行は ''） |
 | `copyCells(job, cells)` | `{ ok: true, clip }`／`{ ok: false, message: 'コピーは1つのセルか、四角い範囲を選んでください' }` |
-| `pasteCells(job, clip, cells, newId)` | `{ ok: true, job, pasted, skipped: { cell, reason, message }[] }`／`{ ok: false, message: '貼るセルを選んでください' }`。reason は `duplicateName`（同じ名前は貼れません）・`invalidName`（名前に使えない文字。validatePartName の文）・`notQuantity`（枚数には 0 以上の整数だけ貼れます） |
+| `pasteCells(job, clip, cells, newId)` | `{ ok: true, job, pasted, skipped: { cell, reason, message }[], renamed }`（renamed は第1.4版。10.2）／`{ ok: false, message: '貼るセルを選んでください' }`。reason は `invalidName`（名前に使えない文字。validatePartName の文）・`notQuantity`（枚数には 0 以上の整数だけ貼れます） |
 | `clearCells(job, cells)` | 中身を空に（枚数は null）。行の全部の欄が空になった部材（`parts.ts` の `isBlankPart`）は消す |
 | `deleteRows(job, cells)` | 選んだセルのある行の部材をまとめて消す。`selectedPartIds(job, cells)` で消す部材の id（式で使われているかは `ui/partsTable` の `referencingOthers`＝`partsReferencing` で確かめる） |
 
 - **貼り付け**：1×1 のコピーは選んだセル全部に同じもの。範囲のコピーは選んだセルの一番左上（いちばん上の行・いちばん左の列。四角でない選び方なら外枠の左上）から同じ形。枚数の右にはみ出す列は貼らない（貼れなかった数にも入れない）
 - 空の行（部材の数以上）に貼ると部材を作る（`newId('part')`・名前と W・H は空・枚数は空・回転しない）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）。空だけを貼った行は作らない
-- 名前は前後の空白を外して入れる。貼ったあとに名前のある部材どうしで同じ名前（`normalizePartName`）になるものは貼らない：元のまま残る名前と重なる名前は貼らず、貼るものどうしで重なるときは上（左）の1つだけ貼る（入れ替え A・B → B・A は貼れる）。ほかの式の参照は書き換えない（名前の変更ではない）
+- 名前は前後の空白を外して入れる。（第1.4版で変えた：重なる名前は貼らずに番号を振る。10.2）第1.2版：貼ったあとに名前のある部材どうしで同じ名前（`normalizePartName`）になるものは貼らない：元のまま残る名前と重なる名前は貼らず、貼るものどうしで重なるときは上（左）の1つだけ貼る（入れ替え A・B → B・A は貼れる）。ほかの式の参照は書き換えない（名前の変更ではない）
 - W・H は文字のまま式として入れる（読めなければ計算のエラー）。枚数は 0 以上の整数（全角の数字も）だけ、空は空に
 - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
 - **保存データ**：`store/storage.ts` の `parseAppData` は `cellClip` を `shape.ts` の `isCellClip` で確かめ、形が違えば null（仕事は読める）。第1.1版までの `clipboard` はあっても読んで捨てる。バックアップ・共有のファイルには入れない
@@ -451,6 +451,70 @@ export type CellSelection = CellRange | readonly CellPos[]  // 今までの関�
 | `fillCells(job, from, to, newId)` | オートフィル。結果は `pasteCells` と同じ形（`cutClear` はいつも null）。範囲でない from は `{ ok: false, message: '引く元の範囲を選んでください' }` |
 
 - **切り取りの貼り付け**：元のセルを空にする。空にしないのは、貼る先と重なるセル・クリップのその位置が1つも貼れなかったセル（同じ名前・枚数に式など）・切り取ったあとに中身を書き換えたセル。同じ仕事なら、元を先に空にしてから名前の重なりを比べる（同じ仕事の中で名前ごと動かせる）。全部の欄が空になった部材は消える。1つも貼れなければ何もしない
-- **オートフィル**：to は引いたあとの範囲（元を含む）でも、元を除いた所だけでもよい。元の行は書かず、列はいつも元の列（上下だけ）。行 r には元の `(r − top) mod rows` 番目の行を入れる（上へ引いても並びがつながる）。名前の列は入れず、元の名前が空でなければ `reason: 'fillName'`（「同じ名前は入れられません」）。枚数・W・H・行が足りないときの部材の足し方は貼り付けと同じ
+- **オートフィル**：to は引いたあとの範囲（元を含む）でも、元を除いた所だけでもよい。元の行は書かず、列はいつも元の列（上下だけ）。行 r には元の `(r − top) mod rows` 番目の行を入れる（上へ引いても並びがつながる）。名前の列も入れ、重なる名前には番号を振る（第1.4版。10.2。第1.3版の `fillName` はなくした）。枚数・W・H・行が足りないときの部材の足し方は貼り付けと同じ
 - **保存データ**：`shape.ts` の `isCellClip` は cut を無くてもよいとし、あれば形を確かめる（`isCellRange`）。`readCellClip` は cut だけ形が違えば cut を外してふつうのコピーとして読む。第1.2版の保存データはそのまま読める
 - **store**（`reducer.ts`）：選んだセルは `SelectionArg = { cells: CellPos[] } | { range: CellRange }`。`copyCells`・`cutCells`・`pasteCells`・`clearCells`・`deleteRows` はどちらでも呼べる。`{ type: 'cutCells', range }`（cellClip を置き換える。仕事は変えない）、`{ type: 'pasteCells', range }`（切り取りなら元を空にし、ほかの仕事でも空にして updatedAt を付ける。1つでも貼れたら cellClip から cut を外す）、`{ type: 'fillCells', from, to }`（結果の `paste: { pasted, skipped }`）
+
+## 10. 第1.4版の変更（仕様書 18章）
+
+### 10.1 切り方の「おまかせ」をなくす（E-14。spec 18.2）
+
+- `CutMode = 'vertical' | 'horizontal'`。`packJob` は設定の切り方だけで並べる（縦切り・横切りの比べ `preferFirst`・`largestScrap` はなくした）。2つの並べ方の比べ（`chooseWay`）はそのまま
+- `shape.ts` の `isJob`（`isSettings`）は 'vertical'・'horizontal' だけを通す。古いデータは **`readJob(v)`・`readJobs(v)`** で読む：`settings.cutMode === 'auto'` なら 'vertical' にしてから `isJob` で確かめる（spec 18.2【案】）
+- 使う所：`store/storage.ts` の `parseAppData`（保存データ）、`transfer/read.ts` の `readTransferFile`（共有・バックアップのファイル）。読んだあとの仕事はもう 'auto' を持たない
+- `store/jobs.ts` の `updateSettings` も 'auto' を断る（「切り方が正しくありません」）。画面の切り方のボタン（`ui/settings.ts` の `CUT_MODES`）は2つ、木取りの画面の「おまかせで選択」の印はなくした
+
+### 10.2 名前を貼る・オートフィルで番号を振る（E-14。spec 18.3。`clipboard/cells.ts`）
+
+- `pasteCells`・`fillCells` の名前の欄は `assignNames(parts, writes)` で決める（parts は同じ仕事の切り取りの元を空にしたあと）
+  1. 前後の空白を外す。名前に使えない文字なら貼らない（`invalidName`。今までどおり）
+  2. 書く先が今と同じ名前（`normalizePartName`）なら、今の名前のまま（コピー元のセルが貼る先に入っていても名前は変えない）（暫定）
+  3. 「残る名前」＝書かない行の名前（使えない名前で貼らなかった行も今の名前が残る）。残る名前と重なる、または貼るものどうしで重なる名前は **後ろに番号を振る**。重ならない名前はそのまま（切り取りで動かす・ほかの仕事から貼る・入れ替え A・B → B・A）
+  4. 番号は 1 から、残る名前・そのまま貼る名前・先に振った名前のどれとも重ならない一番小さい番号。上から・左から順に振る。比べは `normalizePartName`（「棚板１」があれば「棚板2」）
+  5. 名前の終わりが数字（半角・全角）なら、その数字を外した名前に番号を振る（「棚板1」を貼って重なれば「棚板2」。「棚板11」にしない。spec 18.3【案】。U-20 で直した）。数字だけの名前は外すと空になるので、そのまま後ろに振る（「12」→「121」）（暫定）。貼るものどうしだけが重なるときも全部に振る（棚板 を3つに貼る → 棚板1・棚板2・棚板3）（暫定）
+- 結果に **`renamed: { cell, from, to }[]`**（番号を振ったセル。上から・左から）を足した。store の `PasteSummary` にも `renamed`。`PasteSkipReason` は `'invalidName' | 'notQuantity'` だけ（`duplicateName`・`fillName` と `DUPLICATE_NAME_MESSAGE`・`FILL_NAME_MESSAGE` はなくした）
+- オートフィルは名前の列も入れる。元の名前が空なら空を入れる（W・H と同じ）（暫定）
+
+### 10.3 式の「入れている途中」の印（E-14。spec 18.5）
+
+- `FormulaError.incomplete?: true`・`DimensionError.incomplete?: true`。付くのは syntax のエラーで、次の形のとき：
+  - 空（「数値か式を入れてください」）
+  - 終わりが記号か「(」（`全体.W -` →「式が「−」で終わっています（後ろに数値か部材の寸法を入れてください）」。`-` だけ・`全体.W - -` も）
+  - かっこが閉じないまま終わる（「閉じかっこ「)」が足りません」）
+  - 終わりが「1.」（小数点の後ろの数字がまだ。「「1.」の小数点の後ろに数字を入れてください」）（暫定）
+- 途中の形より前に別のエラーがあれば、そのエラー（印なし。例：`全体.W 0 -`）
+- 参照している寸法に伝わったエラー（`from` のあるもの）には付けない（暫定）。画面は入力中のセルの寸法のエラーのうち `incomplete` のものを出さない
+- 式だけを確かめる関数：`isIncompleteFormula(expr)`（`formula/parse.ts`）
+- 仕様書 18.5 の書き足し（入力中は「50全体.W − 厚み20」のような記号の抜けも含め、式の書き方のエラーを出さない）に合わせるなら、画面は入力中のセルの `kind === 'syntax'` のエラーを全部出さない（`incomplete` は「途中で終わっている」形の印として残す）
+
+### 10.4 エラーの文を画面に見えている言葉に（E-14。spec 18.6）
+
+- `parse(expr, adjusts?)`・`evaluateExpr(expr, lookup, adjusts?)`・`resolve(parts, adjusts?)` に調整寸法の一覧を渡せるようにした（`computeDimensions(job, adjusts)` は渡している）
+- 字句の書き方は `tokenLabel(tok, expr, adjusts?)`：数値はそろえた数字、参照は「全体.W」、調整寸法は `adjustName`（無ければ「（削除した調整寸法）」、一覧を渡さなければ「調整寸法」）、記号は + − × ÷ ( )
+- 文の一覧：
+
+| 形 | 文 |
+|---|---|
+| 値が2つ続く | 「全体.W」と「メラミン1」の間に ＋ − × ÷ のどれかを入れてください（数字・かっこも同じ形） |
+| 終わりが記号・( | 式が「−」で終わっています（後ろに数値か部材の寸法を入れてください） |
+| 式の始めの + × ÷ ) | 式の始めに「×」は置けません |
+| 記号・( のすぐ後ろの + × ÷ ) | 「+」のすぐ後ろに「×」は置けません |
+| ( ) | かっこ「( )」の中が空です |
+| かっこが閉じない | 閉じかっこ「)」が足りません |
+| ) が多い | 閉じかっこ「)」が多すぎます（対になる「(」がありません） |
+| 空 | 数値か式を入れてください |
+| 部材名だけ | 「全体」が読めません（部材の寸法は「全体.W」「全体.H」のように書きます） |
+| 読めない {…} | 「{t:x}」は読めない参照です（調整寸法はキーの「調整寸法」から入れ直してください） |
+| 0 以下 | 計算結果が 0 以下になります（−200） |
+| 参照先のエラー | 参照している「天板.W」が計算できません（…） |
+
+- 天板.D・存在しない部材・削除した調整寸法・0 で割る・循環参照の文は今までどおり
+
+### 10.5 画面の直し（U-20。spec 18.1・18.4・18.5・18.7）
+
+- 空の行の名前の欄は、薄い「名前」の字（手引き）を出さない
+- 部材の表の見出しは W・H を2段（「W／妻手」「H／長手」。下の段は 10px）。キーの上の行は「棚板 W（妻手）」。部材名が長いときは名前だけ「…」
+- 入力中のセル（W・H のキーを出しているセル）は `ui/partsTable.ts` の `errorsWhileEditing` で出すエラーを決める：kind が syntax・nonPositive・divideByZero のもの（参照先から伝わった from のあるものは除く）は出さない。表の欄も、出さないエラーだけなら赤い「エラー」にせず空に見せる。入力を終えたら今までどおり
+- 式の入力（`ui/formulaEdit.ts` の `insertAt`）は、前の単位のすぐ後ろに入れる（先頭に 5・0 と入れても「5 0」と離れない）
+- キーの上の行の式を押すとカーソルが移る：`FormulaView` の `onCaret`。単位ごとの箱を測り `caretFromTap(boxes, x, y)`（押した高さに近い行の中で、単位の左半分なら前・右半分なら後ろ）
+- 貼り付け・オートフィルで番号を振ったら、知らせに「。同じ名前にならないよう番号を振りました」を足す（`ui/cellSelect.ts` の `pasteText`・`fillText` の第3引数）

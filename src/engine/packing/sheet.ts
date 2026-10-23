@@ -7,7 +7,7 @@
 import { round1 } from '../round'
 import type { Rect, Sheet, SheetOrientation } from '../types'
 
-/** 切り方（おまかせを除く） */
+/** 切り方（CutMode と同じ。第1.4版で「おまかせ」をなくした） */
 export type StripMode = 'vertical' | 'horizontal'
 
 export function sheetOrientation(mode: StripMode): SheetOrientation {

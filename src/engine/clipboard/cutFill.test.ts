@@ -10,7 +10,6 @@ import {
   cutCells,
   deleteRows,
   fillCells,
-  FILL_NAME_MESSAGE,
   pasteCells,
   rangeCells,
   rowRange,
@@ -166,14 +165,39 @@ describe('切り取り', () => {
     expect(cleared.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板'])
   })
 
-  it('貼れなかったセルの元は空にしない（ほかの仕事に同じ名前がある）', () => {
+  it('ほかの仕事に同じ名前があれば、番号を振って貼り、元は空にする（仕様書 18.3）', () => {
     const src = shelf('job-a')
     const dst = jobOf('job-b', part('x', '棚板', '1', '1', 1))
     const clip = clipOk(cutCells(src, R(3, 0, 1, 2))) // 棚板・天板.W - 20
     const r = ok(pasteCells(dst, clip, [{ row: 1, col: 'name' }], ids()))
-    expect(r.skipped.map((s) => s.reason)).toEqual(['duplicateName'])
-    expect(r.cutClear).toEqual({ jobId: 'job-a', cells: [{ row: 3, col: 'W' }] })
-    expect(table(clearCutSource(src, clip, r.cutClear!.cells))[3]).toEqual(['棚板', '', '天板.H - 40', 3])
+    expect(r.skipped).toEqual([])
+    expect(table(r.job)[1].slice(0, 2)).toEqual(['棚板1', '天板.W - 20'])
+    expect(r.cutClear).toEqual({ jobId: 'job-a', cells: [{ row: 3, col: 'name' }, { row: 3, col: 'W' }] })
+  })
+
+  it('貼れなかったセルの元は空にしない（枚数に式）', () => {
+    const src = jobOf('job-a', part('a', 'A', '10', '20', 1), part('b', 'B', 'A.W', '30', 2))
+    const dst = jobOf('job-b')
+    const clip = clipOk(cutCells(src, R(1, 1, 1, 1))) // A.W
+    const r = ok(pasteCells(dst, clip, [{ row: 0, col: 'qty' }], ids()))
+    expect(r.pasted).toBe(0)
+    expect(r.cutClear).toBeNull()
+  })
+
+  it('同じ仕事の中で切り取った名前は、重ならなければ番号を振らずにそのまま動かす', () => {
+    const src = shelf('job-a')
+    const clip = clipOk(cutCells(src, R(3, 0, 1, 1))) // 棚板
+    const r = ok(pasteCells(src, clip, [{ row: 4, col: 'name' }], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '', '棚板'])
+    expect(r.renamed).toEqual([])
+  })
+
+  it('切り取った名前も、貼る先に同じ名前が残るなら番号を振る', () => {
+    const src = jobOf('job-a', part('a', '棚板'), part('b', 'B'))
+    const dst = jobOf('job-b', part('x', '棚板'))
+    const clip = clipOk(cutCells(src, R(0, 0, 1, 1)))
+    const r = ok(pasteCells(dst, clip, [{ row: 1, col: 'name' }], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['棚板', '棚板1'])
   })
 
   it('元のセルを切り取ったあとに書き換えていたら、そのセルは空にしない', () => {
@@ -232,25 +256,40 @@ describe('オートフィル', () => {
     expect(table(r.job).map((x) => x[3])).toEqual([3, 4, 3, 4])
   })
 
-  it('名前の列は入れず、理由「同じ名前は入れられません」が返る（ほかの列は入る）', () => {
+  it('名前の列も、番号を振って入れる（仕様書 18.3。ほかの列も入る）', () => {
     const r = ok(fillCells(job4(), R(0, 0, 1, 2), R(0, 0, 3, 2), ids()))
-    expect(r.skipped).toEqual([
-      { cell: { row: 1, col: 'name' }, reason: 'fillName', message: FILL_NAME_MESSAGE },
-      { cell: { row: 2, col: 'name' }, reason: 'fillName', message: '同じ名前は入れられません' },
-    ])
+    expect(r.skipped).toEqual([])
     expect(table(r.job).slice(0, 3)).toEqual([
       ['A', '10', '20', 1],
-      ['B', '10', '40', 2],
-      ['C', '10', '60', 3],
+      ['A1', '10', '40', 2],
+      ['A2', '10', '60', 3],
     ])
+    expect(r.renamed.map((x) => x.to)).toEqual(['A1', 'A2'])
   })
 
-  it('名前の列だけを引くと、1つも入らず同じ仕事が返る', () => {
-    const job = job4()
-    const r = ok(fillCells(job, R(0, 0, 1, 1), R(0, 0, 3, 1), ids()))
-    expect(r.pasted).toBe(0)
-    expect(r.skipped).toHaveLength(2)
-    expect(r.job).toBe(job)
+  it('仕様書 18.3：「棚板」の名前を下へ引くと 棚板1・棚板2（空の行には部材を足す。元の「棚板」はそのまま）', () => {
+    const job = jobOf('job-a', part('a', '全体'), part('b', '棚板'))
+    const r = ok(fillCells(job, R(1, 0, 1, 1), R(1, 0, 3, 1), ids()))
+    expect(r.pasted).toBe(2)
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '棚板', '棚板1', '棚板2'])
+  })
+
+  it('名前を上へ引いても、上から順に一番小さい番号（既にある 棚板1 は飛ばす）', () => {
+    const job = jobOf('job-a', part('a', 'A'), part('b', 'B'), part('c', '棚板'), part('d', '棚板1'))
+    const r = ok(fillCells(job, R(2, 0, 1, 1), R(0, 0, 3, 1), ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['棚板2', '棚板3', '棚板', '棚板1'])
+  })
+
+  it('「棚板1」を下へ引くと、終わりの数字を外して 棚板2・棚板3（棚板11 にしない）', () => {
+    const job = jobOf('job-a', part('a', '全体'), part('b', '棚板1'))
+    const r = ok(fillCells(job, R(1, 0, 1, 1), R(1, 0, 3, 1), ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '棚板1', '棚板2', '棚板3'])
+  })
+
+  it('元の名前が空なら、引いた先の名前も空にする（W・H と同じ）', () => {
+    const job = jobOf('job-a', part('a', '', '10', '20'), part('b', 'B', '30', '40'))
+    const r = ok(fillCells(job, R(0, 0, 1, 1), R(0, 0, 2, 1), ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['', ''])
   })
 
   it('枚数の列は 16.1 と同じ決まり（0 以上の整数・空は空に）', () => {

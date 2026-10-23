@@ -175,14 +175,6 @@ export function KidoriScreen() {
               <span className="kd-v num">{result.sheetCount > 0 ? pct(result.yieldRate) : '―'}</span>
             </div>
           </div>
-          {s.cutMode === 'auto' && (
-            <p className="kd-board">
-              <span>
-                切り方：<b>{cutModeLabel(result.mode)}</b>
-                <span className="chip ok">おまかせで選択</span>
-              </span>
-            </p>
-          )}
         </div>
       )}
 

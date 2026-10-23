@@ -26,8 +26,7 @@ export interface Piece {
   /** 配置図に出す寸法（木取り寸法の W×H） */
   sizeLabel: string
   /**
-   * 置いてよい向き（使える範囲に入るものだけ）。回転してよい部材は2つになることがある。
-   * おまかせでは広いほう（縦切り優先）の範囲で判定するので、横切り優先で入らない向きが残ることがある（配置で除く）
+   * 置いてよい向き（使える範囲に入るものだけ）。回転してよい部材は2つになることがある
    */
   orientations: Orientation[]
 }
@@ -108,7 +107,7 @@ export function orientationsFor(shape: PieceShape, board: BoardSize, trim: numbe
 
 /**
  * 片の並びを片にする（部材の並び）。使える範囲にどう置いても入らない部材は unplaced（tooLarge。部材ごとに1つ）。
- * mode は向きを判定する切り方（おまかせは広いほうの縦切り優先で判定する。kidori の orientationsOn と同じ）
+ * mode は向きを判定する切り方（設定の切り方）
  */
 export function piecesOf(
   runs: readonly PieceRun[],

@@ -159,7 +159,7 @@ export function BoardSettings({ job, compare, result, empty, dispatch }: Props) 
       <section className="settings-sec" aria-label="切り方">
         <h3>
           <Help title="切り方">
-            縦切り優先：板を縦長に置き、長手方向の帯を切り出してから切り分けます。横切り優先：板を横長に置き、妻手方向の帯を切り出してから切り分けます。おまかせ：両方を計算して、必要な板が少ないほうを使います。
+            縦切り優先：板を縦長に置き、長手方向の帯を切り出してから切り分けます。横切り優先：板を横長に置き、妻手方向の帯を切り出してから切り分けます。
           </Help>
         </h3>
         <Segmented ariaLabel="切り方" value={s.cutMode} options={CUT_MODES} onChange={pickCut} />

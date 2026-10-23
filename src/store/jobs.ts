@@ -79,7 +79,7 @@ export function deleteJob(
 
 // ---------- 設定 ----------
 
-const CUT_MODES: readonly CutMode[] = ['vertical', 'horizontal', 'auto']
+const CUT_MODES: readonly CutMode[] = ['vertical', 'horizontal']
 
 /** 設定（板のほか）を変える。刃厚・端切り・切り代は 0 以上 */
 export function updateSettings(job: Job, patch: Partial<Omit<Settings, 'sheet'>>): OpResult {

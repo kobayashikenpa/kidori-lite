@@ -1,6 +1,6 @@
 // 構文木の計算と、参照の取り出し
 // kidori の formula/evaluate.ts をもとに、材料の厚みを外し、逃げ（nige）を調整寸法（adjust）にしたもの
-import type { Axis } from '../types'
+import type { Adjust, Axis } from '../types'
 import { parse, type Expr, type FormulaError } from './parse'
 
 /** ほかの部材の寸法への参照（部材名.W など） */
@@ -96,8 +96,8 @@ export function evaluate(ast: Expr, lookup: Lookup): EvalResult {
   }
 }
 
-/** 式の文字列を構文解析して計算する */
-export function evaluateExpr(expr: string, lookup: Lookup): EvalResult {
-  const p = parse(expr)
+/** 式の文字列を構文解析して計算する（adjusts は式のエラーの文に調整寸法の表示名を出すため） */
+export function evaluateExpr(expr: string, lookup: Lookup, adjusts?: readonly Adjust[]): EvalResult {
+  const p = parse(expr, adjusts)
   return p.ok ? evaluate(p.ast, lookup) : p
 }

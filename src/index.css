@@ -905,6 +905,17 @@ h3 > .help {
   background: var(--err-soft);
   color: var(--err);
 }
+/* 押した所にカーソルを移す式（仕様書 18.7）：キーの上の行の式の所いっぱいを押せる */
+.expr-tap {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  cursor: text;
+  touch-action: manipulation;
+}
 .caret {
   display: inline-block;
   width: 2px;
@@ -1720,10 +1731,16 @@ h3 > .help {
   color: var(--accent);
   font-weight: 700;
 }
-.pt-ph {
-  color: var(--muted);
+/* W・H の見出しは2段（W／妻手、H／長手。仕様書 18.4）。下の段は小さく */
+.pt-h2 {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+}
+.pt-h2-sub {
+  font-size: 10px;
   font-weight: 400;
-  opacity: 0.6;
 }
 .pt-cell.rs {
   position: relative;
@@ -1941,10 +1958,18 @@ h3 > .help {
   min-width: 0;
 }
 .pt-show-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
   font-size: 13px;
   color: var(--muted);
   white-space: nowrap;
-  max-width: 40%;
+  max-width: 55%;
+  min-width: 0;
+}
+/* 部材名が長いときは名前だけ「…」にして、W（妻手）はいつも見せる */
+.pt-show-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }

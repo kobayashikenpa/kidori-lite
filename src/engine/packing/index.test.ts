@@ -140,30 +140,30 @@ describe('packJob：見本（4×8・横切り優先）', () => {
   })
 })
 
-describe('packJob：おまかせ', () => {
-  it('見本：どちらも2枚なので、一番大きい端材が大きい縦切り優先（431×2430 > 652×1215）を採る', () => {
-    expect(largestScrap(run(withMode('vertical')))).toBe(431 * 2430)
-    expect(largestScrap(run(withMode('horizontal')))).toBe(652 * 1215)
-    const r = run(withMode('auto'))
-    expect([r.mode, r.sheetCount]).toEqual(['vertical', 2])
-    expect(r.sheets).toEqual(run(withMode('vertical')).sheets)
+describe('packJob：縦切り優先と横切り優先の比べ（第1.4版で「おまかせ」をなくした）', () => {
+  it('見本：どちらも2枚。一番大きい端材は縦切り優先 431×2430、横切り優先 652×1215', () => {
+    const v = run(withMode('vertical'))
+    const h = run(withMode('horizontal'))
+    expect(largestScrap(v)).toBe(431 * 2430)
+    expect(largestScrap(h)).toBe(652 * 1215)
+    expect([v.mode, v.sheetCount, h.mode, h.sheetCount]).toEqual(['vertical', 2, 'horizontal', 2])
   })
 
-  it('板の少ないほうを採る（縦切り優先なら2枚、横切り優先なら1枚）', () => {
+  it('設定の切り方のとおりに並べる（縦切り優先なら2枚、横切り優先なら1枚になる部材でも、選んだほうで計算する）', () => {
     // 木取り 400×2000 ×3（妻手に3本並ぶ）と 1200×400（縦切り優先では幅が残らず2枚目）
     const parts = () => [part('縦長', '390', '1990', 3), part('横長', '1190', '390')]
-    expect(run(jobOf('vertical', parts())).sheetCount).toBe(2)
-    expect(run(jobOf('horizontal', parts())).sheetCount).toBe(1)
-    const r = run(jobOf('auto', parts()))
-    expect([r.mode, r.sheetCount]).toEqual(['horizontal', 1])
+    const v = run(jobOf('vertical', parts()))
+    const h = run(jobOf('horizontal', parts()))
+    expect([v.mode, v.sheetCount]).toEqual(['vertical', 2])
+    expect([h.mode, h.sheetCount]).toEqual(['horizontal', 1])
   })
 
-  it('横切り優先で入らない片があれば、全部入る縦切り優先を採る（長手 2430 は縦切り優先だけ入る）', () => {
+  it('長手 2430 の板：長さ 2420 の片は縦切り優先なら入り、横切り優先では入らない', () => {
     const parts = () => [part('長い板', '290', '2420'), part('短い板', '290', '290', 5)]
     expect(run(jobOf('horizontal', parts())).unplaced).toEqual([{ partId: '長い板', name: '長い板', reason: 'tooLarge' }])
-    const r = run(jobOf('auto', parts()))
-    expect(r.mode).toBe('vertical')
-    expect(r.unplaced).toEqual([])
+    const v = run(jobOf('vertical', parts()))
+    expect(v.mode).toBe('vertical')
+    expect(v.unplaced).toEqual([])
   })
 
   it('横切り優先：長手 2425 ぴったりは入り、2426 は入らない', () => {
@@ -172,11 +172,10 @@ describe('packJob：おまかせ', () => {
     expect(names(r).flat()).toEqual(['ぴったり'])
   })
 
-  it('枚数も一番大きい端材も同じなら縦切り優先（使える範囲いっぱいの 1215×2425 の片）', () => {
+  it('使える範囲いっぱいの 1215×2425 の片は、どちらの切り方でも端材なしの1枚', () => {
     const parts = () => [part('板', '1205', '2415')]
     expect(run(jobOf('vertical', parts())).sheets[0].scraps).toEqual([])
     expect(run(jobOf('horizontal', parts())).sheets[0].scraps).toEqual([])
-    expect(run(jobOf('auto', parts())).mode).toBe('vertical')
   })
 })
 
@@ -311,9 +310,10 @@ describe('packJob：入らない部材・エラーの部材', () => {
 })
 
 describe('packJob：速さ', () => {
-  it('部材120枚（10種類・回転しない／回転してよい）のおまかせが1秒以内に終わり、すべて配置される', () => {
+  it('部材120枚（10種類・回転しない／回転してよい）が縦切り優先・横切り優先とも1秒以内に終わり、すべて配置される', () => {
+    for (const mode of ['vertical', 'horizontal'] as const) {
     const job = jobOf(
-      'auto',
+      mode,
       Array.from({ length: 10 }, (_, i) =>
         part(`部材${i + 1}`, String(150 + i * 60), String(200 + ((i * 97) % 500)), 12, i % 3 === 0),
       ),
@@ -323,11 +323,12 @@ describe('packJob：速さ', () => {
     expect(performance.now() - t).toBeLessThan(1000)
     expect(r.sheets.reduce((n, s) => n + s.placements.length, 0)).toBe(120)
     expect(r.unplaced).toEqual([])
+    }
   })
 
-  it('150枚のおまかせ（寸法の計算込み）も1秒を大きく下回る', () => {
+  it('150枚の横切り優先（寸法の計算込み）も1秒を大きく下回る', () => {
     const job = jobOf(
-      'auto',
+      'horizontal',
       Array.from({ length: 15 }, (_, i) =>
         part(`棚${i + 1}`, String(100 + ((i * 131) % 780)), String(80 + ((i * 71) % 600)), 10, i % 2 === 0),
       ),
@@ -341,7 +342,7 @@ describe('packJob：速さ', () => {
 
 describe('packJob：自由入力の板の妻手・長手を逆に入れても同じ', () => {
   it('{custom, 2430, 1220} は 4×8 と同じ並べ方・枚数・歩留まり（両方の切り方）', () => {
-    for (const mode of ['vertical', 'horizontal', 'auto'] as const) {
+    for (const mode of ['vertical', 'horizontal'] as const) {
       const std = run(withMode(mode))
       const job = withMode(mode)
       job.settings.sheet = { sizeKind: 'custom', width: 2430, length: 1220 }
