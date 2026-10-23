@@ -2,7 +2,7 @@
 // kidori の store/storage.ts を参考に作り直したもの（以前の版からの移し替え・材料・フラッシュなどは無い）。
 // キーはすべて「kidori-lite.」で始める（kidori と同じ github.io のドメインで localStorage を分け合うため。kidori は「kidori.」）
 import { defaultAppData } from '../engine/defaults'
-import { isAdjust, isCellClip, isJob, isRecord } from '../engine/shape'
+import { isAdjust, isJob, isRecord, readCellClip } from '../engine/shape'
 import type { AppData } from '../engine/types'
 
 /** 保存データ（AppData）のキー */
@@ -58,7 +58,7 @@ export function parseAppData(raw: unknown): AppData | null {
   if (new Set(raw.jobs.map((j) => j.id)).size !== raw.jobs.length) return null
   // コピーしたセル（第1.2版）は、形が違えば捨てる（仕事を読めなくしないため）。
   // 第1.1版の「コピーした部材」（clipboard）は使わなくなったので、あっても読んで捨てる
-  const cellClip = isCellClip(raw.cellClip) ? raw.cellClip : null
+  const cellClip = readCellClip(raw.cellClip)
   return { version: 1, jobs: raw.jobs, adjusts: raw.adjusts, cellClip }
 }
 

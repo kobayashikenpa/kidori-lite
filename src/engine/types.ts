@@ -129,6 +129,28 @@ export interface CellClip {
   rows: number
   cols: number
   cells: string[][]
+  /**
+   * 切り取ったときの元（第1.3版。仕様書 17.3）。貼ったときに元のセルを空にし、そのあとは消す（ふつうのコピーになる）。
+   * 無ければふつうのコピー（第1.2版の保存データも無い）
+   */
+  cut?: CellCut
+}
+
+/**
+ * 部材の表の四角い範囲（第1.3版）。left は列の位置（0＝名前 … 3＝枚数）。1つのセルは rows = cols = 1。
+ * 行全体は left 0・cols 4、列全体は top 0・rows 部材の数（engine/clipboard/cells の rowRange・columnRange）
+ */
+export interface CellRange {
+  top: number
+  left: number
+  rows: number
+  cols: number
+}
+
+/** 切り取った元：仕事の id と範囲 */
+export interface CellCut {
+  jobId: string
+  range: CellRange
 }
 
 // ---------- 寸法の計算結果 ----------
