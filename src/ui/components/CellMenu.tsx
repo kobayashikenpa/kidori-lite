@@ -39,7 +39,7 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
   const parts = job.parts.filter((p) => ids.includes(p.id))
   const hasParts = parts.length > 0
   const canInsert = range.top < job.parts.length
-  const count = parts.length > 1 ? `（${parts.length}つの部材）` : ''
+  const count = parts.length > 1 ? `（${parts.length}個の部材）` : ''
 
   /** 1回の操作。失敗したら理由を出して false */
   const run = (action: StoreAction): ReduceResult => {
@@ -83,14 +83,14 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
       const index = job.parts.findIndex((p) => p.id === ids[0])
       onNotice(`${partLabelAt(job.parts[index], index)} を複製して、すぐ下に「${copyName}」を足しました`)
     } else {
-      onNotice(`${ids.length}つの部材を複製して、それぞれのすぐ下に足しました`)
+      onNotice(`${ids.length}個の部材を複製して、それぞれのすぐ下に足しました`)
     }
     onClose()
   }
   const deleteRows = () => {
     const n = ids.length
     if (!run({ type: 'deleteRows', range }).ok) return
-    onNotice(`${n}つの部材を削除しました`)
+    onNotice(`${n}個の部材を削除しました`)
     onRowsDeleted()
     onClose()
   }
@@ -123,7 +123,7 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
               <>「{partLabelAt(parts[0], job.parts.indexOf(parts[0]))}」を削除しますか？</>
             ) : (
               <>
-                <b className="num">{ids.length}つ</b>の部材を削除しますか？
+                <b className="num">{ids.length}個</b>の部材を削除しますか？
               </>
             )}
           </p>

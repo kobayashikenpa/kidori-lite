@@ -1777,21 +1777,17 @@ h3 > .help {
 .pt-handle.start .pt-dot {
   left: 15px;
 }
-.pt-handle.end {
-  height: 40px;
-}
 .pt-handle.end .pt-dot {
   left: 23px;
 }
-/* オートフィルの取っ手（仕様書 17.4）：右下の丸のすぐ下の小さな四角。当たりは 44×40px（丸の当たりのすぐ下）。上下に引く */
+/* オートフィルの取っ手（仕様書 17.4）：右下の丸のすぐ下の小さな四角。当たりは 44×44px（丸の当たりのすぐ下）。上下に引く */
 .pt-handle.fill {
-  height: 40px;
   cursor: ns-resize;
 }
 .pt-fill-dot {
   position: absolute;
   left: 24px;
-  top: 4px;
+  top: 2px;
   width: 12px;
   height: 12px;
   border-radius: 2px;
