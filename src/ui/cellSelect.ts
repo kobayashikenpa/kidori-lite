@@ -60,15 +60,16 @@ export function clampRange(r: CellRange, rowCount: number): CellRange | null {
 
 const CLIP_TEXT_MAX = 10
 
-/** 今コピーしているもの：「コピー中：1つ（400）」「コピー中：2行×2列」。無ければ null */
+/** 今コピーしているもの：「コピー中：1つ（400）」「コピー中：2行×2列」（切り取りなら「切り取り中：…」）。無ければ null */
 export function clipText(clip: CellClip | null): string | null {
   if (!clip) return null
+  const head = clip.cut ? '切り取り中' : 'コピー中'
   if (clip.rows === 1 && clip.cols === 1) {
     const t = clip.cells[0]?.[0] ?? ''
     const shown = t === '' ? '空' : [...t].length > CLIP_TEXT_MAX ? `${[...t].slice(0, CLIP_TEXT_MAX).join('')}…` : t
-    return `コピー中：1つ（${shown}）`
+    return `${head}：1つ（${shown}）`
   }
-  return `コピー中：${clip.rows}行×${clip.cols}列`
+  return `${head}：${clip.rows}行×${clip.cols}列`
 }
 
 /** 貼り付けの知らせ：「3つのセルに貼りました（貼れなかったもの 1つ：同じ名前は貼れません）」 */
@@ -78,6 +79,54 @@ export function pasteText(pasted: number, skipped: readonly PasteSkip[]): string
   if (skipped.length === 0) return head
   const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
   return `${head}（貼れなかったもの ${skipped.length}つ：${reasons}）`
+}
+
+/** オートフィルの知らせ：「4つのセルに入れました（入れられなかったもの 2つ：同じ名前は入れられません）」 */
+export function fillText(pasted: number, skipped: readonly PasteSkip[]): string {
+  if (pasted === 0 && skipped.length === 0) return '入れるセルがありませんでした'
+  const head = pasted === 0 ? '入れられませんでした' : `${pasted}つのセルに入れました`
+  if (skipped.length === 0) return head
+  const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
+  return `${head}（入れられなかったもの ${skipped.length}つ：${reasons}）`
+}
+
+/**
+ * オートフィルの取っ手を引いた先（仕様書 17.4。上下だけ）：引いた先の行が範囲より下なら下へ、上なら上へ広げた範囲（元を含む）。
+ * 範囲の中の行なら null（何もしない）。列はいつも元の列
+ */
+export function fillTarget(from: CellRange, to: GridPoint): CellRange | null {
+  const end = from.top + from.rows - 1
+  if (to.row > end) return { ...from, rows: to.row - from.top + 1 }
+  if (to.row < from.top) return { ...from, top: to.row, rows: end - to.row + 1 }
+  return null
+}
+
+/** オートフィルで新しく入れる所（引いたあとの範囲から元の範囲を除いた所。点線で見せる）。広がっていなければ null */
+export function fillExtension(from: CellRange, to: CellRange): CellRange | null {
+  if (to.top < from.top) return { ...from, top: to.top, rows: from.top - to.top }
+  const extra = to.top + to.rows - (from.top + from.rows)
+  return extra > 0 ? { ...from, top: from.top + from.rows, rows: extra } : null
+}
+
+/** オートフィルを引いている間、点線の中に出す短い文：「下へ3行くり返す」。広がっていなければ null */
+export function fillHint(from: CellRange, to: CellRange | null): string | null {
+  const ext = to ? fillExtension(from, to) : null
+  if (!ext) return null
+  return `${ext.top < from.top ? '上' : '下'}へ${ext.rows}行くり返す`
+}
+
+/** 部材の行の、ある印（回転してよい・仕上がった）の今の状態：全部・一部・なし */
+export function flagState(values: readonly boolean[]): 'all' | 'some' | 'none' {
+  const n = values.filter(Boolean).length
+  if (n === 0) return 'none'
+  return n === values.length ? 'all' : 'some'
+}
+
+/** 選んでいる範囲の呼び方（メニューの見出し）：「3行×2列（2〜4行目）」。1つのセルは呼ぶ側で名前を付ける */
+export function rangeText(r: CellRange): string {
+  const end = r.top + r.rows - 1
+  const where = r.rows === 1 ? `${r.top + 1}行目` : `${r.top + 1}〜${end + 1}行目`
+  return `${r.rows}行×${r.cols}列（${where}）`
 }
 
 /** 選んでいるセルの中に、部材の行（表の行が部材の数より小さい）があるか */

@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { PasteSkip } from '../engine/clipboard/cells'
-import { clampRange, clipText, fixedCorner, hasPartCell, isSingleAt, keepActive, pasteText, rangeHas, singleRange, spanRange } from './cellSelect'
+import {
+  clampRange,
+  clipText,
+  fillExtension,
+  fillHint,
+  fillTarget,
+  fillText,
+  fixedCorner,
+  flagState,
+  hasPartCell,
+  isSingleAt,
+  keepActive,
+  pasteText,
+  rangeHas,
+  rangeText,
+  singleRange,
+  spanRange,
+} from './cellSelect'
 
 describe('選んでいる範囲（仕様書 17.1）', () => {
   it('2つのセルを角にした四角（どちらが左上でもよい）', () => {
@@ -54,6 +71,11 @@ describe('今コピーしているもの', () => {
     expect(clipText({ rows: 1, cols: 1, cells: [['天板.W - メラミン1 * 2']] })).toBe('コピー中：1つ（天板.W - メラミ…）')
     expect(clipText({ rows: 2, cols: 2, cells: [['1', '2'], ['3', '4']] })).toBe('コピー中：2行×2列')
   })
+  it('切り取りは「切り取り中」', () => {
+    const cut = { jobId: 'j', range: { top: 0, left: 1, rows: 1, cols: 1 } }
+    expect(clipText({ rows: 1, cols: 1, cells: [['400']], cut })).toBe('切り取り中：1つ（400）')
+    expect(clipText({ rows: 2, cols: 1, cells: [['1'], ['2']], cut })).toBe('切り取り中：2行×1列')
+  })
 })
 
 describe('貼り付けの知らせ', () => {
@@ -65,5 +87,45 @@ describe('貼り付けの知らせ', () => {
     )
     expect(pasteText(0, [])).toBe('貼れるセルがありませんでした')
     expect(pasteText(0, [skip('同じ名前は貼れません')])).toBe('貼れませんでした（貼れなかったもの 1つ：同じ名前は貼れません）')
+  })
+})
+
+describe('オートフィル（仕様書 17.4）', () => {
+  const from = { top: 1, left: 1, rows: 2, cols: 2 }
+  it('引いた先が下なら下へ、上なら上へ広げる（列は元のまま）。範囲の中なら null', () => {
+    expect(fillTarget(from, { row: 5, col: 3 })).toEqual({ top: 1, left: 1, rows: 5, cols: 2 })
+    expect(fillTarget(from, { row: 0, col: 0 })).toEqual({ top: 0, left: 1, rows: 3, cols: 2 })
+    expect(fillTarget(from, { row: 2, col: 0 })).toBeNull()
+  })
+  it('新しく入れる所（点線）', () => {
+    expect(fillExtension(from, { top: 1, left: 1, rows: 5, cols: 2 })).toEqual({ top: 3, left: 1, rows: 3, cols: 2 })
+    expect(fillExtension(from, { top: 0, left: 1, rows: 3, cols: 2 })).toEqual({ top: 0, left: 1, rows: 1, cols: 2 })
+    expect(fillExtension(from, from)).toBeNull()
+  })
+  it('引いている間、点線の中に出す文', () => {
+    expect(fillHint(from, null)).toBeNull()
+    expect(fillHint(from, from)).toBeNull()
+    expect(fillHint(from, { top: 1, left: 1, rows: 5, cols: 2 })).toBe('下へ3行くり返す')
+    expect(fillHint(from, { top: 0, left: 1, rows: 3, cols: 2 })).toBe('上へ1行くり返す')
+  })
+  it('入れたあとの知らせ', () => {
+    const skip: PasteSkip = { cell: { row: 3, col: 'name' }, reason: 'fillName', message: '同じ名前は入れられません' }
+    expect(fillText(4, [])).toBe('4つのセルに入れました')
+    expect(fillText(4, [skip, skip])).toBe('4つのセルに入れました（入れられなかったもの 2つ：同じ名前は入れられません）')
+    expect(fillText(0, [skip])).toBe('入れられませんでした（入れられなかったもの 1つ：同じ名前は入れられません）')
+    expect(fillText(0, [])).toBe('入れるセルがありませんでした')
+  })
+})
+
+describe('長押しのメニューの手伝い', () => {
+  it('回転してよい・仕上がったの今の状態', () => {
+    expect(flagState([true, true])).toBe('all')
+    expect(flagState([true, false])).toBe('some')
+    expect(flagState([false])).toBe('none')
+    expect(flagState([])).toBe('none')
+  })
+  it('範囲の呼び方', () => {
+    expect(rangeText({ top: 1, left: 0, rows: 3, cols: 2 })).toBe('3行×2列（2〜4行目）')
+    expect(rangeText({ top: 0, left: 0, rows: 1, cols: 4 })).toBe('1行×4列（1行目）')
   })
 })

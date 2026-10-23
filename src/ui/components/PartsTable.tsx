@@ -1,6 +1,8 @@
 // 部材の表（仕様書 15.1・15.2・17.1。［仕上がり］のタブ）：番号・名前・W・H・枚数。表の下にいつも空の行。
 // セルを1回押すと選ぶ（太い枠）、選んでいるセルをもう一度押すと入力（第1.3版）。角の丸い取っ手を引くと範囲が広がる。
 // 番号を押すと行全体、見出しを押すと列全体を選ぶ。範囲は engine の CellRange（left 0＝名前 … 3＝枚数）で持つ。
+// セル（範囲）を長押しするとメニュー（CellMenu。仕様書 17.2）。右下の四角い取っ手を上下に引くとオートフィル（仕様書 17.4）。
+// 表の上に、今コピーしているもの と 操作のあとの知らせ を短く出す。
 // 名前はその場でスマホのキーボード。W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（式も使える。枚数は数字だけ）。
 // 入力はキーを押すたびに保存する。空の行に入れたときに部材を作り、何も入っていない部材は表から外す（保存しない）。
 // 寸法の計算は engine（computeDimensions の結果を受け取る）。式の文字の編集は formulaEdit.ts
@@ -11,6 +13,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
 } from 'react'
@@ -19,15 +22,21 @@ import { validatePartName } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { hasName, referableParts } from '../../engine/parts'
-import { CELL_COLS, type Adjust, type Axis, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
+import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import {
   clampRange,
+  clipText,
+  fillExtension,
+  fillHint,
+  fillTarget,
+  fillText,
   fixedCorner,
   isSingleAt,
   keepActive,
   rangeEnd,
   rangeHas,
+  rangeText,
   singleRange,
   spanRange,
   type GridPoint,
@@ -51,12 +60,15 @@ import {
   type TableCell,
   type TableField,
 } from '../partsTable'
+import { CellMenu } from './CellMenu'
 import { FormulaKeys, FormulaView } from './FormulaKeys'
 
 interface Props {
   job: Job
   dims: DimensionResult
   adjusts: readonly Adjust[]
+  /** 今コピー（切り取り）しているセル（アプリ全体で1つ） */
+  clip: CellClip | null
   dispatch: (action: StoreAction) => ReduceResult
   onError: (message: string | null) => void
   ref?: Ref<PartsTableHandle>
@@ -91,13 +103,42 @@ const colOf = (f: TableField): number => CELL_COLS.indexOf(f)
 const EDGE_ZONE = 48
 const EDGE_STEP = 18
 
+/** 長押しでメニューを出すまでの時間（ms）と、取り消しにする指の動き（px） */
+const LONG_PRESS_MS = 500
+const LONG_PRESS_SLOP = 10
+
+/** 長押しした所：セル（col 0＝名前 … 3＝枚数）か、番号（行全体） */
+type PressAt = { row: number; col: number | null }
+
+/** 押した要素から、表のセル・番号を探す（data-row・data-col。名前の入力欄は除く） */
+function pressAtOf(target: EventTarget | null): PressAt | null {
+  if (!(target instanceof Element) || target.closest('input')) return null
+  const el = target.closest<HTMLElement>('[data-row]')
+  if (!el) return null
+  const row = Number(el.dataset.row)
+  const col = el.dataset.col === undefined ? null : Number(el.dataset.col)
+  return Number.isInteger(row) ? { row, col } : null
+}
+
+/** 表の左上からの四角（点線の印に使う） */
+type Box = { top: number; left: number; width: number; height: number }
+/** 範囲を文字にする（描き直しの鍵）・戻す */
+const rangeKey = (r: CellRange | null): string => (r ? `${r.top}:${r.left}:${r.rows}:${r.cols}` : '')
+function rangeOfKey(key: string): CellRange | null {
+  if (key === '') return null
+  const [top, left, rows, cols] = key.split(':').map(Number)
+  return { top, left, rows, cols }
+}
+const sameBox = (a: Box | null, b: Box | null) =>
+  a === b || (a !== null && b !== null && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height)
+
 const sameRange = (a: CellRange | null, b: CellRange | null) =>
   a === b || (a !== null && b !== null && a.top === b.top && a.left === b.left && a.rows === b.rows && a.cols === b.cols)
 
 /** キーを押しても注目が移らないようにする（スマホのキーボードが出ない・画面が跳ねないように） */
 const keep = (e: ReactPointerEvent) => e.preventDefault()
 
-export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props) {
+export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }: Props) {
   const parts = job.parts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ、仕事ごとに覚える。保存しない）
   const [minRows, setMinRows] = useState(() => sessionTableMinRows(job.id))
@@ -105,11 +146,16 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
   // 選んでいる範囲と、その起点（アクティブセル）。入力していないときも選んだまま（仕様書 17.1）
   const [range, setRangeS] = useState<CellRange | null>(null)
   const [active, setActiveS] = useState<GridPoint | null>(null)
+  // 長押しのメニューを開いているか・操作のあとの知らせ（表の上に短く出す）
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   if (minRowsJob !== job.id) {
     setMinRowsJob(job.id)
     setMinRows(sessionTableMinRows(job.id))
     setRangeS(null)
     setActiveS(null)
+    setMenuOpen(false)
+    setNotice(null)
   }
   const rowCount = tableRowCount(parts.length, minRows)
   const addRows = () => {
@@ -245,21 +291,29 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
   }
   const selectRef = useRef(selectCell)
 
-  useImperativeHandle(ref, () => ({
-    editName(nextJob, partId) {
-      jobRef.current = nextJob
-      const row = nextJob.parts.findIndex((p) => p.id === partId)
-      if (row < 0) return
-      // 先に表を描き直して名前の欄を作り、押した操作の中で注目を移す（スマホのキーボードが出るように）
-      flushSync(() => {
-        setSel({ partId, field: 'name' })
-        selectRange(singleRange({ row, col: 0 }))
-        setDraft(nextJob.parts[row].name)
-        setNameMsg(null)
-      })
-      nameInputs.current.get(row)?.focus()
-    },
-  }))
+  /** その部材の名前の入力を始める（押した操作の中で呼ぶ）。nextJob は操作のあとの仕事 */
+  const editName = (nextJob: Job, partId: string) => {
+    jobRef.current = nextJob
+    const row = nextJob.parts.findIndex((p) => p.id === partId)
+    if (row < 0) return
+    // 先に表を描き直して名前の欄を作り、押した操作の中で注目を移す（スマホのキーボードが出るように）
+    flushSync(() => {
+      setSel({ partId, field: 'name' })
+      selectRange(singleRange({ row, col: 0 }))
+      setDraft(nextJob.parts[row].name)
+      setNameMsg(null)
+    })
+    nameInputs.current.get(row)?.focus()
+  }
+  useImperativeHandle(ref, () => ({ editName }))
+
+  /** 長押しのメニューの「行を上に挿入」：index の位置に空の行を入れて、その名前の入力を始める */
+  const insertAbove = (index: number) => {
+    const r = run({ type: 'insertPart', index, part: { name: '', expr: { W: '', H: '' }, quantity: null } })
+    if (!r.ok || !r.id) return
+    const next = currentJob(r.state)
+    if (next) editName(next, r.id)
+  }
   useEffect(() => {
     selectRef.current = selectCell
   })
@@ -416,6 +470,7 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
       return
     }
     onError(null)
+    setNotice(null)
     if (isSingleAt(rangeRef.current, p)) startInput({ row, field })
     else selectRange(singleRange(p))
   }
@@ -424,26 +479,43 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
   const pressRow = (row: number) => {
     if (curCell()) selectCell(null)
     onError(null)
+    setNotice(null)
     selectRange(rowRange(row))
   }
   const pressColumn = (col: number) => {
     if (curCell()) selectCell(null)
     onError(null)
+    setNotice(null)
     selectRange(columnRange(jobRef.current, col))
   }
 
-  // ---------- 取っ手（範囲を広げる・縮める） ----------
+  // ---------- 取っ手（丸＝範囲を広げる・縮める、四角＝オートフィル） ----------
 
   const dragRef = useRef<{
     id: number
+    /** range：丸い取っ手で範囲を変える。fill：四角い取っ手でオートフィル */
+    mode: 'range' | 'fill'
     fixed: GridPoint
+    /** オートフィルの元の範囲 */
+    from: CellRange
+    /** 押し始めた位置（動かさずに離したら、下のセルを押したことにする） */
+    sx: number
+    sy: number
     x: number
     y: number
     raf: number
     move: (e: PointerEvent) => void
     up: (e: PointerEvent) => void
   } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const [dragging, setDragging] = useState<'range' | 'fill' | null>(null)
+  // オートフィルで引いた先（元を含む範囲。引いている間だけ）
+  const [fillTo, setFillToS] = useState<CellRange | null>(null)
+  const fillToRef = useRef<CellRange | null>(null)
+  const setFillTo = (r: CellRange | null) => {
+    if (sameRange(fillToRef.current, r)) return
+    fillToRef.current = r
+    setFillToS(r)
+  }
   const rowCountRef = useRef(rowCount)
   useEffect(() => {
     rowCountRef.current = rowCount
@@ -468,9 +540,15 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
 
   const dragTo = () => {
     const d = dragRef.current
-    const a = activeRef.current
     if (!d) return
-    const r = spanRange(d.fixed, pointAt(d.x, d.y))
+    const p = pointAt(d.x, d.y)
+    if (d.mode === 'fill') {
+      // 表の上の知らせは変えない（引いている間に表が上下にずれないように。引いた先の行数は点線の中に出す）
+      setFillTo(fillTarget(d.from, p))
+      return
+    }
+    const a = activeRef.current
+    const r = spanRange(d.fixed, p)
     selectRange(r, a ? keepActive(a, r, d.fixed) : d.fixed)
   }
 
@@ -490,8 +568,8 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
     d.raf = requestAnimationFrame(edgeScroll)
   }
 
-  /** 引き終わり（指を離した・取り消された） */
-  const endDrag = () => {
+  /** 引き終わり（指を離した＝commit、取り消された＝commit なし）。オートフィルは離したときに入れる */
+  const endDrag = (commit = false) => {
     const d = dragRef.current
     if (!d) return
     cancelAnimationFrame(d.raf)
@@ -499,16 +577,38 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
     window.removeEventListener('pointerup', d.up)
     window.removeEventListener('pointercancel', d.up)
     dragRef.current = null
-    setDragging(false)
+    setDragging(null)
+    // 取っ手を動かさずに離したら、取っ手の下のセル（番号）を押したことにする（取っ手が隣のセルに重なっても押せるように）
+    if (commit && Math.hypot(d.x - d.sx, d.y - d.sy) <= LONG_PRESS_SLOP) {
+      setFillTo(null)
+      const under = document.elementsFromPoint(d.x, d.y).find((el) => !el.closest('.pt-handle'))
+      const at = pressAtOf(under ?? null)
+      if (at && tableRef.current?.contains(under ?? null)) {
+        if (at.col === null) pressRow(at.row)
+        else pressCell(at.row, CELL_COLS[at.col])
+      }
+      return
+    }
+    if (d.mode !== 'fill') return
+    const to = fillToRef.current
+    setFillTo(null)
+    if (!commit || !to) return
+    const r = run({ type: 'fillCells', from: d.from, to })
+    if (!r.ok) return
+    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped) : null)
+    // 入れたあとは、引いた先まで選ぶ（エクセルと同じ。起点はそのまま）
+    const a = activeRef.current
+    selectRange(to, a && rangeHas(to, a) ? a : { row: to.top, col: to.left })
   }
 
   // 取っ手は範囲が変わると別の行に描き直されるので、指の動きは画面全体（window）で追う
-  const onHandleDown = (which: 'start' | 'end') => (e: ReactPointerEvent<HTMLSpanElement>) => {
+  const onHandleDown = (which: 'start' | 'end' | 'fill') => (e: ReactPointerEvent<HTMLSpanElement>) => {
     const r = rangeRef.current
     if (!r) return
     e.preventDefault()
     e.stopPropagation()
     endDrag()
+    cancelPress()
     const id = e.pointerId
     const move = (ev: PointerEvent) => {
       const d = dragRef.current
@@ -518,19 +618,119 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
       dragTo()
     }
     const up = (ev: PointerEvent) => {
-      if (ev.pointerId === id) endDrag()
+      if (ev.pointerId === id) endDrag(ev.type === 'pointerup')
     }
-    dragRef.current = { id, fixed: fixedCorner(r, which), x: e.clientX, y: e.clientY, raf: requestAnimationFrame(edgeScroll), move, up }
+    const mode = which === 'fill' ? 'fill' : 'range'
+    dragRef.current = {
+      id,
+      mode,
+      fixed: fixedCorner(r, which === 'start' ? 'start' : 'end'),
+      from: r,
+      sx: e.clientX,
+      sy: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+      raf: requestAnimationFrame(edgeScroll),
+      move,
+      up,
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
-    setDragging(true)
+    setDragging(mode)
+    if (mode === 'fill') onError(null)
   }
   const endDragRef = useRef(endDrag)
   useEffect(() => {
     endDragRef.current = endDrag
   })
   useEffect(() => () => endDragRef.current(), [])
+
+  // ---------- 長押しのメニュー（仕様書 17.2） ----------
+
+  const pressRef = useRef<{ id: number; x: number; y: number; timer: number; at: PressAt } | null>(null)
+  // 長押しのあとに来る「押した」（指を離したときの click）を1回だけ捨てる（入力が始まったり、メニューがすぐ閉じたりしないように）
+  const swallowClick = useRef(false)
+
+  const cancelPress = () => {
+    const p = pressRef.current
+    if (!p) return
+    clearTimeout(p.timer)
+    pressRef.current = null
+  }
+
+  /** 長押しした所でメニューを開く。選んでいない所なら、そのセル（番号なら行全体）を選んでから */
+  const openMenu = (at: PressAt) => {
+    cancelPress()
+    if (dragRef.current || menuOpen) return
+    swallowClick.current = true
+    if (curCell()) selectCell(null)
+    const r = rangeRef.current
+    if (at.col === null) {
+      const whole = r !== null && r.left === 0 && r.cols === CELL_COLS.length && at.row >= r.top && at.row < r.top + r.rows
+      if (!whole) selectRange(rowRange(at.row))
+    } else {
+      const p = { row: at.row, col: at.col }
+      if (!r || !rangeHas(r, p)) selectRange(singleRange(p))
+    }
+    onError(null)
+    setNotice(null)
+    setMenuOpen(true)
+    navigator.vibrate?.(10)
+  }
+  const openMenuRef = useRef(openMenu)
+  useEffect(() => {
+    openMenuRef.current = openMenu
+  })
+
+  const onTablePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    cancelPress()
+    // マウスの右ボタンは contextmenu で開く
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    const at = pressAtOf(e.target)
+    if (!at) return
+    const timer = window.setTimeout(() => openMenuRef.current(at), LONG_PRESS_MS)
+    pressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer, at }
+  }
+  const onTablePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const p = pressRef.current
+    if (!p || p.id !== e.pointerId) return
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > LONG_PRESS_SLOP) cancelPress()
+  }
+  const onTablePointerEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (pressRef.current?.id === e.pointerId) cancelPress()
+  }
+  /** 長押しの決まったメニュー（Android の長押し・マウスの右クリック）は止めて、このアプリのメニューを出す。名前の入力欄の中は止めない */
+  const onTableContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.target instanceof Element && e.target.closest('input')) return
+    e.preventDefault()
+    const at = pressAtOf(e.target)
+    if (at && !menuOpen) openMenu(at)
+  }
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (!swallowClick.current) return
+      swallowClick.current = false
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    // 次に押し始めたら、捨てる印は消す（長押しのあとに click が来なかったとき）
+    const onDown = () => {
+      swallowClick.current = false
+    }
+    window.addEventListener('click', onClick, true)
+    window.addEventListener('pointerdown', onDown, true)
+    return () => {
+      window.removeEventListener('click', onClick, true)
+      window.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [])
+  const cancelPressRef = useRef(cancelPress)
+  useEffect(() => {
+    cancelPressRef.current = cancelPress
+  })
+  useEffect(() => () => cancelPressRef.current(), [])
 
   // ---------- 表示 ----------
 
@@ -557,6 +757,13 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
   // 取っ手は表に1つずつ置き、引いている間に描き直されても同じ要素のままにする（iPhone で指の動きが途切れないように）
   type Corners = { top: number; bottom: number; left: number; right: number }
   const [handleAt, setHandleAt] = useState<Corners | null>(null)
+  // 点線の印：オートフィルで新しく入れる所（引いている間）と、切り取った元（同じ仕事のとき）
+  const [fillBox, setFillBox] = useState<Box | null>(null)
+  const [cutBox, setCutBox] = useState<Box | null>(null)
+  const fillExt = dragging === 'fill' && fillTo && shown ? fillExtension(shown, fillTo) : null
+  const fillKey = rangeKey(fillExt)
+  const cutKey = rangeKey(clip?.cut && clip.cut.jobId === job.id ? clampRange(clip.cut.range, rowCount) : null)
+  const clipNow = clipText(clip)
   const handleTop = shown?.top ?? -1
   const handleBottom = shownEnd?.row ?? -1
   const handleLeft = shown?.left ?? -1
@@ -581,24 +788,64 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
       setHandleAt((cur) =>
         cur && next && cur.top === next.top && cur.bottom === next.bottom && cur.left === next.left && cur.right === next.right ? cur : next,
       )
+      /** 範囲の四角（表の左上から） */
+      const boxOf = (key: string): Box | null => {
+        const r = rangeOfKey(key)
+        if (!r || !table) return null
+        const tEl = rowEls.current.get(r.top)?.firstElementChild
+        const bEl = rowEls.current.get(r.top + r.rows - 1)?.firstElementChild
+        const lEl = headEls.current[r.left]
+        const rEl = headEls.current[r.left + r.cols - 1]
+        if (!tEl || !bEl || !lEl || !rEl) return null
+        const t = table.getBoundingClientRect()
+        const top = tEl.getBoundingClientRect().top - t.top
+        const left = lEl.getBoundingClientRect().left - t.left
+        return { top, left, width: rEl.getBoundingClientRect().right - t.left - left, height: bEl.getBoundingClientRect().bottom - t.top - top }
+      }
+      const fill = boxOf(fillKey)
+      setFillBox((cur) => (sameBox(cur, fill) ? cur : fill))
+      const cut = boxOf(cutKey)
+      setCutBox((cur) => (sameBox(cur, cut) ? cur : cut))
     }
     measure()
     if (typeof ResizeObserver === 'undefined' || !tableRef.current) return
     const ro = new ResizeObserver(measure)
     ro.observe(tableRef.current)
     return () => ro.disconnect()
-  }, [handleTop, handleBottom, handleLeft, handleRight, rowCount, parts, rowMsg])
+  }, [handleTop, handleBottom, handleLeft, handleRight, rowCount, parts, rowMsg, fillKey, cutKey, notice, clipNow])
 
   const rows = Array.from({ length: rowCount }, (_, i) => i)
   const showHandles = shown !== null && shownEnd !== null && !anySel
 
+  // 長押しのメニューの見出し：1つのセルは「天板 の W」、範囲は「3行×2列（2〜4行目）」
+  const menuTitle = (() => {
+    if (!shown) return ''
+    if (shown.rows === 1 && shown.cols === 1) {
+      const p = parts[shown.top]
+      const name = p && hasName(p) ? p.name : p ? `#${shown.top + 1}` : `${shown.top + 1}行目（空）`
+      return `${name} の ${FIELD_LABEL[CELL_COLS[shown.left]]}`
+    }
+    return rangeText(shown)
+  })()
+
   return (
     <>
+      {(notice || clipNow) && (
+        <div className="pt-status" role="status" aria-live="polite">
+          {notice && <p className="pt-notice">{notice}</p>}
+          {clipNow && <p className="pt-clip">{clipNow}</p>}
+        </div>
+      )}
       <div
         className={`pt pt-edit${dragging ? ' dragging' : ''}`}
         ref={tableRef}
         role="table"
-        aria-label="部材の表（仕上がり寸法）：押して選ぶ、もう一度押して入力"
+        aria-label="部材の表（仕上がり寸法）：押して選ぶ、もう一度押して入力、長押しでメニュー"
+        onPointerDown={onTablePointerDown}
+        onPointerMove={onTablePointerMove}
+        onPointerUp={onTablePointerEnd}
+        onPointerCancel={onTablePointerEnd}
+        onContextMenu={onTableContextMenu}
       >
         <div className="pt-row pt-head" role="row">
           <span role="columnheader" className="pt-hno">
@@ -659,6 +906,7 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
             <button
               type="button"
               className={`pt-cell pt-no${part ? '' : ' muted'}${rowIn ? ' hl' : ''}`}
+              data-row={i}
               aria-label={`${part ? label : `${i + 1}行目`} の行を選ぶ`}
               onClick={() => pressRow(i)}
             >
@@ -697,6 +945,8 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
             <button
               type="button"
               className={`pt-cell pt-name${rangeCls('name')}`}
+              data-row={i}
+              data-col={0}
               aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}`}
               aria-selected={inRange('name')}
               onClick={cellPress('name')}
@@ -713,6 +963,8 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
               <button
                 type="button"
                 className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(axis)}`}
+                data-row={i}
+                data-col={colOf(axis)}
                 aria-label={`${label} の ${axis}：${text || '空'}`}
                 aria-selected={inRange(axis)}
                 onClick={cellPress(axis)}
@@ -751,6 +1003,8 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
                 <button
                   type="button"
                   className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
+                  data-row={i}
+                  data-col={3}
                   aria-label={`${label} の枚数：${part?.quantity ?? '空'}`}
                   aria-selected={inRange('qty')}
                   onClick={cellPress('qty')}
@@ -786,13 +1040,42 @@ export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props
             >
               <span className="pt-dot" />
             </span>
+            <span
+              key="fill"
+              className="pt-handle fill"
+              style={{ left: handleAt.right - 30, top: handleAt.bottom + 18 }}
+              aria-hidden="true"
+              onPointerDown={onHandleDown('fill')}
+            >
+              <span className="pt-fill-dot" />
+            </span>
           </>
         )}
+        {fillBox && (
+          <span className="pt-mark fill" style={fillBox} aria-hidden="true">
+            {shown && fillTo && <span className="pt-mark-label">{fillHint(shown, fillTo)}</span>}
+          </span>
+        )}
+        {cutBox && <span className="pt-mark cut" style={cutBox} aria-hidden="true" />}
       </div>
       <button type="button" className="btn add-rows" onClick={addRows}>
         ＋ 5行足す
       </button>
       {padOpen && <div className="pt-spacer" style={{ height: padH }} aria-hidden="true" />}
+      {menuOpen && shown && (
+        <CellMenu
+          job={job}
+          range={shown}
+          title={menuTitle}
+          clip={clip}
+          dispatch={dispatch}
+          onClose={() => setMenuOpen(false)}
+          onNotice={setNotice}
+          onError={onError}
+          onInsertAbove={insertAbove}
+          onRowsDeleted={() => selectRange(singleRange({ row: shown.top, col: shown.left }))}
+        />
+      )}
       {padOpen &&
         sel &&
         createPortal(
