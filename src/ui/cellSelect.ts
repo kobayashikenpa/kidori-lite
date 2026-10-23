@@ -72,22 +72,22 @@ export function clipText(clip: CellClip | null): string | null {
   return `${head}：${clip.rows}行×${clip.cols}列`
 }
 
-/** 貼り付けの知らせ：「3つのセルに貼りました（貼れなかったもの 1つ：同じ名前は貼れません）」 */
+/** 貼り付けの知らせ：「3個のセルに貼りました（貼れなかったもの 1個：同じ名前は貼れません）」 */
 export function pasteText(pasted: number, skipped: readonly PasteSkip[]): string {
   if (pasted === 0 && skipped.length === 0) return '貼れるセルがありませんでした'
-  const head = pasted === 0 ? '貼れませんでした' : `${pasted}つのセルに貼りました`
+  const head = pasted === 0 ? '貼れませんでした' : `${pasted}個のセルに貼りました`
   if (skipped.length === 0) return head
   const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
-  return `${head}（貼れなかったもの ${skipped.length}つ：${reasons}）`
+  return `${head}（貼れなかったもの ${skipped.length}個：${reasons}）`
 }
 
-/** オートフィルの知らせ：「4つのセルに入れました（入れられなかったもの 2つ：同じ名前は入れられません）」 */
+/** オートフィルの知らせ：「4個のセルに入れました（入れられなかったもの 2個：同じ名前は入れられません）」 */
 export function fillText(pasted: number, skipped: readonly PasteSkip[]): string {
   if (pasted === 0 && skipped.length === 0) return '入れるセルがありませんでした'
-  const head = pasted === 0 ? '入れられませんでした' : `${pasted}つのセルに入れました`
+  const head = pasted === 0 ? '入れられませんでした' : `${pasted}個のセルに入れました`
   if (skipped.length === 0) return head
   const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
-  return `${head}（入れられなかったもの ${skipped.length}つ：${reasons}）`
+  return `${head}（入れられなかったもの ${skipped.length}個：${reasons}）`
 }
 
 /**

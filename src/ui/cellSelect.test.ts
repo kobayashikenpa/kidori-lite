@@ -81,12 +81,12 @@ describe('今コピーしているもの', () => {
 describe('貼り付けの知らせ', () => {
   const skip = (message: string): PasteSkip => ({ cell: { row: 0, col: 'name' }, reason: 'duplicateName', message })
   it('貼った数と、貼れなかった数・理由（同じ理由は1つにまとめる）', () => {
-    expect(pasteText(3, [])).toBe('3つのセルに貼りました')
+    expect(pasteText(3, [])).toBe('3個のセルに貼りました')
     expect(pasteText(1, [skip('同じ名前は貼れません'), skip('同じ名前は貼れません')])).toBe(
-      '1つのセルに貼りました（貼れなかったもの 2つ：同じ名前は貼れません）',
+      '1個のセルに貼りました（貼れなかったもの 2個：同じ名前は貼れません）',
     )
     expect(pasteText(0, [])).toBe('貼れるセルがありませんでした')
-    expect(pasteText(0, [skip('同じ名前は貼れません')])).toBe('貼れませんでした（貼れなかったもの 1つ：同じ名前は貼れません）')
+    expect(pasteText(0, [skip('同じ名前は貼れません')])).toBe('貼れませんでした（貼れなかったもの 1個：同じ名前は貼れません）')
   })
 })
 
@@ -110,9 +110,9 @@ describe('オートフィル（仕様書 17.4）', () => {
   })
   it('入れたあとの知らせ', () => {
     const skip: PasteSkip = { cell: { row: 3, col: 'name' }, reason: 'fillName', message: '同じ名前は入れられません' }
-    expect(fillText(4, [])).toBe('4つのセルに入れました')
-    expect(fillText(4, [skip, skip])).toBe('4つのセルに入れました（入れられなかったもの 2つ：同じ名前は入れられません）')
-    expect(fillText(0, [skip])).toBe('入れられませんでした（入れられなかったもの 1つ：同じ名前は入れられません）')
+    expect(fillText(4, [])).toBe('4個のセルに入れました')
+    expect(fillText(4, [skip, skip])).toBe('4個のセルに入れました（入れられなかったもの 2個：同じ名前は入れられません）')
+    expect(fillText(0, [skip])).toBe('入れられませんでした（入れられなかったもの 1個：同じ名前は入れられません）')
     expect(fillText(0, [])).toBe('入れるセルがありませんでした')
   })
 })

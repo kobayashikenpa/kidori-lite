@@ -120,6 +120,13 @@ function pressAtOf(target: EventTarget | null): PressAt | null {
   return Number.isInteger(row) ? { row, col } : null
 }
 
+/** 画面の位置にある表のセル・番号（取っ手は除いて、その下を見る）。表の外なら null */
+function cellUnder(x: number, y: number): PressAt | null {
+  const el = document.elementsFromPoint(x, y).find((e) => !e.closest('.pt-handle'))
+  if (!el || !el.closest('.pt-edit')) return null
+  return pressAtOf(el)
+}
+
 /** 表の左上からの四角（点線の印に使う） */
 type Box = { top: number; left: number; width: number; height: number }
 /** 範囲を文字にする（描き直しの鍵）・戻す */
@@ -491,6 +498,9 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
 
   // ---------- 取っ手（丸＝範囲を広げる・縮める、四角＝オートフィル） ----------
 
+  // 長押しのあと・取っ手の上を押したあとに来る「押した」（指を離したときの click）を1回だけ捨てる（入力が始まったり、メニューがすぐ閉じたりしないように）
+  const swallowClick = useRef(false)
+
   const dragRef = useRef<{
     id: number
     /** range：丸い取っ手で範囲を変える。fill：四角い取っ手でオートフィル */
@@ -501,6 +511,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     /** 押し始めた位置（動かさずに離したら、下のセルを押したことにする） */
     sx: number
     sy: number
+    /** 指が LONG_PRESS_SLOP より動いたか（動くまでは範囲を変えない。取っ手の上の「押す」「長押し」と分ける） */
+    moved: boolean
+    /** 取っ手の上で動かさずに押し続けたら、指の下のセルの長押しとしてメニューを開く */
+    timer: number
     x: number
     y: number
     raf: number
@@ -540,7 +554,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
 
   const dragTo = () => {
     const d = dragRef.current
-    if (!d) return
+    if (!d || !d.moved) return
     const p = pointAt(d.x, d.y)
     if (d.mode === 'fill') {
       // 表の上の知らせは変えない（引いている間に表が上下にずれないように。引いた先の行数は点線の中に出す）
@@ -556,6 +570,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   const edgeScroll = () => {
     const d = dragRef.current
     if (!d) return
+    if (!d.moved) {
+      d.raf = requestAnimationFrame(edgeScroll)
+      return
+    }
     const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0) + EDGE_ZONE
     const bottom = (document.querySelector('.tabbar')?.getBoundingClientRect().top ?? window.innerHeight) - EDGE_ZONE
     let dy = 0
@@ -573,17 +591,20 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     const d = dragRef.current
     if (!d) return
     cancelAnimationFrame(d.raf)
+    clearTimeout(d.timer)
     window.removeEventListener('pointermove', d.move)
     window.removeEventListener('pointerup', d.up)
     window.removeEventListener('pointercancel', d.up)
     dragRef.current = null
     setDragging(null)
-    // 取っ手を動かさずに離したら、取っ手の下のセル（番号）を押したことにする（取っ手が隣のセルに重なっても押せるように）
-    if (commit && Math.hypot(d.x - d.sx, d.y - d.sy) <= LONG_PRESS_SLOP) {
+    // 取っ手を動かさずに離したら、指の位置のセル（番号）を押したことにする（取っ手がセルに重なっても押せるように。
+    // 選んでいるセル自身なら2回目の押し方＝入力）
+    if (!d.moved) {
       setFillTo(null)
-      const under = document.elementsFromPoint(d.x, d.y).find((el) => !el.closest('.pt-handle'))
-      const at = pressAtOf(under ?? null)
-      if (at && tableRef.current?.contains(under ?? null)) {
+      const at = commit ? cellUnder(d.x, d.y) : null
+      if (at) {
+        // 指を離したあとに来る click は捨てる（ここで押したことにしたので。出てきたキーなどに当たらないように）
+        swallowClick.current = true
         if (at.col === null) pressRow(at.row)
         else pressCell(at.row, CELL_COLS[at.col])
       }
@@ -615,7 +636,19 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
       if (!d || ev.pointerId !== id) return
       d.x = ev.clientX
       d.y = ev.clientY
+      if (!d.moved && Math.hypot(d.x - d.sx, d.y - d.sy) > LONG_PRESS_SLOP) {
+        d.moved = true
+        clearTimeout(d.timer)
+      }
       dragTo()
+    }
+    // 動かさずに押し続けたら：引くのをやめて、指の下のセルの長押し（メニュー）にする
+    const hold = () => {
+      const d = dragRef.current
+      if (!d || d.id !== id || d.moved) return
+      const at = cellUnder(d.x, d.y)
+      endDrag()
+      if (at) openMenuRef.current(at)
     }
     const up = (ev: PointerEvent) => {
       if (ev.pointerId === id) endDrag(ev.type === 'pointerup')
@@ -628,6 +661,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
       from: r,
       sx: e.clientX,
       sy: e.clientY,
+      moved: false,
+      timer: window.setTimeout(hold, LONG_PRESS_MS),
       x: e.clientX,
       y: e.clientY,
       raf: requestAnimationFrame(edgeScroll),
@@ -649,8 +684,6 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   // ---------- 長押しのメニュー（仕様書 17.2） ----------
 
   const pressRef = useRef<{ id: number; x: number; y: number; timer: number; at: PressAt } | null>(null)
-  // 長押しのあとに来る「押した」（指を離したときの click）を1回だけ捨てる（入力が始まったり、メニューがすぐ閉じたりしないように）
-  const swallowClick = useRef(false)
 
   const cancelPress = () => {
     const p = pressRef.current
@@ -1043,7 +1076,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
             <span
               key="fill"
               className="pt-handle fill"
-              style={{ left: handleAt.right - 30, top: handleAt.bottom + 18 }}
+              style={{ left: handleAt.right - 30, top: handleAt.bottom + 22 }}
               aria-hidden="true"
               onPointerDown={onHandleDown('fill')}
             >
