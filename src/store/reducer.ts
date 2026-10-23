@@ -2,10 +2,20 @@
 // kidori の store/reducer.ts を参考に作り直したもの。
 // 操作の中で id・時刻を作るので、reduce は「id の作り方と今の時刻（env）」を引数で受ける純粋関数にする。
 // 画面からは JobStore の dispatch で1回だけ当てる（React が reducer を2回呼んでも id がずれないように、結果の状態を置き換える）
-import { clearCells, copyCells, deleteRows, pasteCells, type PasteSkip } from '../engine/clipboard/cells'
+import {
+  clearCells,
+  clearCutSource,
+  copyCells,
+  cutCells,
+  deleteRows,
+  fillCells,
+  pasteCells,
+  type CellSelection,
+  type PasteSkip,
+} from '../engine/clipboard/cells'
 import { duplicatePart } from '../engine/clipboard/copy'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
-import type { AppData, CellPos, Job, Part, Settings, Sheet } from '../engine/types'
+import type { AppData, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -50,6 +60,11 @@ interface OnJob {
   jobId?: string
 }
 
+/** 選んだセル：セルの配列（第1.2版）か、四角い範囲（第1.3版。行全体・列全体も engine の rowRange・columnRange で四角にする） */
+export type SelectionArg = { cells: CellPos[] } | { range: CellRange }
+
+const selectionOf = (a: SelectionArg): CellSelection => ('range' in a ? a.range : a.cells)
+
 export type StoreAction =
   /** 新しい仕事を作る（名前が空なら「仕事 10/21」の形）。open（省略で true）なら開く */
   | { type: 'createJob'; name?: string; open?: boolean }
@@ -82,13 +97,26 @@ export type StoreAction =
    * 選んだセルをコピーする（1つのセルか四角い範囲だけ。アプリが覚える＝AppData.cellClip。最後の1回分だけ）。
    * 仕事は変えない（updatedAt も付けない）
    */
-  | ({ type: 'copyCells'; cells: CellPos[] } & OnJob)
-  /** コピーしたセルを、選んだセルに貼る（engine の pasteCells）。結果の paste に貼った数・貼れなかったセル */
-  | ({ type: 'pasteCells'; cells: CellPos[] } & OnJob)
+  | ({ type: 'copyCells' } & SelectionArg & OnJob)
+  /**
+   * 選んだセルを切り取る（第1.3版。仕様書 17.3）。コピーと同じく覚え、元（仕事の id と範囲）を cellClip.cut に付ける。
+   * 仕事はまだ変えない（貼ったときに元を空にする。貼る前にほかをコピーすると元は残る）
+   */
+  | ({ type: 'cutCells' } & SelectionArg & OnJob)
+  /**
+   * コピーしたセルを、選んだセルに貼る（engine の pasteCells）。結果の paste に貼った数・貼れなかったセル。
+   * 切り取りなら元のセルを空にし（元がほかの仕事でも）、1つでも貼れたら cellClip をふつうのコピーに変える
+   */
+  | ({ type: 'pasteCells' } & SelectionArg & OnJob)
+  /**
+   * オートフィル（第1.3版。仕様書 17.4）：from の範囲の値を、to の範囲（引いたあとの範囲。元を除いた所だけでもよい）へ上下にくり返して入れる。
+   * 結果の paste は貼り付けと同じ形（名前の列は reason 'fillName'「同じ名前は入れられません」）
+   */
+  | ({ type: 'fillCells'; from: CellRange; to: CellRange } & OnJob)
   /** 選んだセルの中身を消す（行の全部の欄が空になった部材は消える） */
-  | ({ type: 'clearCells'; cells: CellPos[] } & OnJob)
+  | ({ type: 'clearCells' } & SelectionArg & OnJob)
   /** 選んだセルのある行の部材をまとめて消す（式で使われているかの確認は画面の側で先に行う） */
-  | ({ type: 'deleteRows'; cells: CellPos[] } & OnJob)
+  | ({ type: 'deleteRows' } & SelectionArg & OnJob)
   /** 切り出しチェック（その1枚の、ある部材の片をまとめて付け外し） */
   | ({ type: 'setPartCheck'; target: SheetTarget; partId: string; done: boolean } & OnJob)
   /** 切り出しチェック（片1つ） */
@@ -112,7 +140,7 @@ export interface PasteSummary {
   skipped: PasteSkip[]
 }
 
-/** 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id。paste は貼り付け（pasteCells）のときだけ */
+/** 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id。paste は貼り付け（pasteCells）・オートフィル（fillCells）のときだけ */
 export type ReduceResult = { ok: true; state: StoreState; id?: string; paste?: PasteSummary } | { ok: false; message: string }
 
 /** 読み込みの結果から最初の状態を作る */
@@ -205,10 +233,12 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       })
       return r.ok ? done(r.state, id) : r
     }
-    case 'copyCells': {
+    case 'copyCells':
+    case 'cutCells': {
       const job = state.data.jobs.find((j) => j.id === (action.jobId ?? state.currentJobId))
       if (!job) return fail('仕事が開かれていません')
-      const r = copyCells(job, action.cells)
+      const sel = selectionOf(action)
+      const r = action.type === 'cutCells' ? cutCells(job, sel) : copyCells(job, sel)
       if (!r.ok) return fail(r.message)
       return done({ ...state, data: { ...state.data, cellClip: r.clip } })
     }
@@ -216,8 +246,31 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const clip = state.data.cellClip
       if (!clip) return fail('コピーしたセルがありません')
       let paste: PasteSummary | undefined
+      let cutClear: { jobId: string; cells: CellPos[] } | null = null
       const r = onJob(state, action.jobId, env, (j) => {
-        const p = pasteCells(j, clip, action.cells, env.newId)
+        const p = pasteCells(j, clip, selectionOf(action), env.newId)
+        if (!p.ok) return p
+        paste = { pasted: p.pasted, skipped: p.skipped }
+        cutClear = p.cutClear
+        return { ok: true, job: p.job }
+      })
+      if (!r.ok || !paste) return r
+      const summary: PasteSummary = paste
+      if (!clip.cut || summary.pasted === 0) return { ...r, paste: summary }
+      // 切り取り：元がほかの仕事なら、その仕事の元のセルを空にする。クリップはふつうのコピーに変える（2回目は元を消さない）
+      let next = r.state
+      const clear = cutClear as { jobId: string; cells: CellPos[] } | null
+      if (clear) {
+        const after = onJob(next, clear.jobId, env, (j) => ({ ok: true, job: clearCutSource(j, clip, clear.cells) }))
+        if (after.ok) next = after.state // 元の仕事が消えていれば何もしない
+      }
+      const { cut: _cut, ...copy } = clip
+      return { ok: true, state: { ...next, data: { ...next.data, cellClip: copy } }, paste: summary }
+    }
+    case 'fillCells': {
+      let paste: PasteSummary | undefined
+      const r = onJob(state, action.jobId, env, (j) => {
+        const p = fillCells(j, action.from, action.to, env.newId)
         if (!p.ok) return p
         paste = { pasted: p.pasted, skipped: p.skipped }
         return { ok: true, job: p.job }
@@ -225,10 +278,10 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       return r.ok && paste ? { ...r, paste } : r
     }
     case 'clearCells':
-      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: clearCells(j, action.cells) }))
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: clearCells(j, selectionOf(action)) }))
     case 'deleteRows':
       return onJob(state, action.jobId, env, (j) => {
-        const next = deleteRows(j, action.cells)
+        const next = deleteRows(j, selectionOf(action))
         return next === j ? { ok: false, message: '削除する行を選んでください' } : { ok: true, job: next }
       })
     case 'setPartCheck':

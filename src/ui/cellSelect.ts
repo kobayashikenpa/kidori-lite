@@ -1,33 +1,75 @@
-// セルを選ぶ状態（第1.2版。仕様書 16.1）の画面の手伝い：選んだセルの持ち方と、下のバーに出す文。
+// セルを選ぶ（第1.3版。仕様書 17.1）の画面の手伝い：選んでいる範囲（四角）の持ち方と、コピー・貼り付けの知らせの文。
 // 計算（コピー・貼り付け・消す・行を削除）は engine/clipboard/cells.ts と store の reducer が行う
 import type { PasteSkip } from '../engine/clipboard/cells'
-import type { CellClip, CellCol, CellPos } from '../engine/types'
+import type { CellClip, CellCol, CellPos, CellRange } from '../engine/types'
 
 /** セルの鍵（"行:列"） */
 export const cellKey = (pos: CellPos): string => `${pos.row}:${pos.col}`
 
-/** 押したセルを選ぶ／外す（新しい一覧を返す。押した順に並ぶ） */
-export function toggleCell(cells: readonly CellPos[], pos: CellPos): CellPos[] {
-  const k = cellKey(pos)
-  return cells.some((c) => cellKey(c) === k) ? cells.filter((c) => cellKey(c) !== k) : [...cells, pos]
+/** 表の中の1つのセルの位置（col は列の位置。0＝名前 … 3＝枚数。engine の CellRange の left と同じ数え方） */
+export interface GridPoint {
+  row: number
+  col: number
 }
 
-/** 「3つ選んでいます」（何も無ければ「セルを押して選んでください」） */
-export function selectedText(count: number): string {
-  return count === 0 ? 'セルを押して選んでください' : `${count}つ選んでいます`
+/** 1つのセルの範囲 */
+export function singleRange(p: GridPoint): CellRange {
+  return { top: p.row, left: p.col, rows: 1, cols: 1 }
+}
+
+/** 2つのセルを角にした四角（どちらが左上でもよい） */
+export function spanRange(a: GridPoint, b: GridPoint): CellRange {
+  const top = Math.min(a.row, b.row)
+  const left = Math.min(a.col, b.col)
+  return { top, left, rows: Math.abs(a.row - b.row) + 1, cols: Math.abs(a.col - b.col) + 1 }
+}
+
+/** そのセルが範囲の中か */
+export function rangeHas(r: CellRange, p: GridPoint): boolean {
+  return p.row >= r.top && p.row < r.top + r.rows && p.col >= r.left && p.col < r.left + r.cols
+}
+
+/** 範囲が、そのセル1つだけか */
+export function isSingleAt(r: CellRange | null, p: GridPoint): boolean {
+  return r !== null && r.rows === 1 && r.cols === 1 && r.top === p.row && r.left === p.col
+}
+
+/** 範囲の右下のセル */
+export function rangeEnd(r: CellRange): GridPoint {
+  return { row: r.top + r.rows - 1, col: r.left + r.cols - 1 }
+}
+
+/**
+ * 取っ手を引くとき、動かない角：左上の取っ手（start）なら右下、右下の取っ手（end）なら左上。
+ * 引いた先のセルとこの角で、新しい範囲（spanRange）を作る
+ */
+export function fixedCorner(r: CellRange, handle: 'start' | 'end'): GridPoint {
+  return handle === 'start' ? rangeEnd(r) : { row: r.top, col: r.left }
+}
+
+/** 範囲を変えたあとの起点（アクティブセル）：今の起点が新しい範囲の中ならそのまま、外に出たら動かない角 */
+export function keepActive(active: GridPoint, r: CellRange, fixed: GridPoint): GridPoint {
+  return rangeHas(r, active) ? active : fixed
+}
+
+/** 範囲を表の行の数に収める（行が減って、範囲が表の下にはみ出したとき）。全部はみ出したら null */
+export function clampRange(r: CellRange, rowCount: number): CellRange | null {
+  if (r.top >= rowCount) return null
+  return { ...r, rows: Math.min(r.rows, rowCount - r.top) }
 }
 
 const CLIP_TEXT_MAX = 10
 
-/** 今コピーしているもの：「コピー中：1つ（400）」「コピー中：2行×2列」。無ければ null */
+/** 今コピーしているもの：「コピー中：1つ（400）」「コピー中：2行×2列」（切り取りなら「切り取り中：…」）。無ければ null */
 export function clipText(clip: CellClip | null): string | null {
   if (!clip) return null
+  const head = clip.cut ? '切り取り中' : 'コピー中'
   if (clip.rows === 1 && clip.cols === 1) {
     const t = clip.cells[0]?.[0] ?? ''
     const shown = t === '' ? '空' : [...t].length > CLIP_TEXT_MAX ? `${[...t].slice(0, CLIP_TEXT_MAX).join('')}…` : t
-    return `コピー中：1つ（${shown}）`
+    return `${head}：1つ（${shown}）`
   }
-  return `コピー中：${clip.rows}行×${clip.cols}列`
+  return `${head}：${clip.rows}行×${clip.cols}列`
 }
 
 /** 貼り付けの知らせ：「3つのセルに貼りました（貼れなかったもの 1つ：同じ名前は貼れません）」 */
@@ -37,6 +79,54 @@ export function pasteText(pasted: number, skipped: readonly PasteSkip[]): string
   if (skipped.length === 0) return head
   const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
   return `${head}（貼れなかったもの ${skipped.length}つ：${reasons}）`
+}
+
+/** オートフィルの知らせ：「4つのセルに入れました（入れられなかったもの 2つ：同じ名前は入れられません）」 */
+export function fillText(pasted: number, skipped: readonly PasteSkip[]): string {
+  if (pasted === 0 && skipped.length === 0) return '入れるセルがありませんでした'
+  const head = pasted === 0 ? '入れられませんでした' : `${pasted}つのセルに入れました`
+  if (skipped.length === 0) return head
+  const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
+  return `${head}（入れられなかったもの ${skipped.length}つ：${reasons}）`
+}
+
+/**
+ * オートフィルの取っ手を引いた先（仕様書 17.4。上下だけ）：引いた先の行が範囲より下なら下へ、上なら上へ広げた範囲（元を含む）。
+ * 範囲の中の行なら null（何もしない）。列はいつも元の列
+ */
+export function fillTarget(from: CellRange, to: GridPoint): CellRange | null {
+  const end = from.top + from.rows - 1
+  if (to.row > end) return { ...from, rows: to.row - from.top + 1 }
+  if (to.row < from.top) return { ...from, top: to.row, rows: end - to.row + 1 }
+  return null
+}
+
+/** オートフィルで新しく入れる所（引いたあとの範囲から元の範囲を除いた所。点線で見せる）。広がっていなければ null */
+export function fillExtension(from: CellRange, to: CellRange): CellRange | null {
+  if (to.top < from.top) return { ...from, top: to.top, rows: from.top - to.top }
+  const extra = to.top + to.rows - (from.top + from.rows)
+  return extra > 0 ? { ...from, top: from.top + from.rows, rows: extra } : null
+}
+
+/** オートフィルを引いている間、点線の中に出す短い文：「下へ3行くり返す」。広がっていなければ null */
+export function fillHint(from: CellRange, to: CellRange | null): string | null {
+  const ext = to ? fillExtension(from, to) : null
+  if (!ext) return null
+  return `${ext.top < from.top ? '上' : '下'}へ${ext.rows}行くり返す`
+}
+
+/** 部材の行の、ある印（回転してよい・仕上がった）の今の状態：全部・一部・なし */
+export function flagState(values: readonly boolean[]): 'all' | 'some' | 'none' {
+  const n = values.filter(Boolean).length
+  if (n === 0) return 'none'
+  return n === values.length ? 'all' : 'some'
+}
+
+/** 選んでいる範囲の呼び方（メニューの見出し）：「3行×2列（2〜4行目）」。1つのセルは呼ぶ側で名前を付ける */
+export function rangeText(r: CellRange): string {
+  const end = r.top + r.rows - 1
+  const where = r.rows === 1 ? `${r.top + 1}行目` : `${r.top + 1}〜${end + 1}行目`
+  return `${r.rows}行×${r.cols}列（${where}）`
 }
 
 /** 選んでいるセルの中に、部材の行（表の行が部材の数より小さい）があるか */

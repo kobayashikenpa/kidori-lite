@@ -108,6 +108,35 @@ describe('保存と読み込み', () => {
     }
   })
 
+  it('切り取りの元が付いたコピー（第1.3版）を保存して読み戻せる。第1.2版の形（元なし）も読める', () => {
+    const data = sample()
+    data.cellClip = { rows: 1, cols: 2, cells: [['棚板', '3']], cut: { jobId: 'job-shelf', range: { top: 3, left: 2, rows: 1, cols: 2 } } }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+    const v12 = { rows: 1, cols: 1, cells: [['天板.W']] }
+    st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: v12 }))
+    expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual(v12)
+  })
+
+  it('切り取りの元の形だけが違うときは、元を外してふつうのコピーとして読む', () => {
+    const data = sample()
+    const clip = { rows: 1, cols: 2, cells: [['棚板', '3']] }
+    const st = new MemoryStorage()
+    for (const badCut of [
+      'x',
+      { jobId: 1, range: { top: 0, left: 0, rows: 1, cols: 2 } },
+      { jobId: 'job-shelf', range: { top: 0, left: 3, rows: 1, cols: 2 } },
+      { jobId: 'job-shelf', range: { top: 0, left: 0, rows: 2, cols: 2 } },
+      { jobId: 'job-shelf', range: { top: -1, left: 0, rows: 1, cols: 2 } },
+    ]) {
+      st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: { ...clip, cut: badCut } }))
+      const r = loadSaved(st, ids(), NOW)
+      expect(r.status).toBe('ok')
+      expect(r.data.cellClip).toEqual(clip)
+    }
+  })
+
   it('名前が空・枚数が空（null）の部材も保存して読み戻せる（第1.1版）', () => {
     const data = sample()
     data.jobs[0].parts.push(

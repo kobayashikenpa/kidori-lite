@@ -821,7 +821,7 @@ h3 > .help {
   background: var(--cut-soft);
   border-color: var(--cut);
 }
-/* ---------- 下から出るシート（番号のメニュー・貼り付けの確認など） ---------- */
+/* ---------- 下から出るシート（長押しのメニュー・取り込みの確認など） ---------- */
 .sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -1034,68 +1034,6 @@ h3 > .help {
   background: var(--accent);
 }
 
-/* ---------- セルを選ぶ状態の下のバー（第1.2版 仕様書 16.1） ---------- */
-.pick-bar {
-  position: sticky;
-  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 8px);
-  z-index: 4;
-  margin-top: 12px;
-  padding: 10px;
-  border: 2px solid var(--accent);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.pick-bar.del {
-  border-color: var(--err);
-}
-.cell-bar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-.cell-bar-state {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.cell-bar-help .help-btn {
-  font-size: 15px;
-  font-weight: 700;
-}
-.cell-bar-clip {
-  font-size: 13px;
-  color: var(--muted);
-  padding-left: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cell-bar-head .btn {
-  flex: none;
-}
-.cell-bar-keys {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-.cell-bar-keys .btn {
-  padding: 4px 2px;
-  font-size: 14px;
-  white-space: nowrap;
-  min-width: 0;
-}
-.cell-bar-keys .btn[aria-disabled='true'] {
-  opacity: 0.45;
-}
-.cell-bar-msg {
-  margin: 0;
-}
 .msg.warn {
   background: var(--warn-soft);
   color: var(--warn);
@@ -1738,38 +1676,245 @@ h3 > .help {
 .pt-row.empty .pt-cell {
   cursor: pointer;
 }
-/* セルを選ぶ状態（第1.2版 仕様書 16.1）：表の枠を点線にし、選んだセルは色と太い枠 */
-.pt.selecting {
-  outline: 2px dashed var(--accent);
-  outline-offset: -2px;
-}
-.pt.selecting .pt-name {
-  cursor: pointer;
-}
-.pt-cell.picked {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 3px var(--accent);
-  opacity: 1 !important;
+/* セルを選ぶ（第1.3版 仕様書 17.1）：範囲の中は薄い色、外まわりに太い枠、起点（アクティブセル）は色なし。角に丸い取っ手 */
+.pt.pt-edit {
   position: relative;
+  overflow: visible;
 }
-.pt-cell.picked::after {
-  content: '✓';
-  position: absolute;
-  top: 1px;
-  left: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
+.pt.pt-edit .pt-item:last-child .pt-no {
+  border-bottom-left-radius: 9px;
 }
-.select-btn {
-  margin-right: auto;
+.pt.pt-edit .pt-item:last-child .pt-qty {
+  border-bottom-right-radius: 9px;
+}
+.pt-head .pt-hno {
+  align-self: center;
+}
+.pt-hwrap {
+  display: flex;
+  padding: 0 !important;
+}
+.pt-hcell {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
   min-height: 44px;
-}
-.select-btn.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: inherit;
   font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pt-hcell.left {
+  text-align: left;
+}
+.pt-hcell.hl,
+.pt-no.hl {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+.pt-ph {
+  color: var(--muted);
+  font-weight: 400;
+  opacity: 0.6;
+}
+.pt-cell.rs {
+  position: relative;
+  opacity: 1 !important;
+}
+.pt-cell.rs:not(.act):not(.bad):not(.on) {
+  background: var(--accent-soft);
+}
+.pt-cell.rs::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 0 solid var(--accent);
+  pointer-events: none;
+}
+.pt-cell.et::before {
+  border-top-width: 3px;
+}
+.pt-cell.eb::before {
+  border-bottom-width: 3px;
+}
+.pt-cell.el::before {
+  border-left-width: 3px;
+}
+.pt-cell.er::before {
+  border-right-width: 3px;
+}
+/* 取っ手：見た目は小さな丸、当たりは 44px。ここだけ指で引いてもスクロールしない */
+.pt-handle {
+  position: absolute;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+.pt-dot {
+  position: absolute;
+  top: 15px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--accent);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.pt-handle.start .pt-dot {
+  left: 15px;
+}
+.pt-handle.end {
+  height: 40px;
+}
+.pt-handle.end .pt-dot {
+  left: 23px;
+}
+/* オートフィルの取っ手（仕様書 17.4）：右下の丸のすぐ下の小さな四角。当たりは 44×40px（丸の当たりのすぐ下）。上下に引く */
+.pt-handle.fill {
+  height: 40px;
+  cursor: ns-resize;
+}
+.pt-fill-dot {
+  position: absolute;
+  left: 24px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent);
+  pointer-events: none;
+}
+.pt.dragging .pt-handle {
+  cursor: grabbing;
+}
+/* 点線の印：オートフィルで新しく入れる所（引いている間）・切り取った元 */
+.pt-mark {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border: 3px dashed var(--accent);
+}
+.pt-mark.fill {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.pt-mark.cut {
+  border-width: 2px;
+}
+.pt-mark-label {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* 長押しで、文字の選択・拡大鏡・画像の保存のメニュー（iPhone）を出さない。名前の入力欄の中は除く */
+.pt.pt-edit {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.pt.pt-edit input {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+/* 表の上の、今コピーしているもの と 操作のあとの知らせ */
+.pt-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.pt-status p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pt-notice {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.pt-clip {
+  padding: 0 4px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 長押しのメニュー（仕様書 17.2） */
+.cm-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cm-keys {
+  display: grid;
+  gap: 6px;
+}
+.cm-keys.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cm-keys.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.cm-keys .btn {
+  min-width: 0;
+  padding: 4px 2px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.cm-keys .btn.wide {
+  grid-column: 1 / -1;
+}
+.cm-clip {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cm-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cm-field > legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cm-field:disabled .seg {
+  opacity: 0.45;
 }
 .pt-msg {
   margin: 0;
@@ -1934,22 +2079,7 @@ h3 > .help {
   font-weight: 700;
 }
 
-/* ---------- 番号のメニュー・全部回転・木取りの表（第1.1版 U-12） ---------- */
-.menu-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.menu-actions .btn {
-  width: 100%;
-}
-.pick-bar.del {
-  border-color: var(--err);
-}
-.pick-bar .confirm-text {
-  margin: 0;
-  font-size: 14px;
-}
+/* ---------- 全部回転・木取りの表（第1.1版 U-12） ---------- */
 /* 表の上の「全部回転してよい」：オン／一部／オフ */
 .rot-all {
   display: flex;

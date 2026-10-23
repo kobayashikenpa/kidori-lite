@@ -425,3 +425,32 @@ export interface CellClip { rows: number; cols: number; cells: string[][] } // c
 - 木取りの画面の上は `BoardSettings.tsx`：［3×6］［4×8］は `compareStandardSizes` の枚数・歩留まり、［自由入力］は今の板の `packJob` の結果。押すと `setSheet`。刃厚・端切り・切り代・切り方は `updateSettings`。「3×6 と 4×8 の比べ」の別の欄はなくした
 - 部材の画面の［木取り］のタブのときだけ、表の上に切り代の欄（`NumberField`・`updateSettings`）。木取りの画面の切り代と同じ `job.settings.allowance`
 - 部材の画面の `SettingsPanel.tsx` はなくした
+
+## 9. 第1.3版の変更（仕様書 17章）
+
+### 9.1 範囲・切り取り・オートフィル（E-13。`src/engine/clipboard/cells.ts`）
+
+```ts
+// types.ts
+export interface CellRange { top: number; left: number; rows: number; cols: number } // left は列の位置（0＝名前 … 3＝枚数）
+export interface CellCut { jobId: string; range: CellRange }                          // 切り取った元
+export interface CellClip { rows: number; cols: number; cells: string[][]; cut?: CellCut } // cut が無ければふつうのコピー
+// cells.ts
+export type CellSelection = CellRange | readonly CellPos[]  // 今までの関数は、セルの配列でも四角でも受け取る
+```
+
+| 関数 | 内容 |
+|---|---|
+| `rangeCells(range)` | 四角 → セルの配列（上から・左から。表の左右・0 より上ははみ出さない） |
+| `rowRange(top, rows = 1)` | 行全体＝名前〜枚数（left 0・cols 4） |
+| `columnRange(job, left, cols = 1)` | 列全体＝上から部材の数の行（空の行は入れない。部材が無ければ1行） |
+| `selectionRange(sel)` | 四角（1つのセルも）なら表の中に収めた四角、それ以外は null |
+| `cutCells(job, sel)` | コピーと同じ結果に `clip.cut = { jobId: job.id, range }` を付ける。仕事は変えない |
+| `pasteCells(job, clip, sel, newId)` | 第1.2版と同じ。結果に `cutClear: { jobId, cells } \| null` が増えた（切り取りを違う仕事に貼ったとき、元の仕事で空にするセル） |
+| `clearCutSource(job, clip, cells)` | 違う仕事に貼ったあと、元の仕事のセルを空にする（切り取ったあとに書き換えたセルは空にしない） |
+| `fillCells(job, from, to, newId)` | オートフィル。結果は `pasteCells` と同じ形（`cutClear` はいつも null）。範囲でない from は `{ ok: false, message: '引く元の範囲を選んでください' }` |
+
+- **切り取りの貼り付け**：元のセルを空にする。空にしないのは、貼る先と重なるセル・クリップのその位置が1つも貼れなかったセル（同じ名前・枚数に式など）・切り取ったあとに中身を書き換えたセル。同じ仕事なら、元を先に空にしてから名前の重なりを比べる（同じ仕事の中で名前ごと動かせる）。全部の欄が空になった部材は消える。1つも貼れなければ何もしない
+- **オートフィル**：to は引いたあとの範囲（元を含む）でも、元を除いた所だけでもよい。元の行は書かず、列はいつも元の列（上下だけ）。行 r には元の `(r − top) mod rows` 番目の行を入れる（上へ引いても並びがつながる）。名前の列は入れず、元の名前が空でなければ `reason: 'fillName'`（「同じ名前は入れられません」）。枚数・W・H・行が足りないときの部材の足し方は貼り付けと同じ
+- **保存データ**：`shape.ts` の `isCellClip` は cut を無くてもよいとし、あれば形を確かめる（`isCellRange`）。`readCellClip` は cut だけ形が違えば cut を外してふつうのコピーとして読む。第1.2版の保存データはそのまま読める
+- **store**（`reducer.ts`）：選んだセルは `SelectionArg = { cells: CellPos[] } | { range: CellRange }`。`copyCells`・`cutCells`・`pasteCells`・`clearCells`・`deleteRows` はどちらでも呼べる。`{ type: 'cutCells', range }`（cellClip を置き換える。仕事は変えない）、`{ type: 'pasteCells', range }`（切り取りなら元を空にし、ほかの仕事でも空にして updatedAt を付ける。1つでも貼れたら cellClip から cut を外す）、`{ type: 'fillCells', from, to }`（結果の `paste: { pasted, skipped }`）
