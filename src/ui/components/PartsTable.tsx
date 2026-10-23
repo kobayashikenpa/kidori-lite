@@ -55,6 +55,7 @@ import {
   quantityText,
   sessionTableMinRows,
   setSessionTableMinRows,
+  errorsWhileEditing,
   tableDimCell,
   tableRowCount,
   type TableCell,
@@ -95,6 +96,9 @@ function cellOf(s: Sel | null, parts: readonly Part[]): TableCell | null {
 }
 
 const FIELD_LABEL: Record<TableField, string> = { name: '名前', W: 'W', H: 'H', qty: '枚数' }
+
+/** W・H が板のどちらの辺か（仕様書 18.4。回転しない部材は W を妻手・H を長手に合わせて置く） */
+const AXIS_SIDE: Record<Axis, string> = { W: '妻手', H: '長手' }
 
 /** 欄の列の位置（0＝名前 … 3＝枚数） */
 const colOf = (f: TableField): number => CELL_COLS.indexOf(f)
@@ -616,7 +620,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     if (!commit || !to) return
     const r = run({ type: 'fillCells', from: d.from, to })
     if (!r.ok) return
-    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped) : null)
+    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped, r.paste.renamed.length) : null)
     // 入れたあとは、引いた先まで選ぶ（エクセルと同じ。起点はそのまま）
     const a = activeRef.current
     selectRange(to, a && rangeHas(to, a) ? a : { row: to.top, col: to.left })
@@ -780,8 +784,9 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   const rowMsg = sel?.field === 'name' ? (nameMsg ?? liveNameError) : null
 
   const padAxis: Axis | null = sel && (sel.field === 'W' || sel.field === 'H') ? sel.field : null
+  /** 部材の1つの軸の寸法のエラー */
+  const axisErrors = (partId: string, axis: Axis) => dimsOf(partId)?.errors.filter((x) => x.axis === axis) ?? []
 
-  const firstEmpty = parts.length
   // 表に出す範囲（行が減って下にはみ出したら収める）
   const shown = range ? clampRange(range, rowCount) : null
   const shownEnd = shown ? rangeEnd(shown) : null
@@ -892,10 +897,18 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
                   headEls.current[c] = el
                 }}
                 className={`pt-hcell${c === 0 ? ' left' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
-                aria-label={`${FIELD_LABEL[f]} の列を選ぶ`}
+                aria-label={`${f === 'W' || f === 'H' ? `${f}（${AXIS_SIDE[f]}）` : FIELD_LABEL[f]} の列を選ぶ`}
                 onClick={() => pressColumn(c)}
               >
-                {FIELD_LABEL[f]}
+                {f === 'W' || f === 'H' ? (
+                  // W は板の妻手・H は板の長手（仕様書 18.4）。375px に収まるよう下の段は小さく
+                  <span className="pt-h2">
+                    <span>{f}</span>
+                    <span className="pt-h2-sub">{AXIS_SIDE[f]}</span>
+                  </span>
+                ) : (
+                  FIELD_LABEL[f]
+                )}
               </button>
             </span>
           ))}
@@ -965,7 +978,6 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
               autoCorrect="off"
               enterKeyHint="next"
               aria-label={`${i + 1}行目の名前`}
-              placeholder="名前"
               value={nameDraft}
               onChange={(e) => {
                 setDraft(e.target.value)
@@ -984,12 +996,18 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
               aria-selected={inRange('name')}
               onClick={cellPress('name')}
             >
-              {part && hasName(part) ? part.name : i === firstEmpty ? <span className="pt-ph">名前</span> : ''}
+              {part && hasName(part) ? part.name : ''}
             </button>
           )
 
           const dimCellEl = (axis: Axis) => {
-            const c = part ? tableDimCell(part, dimsOf(part.id), axis, adjusts) : ({ kind: 'empty' } as const)
+            const raw = part ? tableDimCell(part, dimsOf(part.id), axis, adjusts) : ({ kind: 'empty' } as const)
+            // 入力中のセルは、式の書き方のエラーなど（errorsWhileEditing で出さないもの）だけなら赤い「エラー」にしない（仕様書 18.5）。
+            // 入力を終えたら今までどおり「エラー」
+            const c =
+              raw.kind === 'error' && padOpen && isSel(axis) && part && errorsWhileEditing(axisErrors(part.id, axis)).length === 0
+                ? ({ kind: 'empty' } as const)
+                : raw
             const text =
               c.kind === 'empty' ? '' : c.kind === 'error' ? 'エラー' : c.kind === 'formula' ? `${fmt(c.value)} 式` : fmt(c.value)
             return (
@@ -1134,7 +1152,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
                   cursor={cursor}
                   onEdit={(e) => editExpr(sel.row, padAxis, e)}
                   finished={selPart ? dimsOf(selPart.id)?.finishedByAxis[padAxis] : undefined}
-                  errors={selPart ? [...new Set(dimsOf(selPart.id)?.errors.filter((x) => x.axis === padAxis).map((x) => x.message))] : []}
+                  errors={selPart ? [...new Set(errorsWhileEditing(axisErrors(selPart.id, padAxis)).map((x) => x.message))] : []}
                   adjusts={adjusts}
                   parts={referableParts(parts.filter((p) => p.id !== selPart?.id))}
                   finishedOf={(id) => dimsOf(id)?.finishedByAxis ?? {}}
@@ -1207,10 +1225,18 @@ function ExprKeys({
     <>
       <div className="pt-show" aria-live="polite">
         <span className="pt-show-name">
-          {label} <b>{axis}</b>
+          <span className="pt-show-label">{label}</span>
+          <b>
+            {axis}（{AXIS_SIDE[axis]}）
+          </b>
         </span>
         <span className="pt-show-expr">
-          {empty ? <span className="pt-show-hint">数字か式を入れる</span> : <FormulaView value={value} adjusts={adjusts} caret={cursor} />}
+          {empty ? (
+            <span className="pt-show-hint">数字か式を入れる</span>
+          ) : (
+            // 式を押すと、押した所にカーソルが移る（仕様書 18.7）
+            <FormulaView value={value} adjusts={adjusts} caret={cursor} onCaret={(c) => onEdit({ text: value, cursor: c })} />
+          )}
         </span>
         {shownErrors.length > 0 ? (
           <span className="pt-show-err">{shownErrors.join('。')}</span>
@@ -1251,7 +1277,8 @@ function QtyKeys({ label, quantity, adjusts, onKey, onNext, onClose }: QtyKeysPr
     <>
       <div className="pt-show" aria-live="polite">
         <span className="pt-show-name">
-          {label} <b>枚数</b>
+          <span className="pt-show-label">{label}</span>
+          <b>枚数</b>
         </span>
         <span className="pt-show-expr num">{quantity ?? ''}</span>
         <span className="pt-show-val small">

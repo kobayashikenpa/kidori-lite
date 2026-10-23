@@ -2,7 +2,7 @@
 // 部材の表のアプリのキー（PartsTable）で使う。枚数のキーも同じ並び（使わないキーは薄く出して押せない）。
 // 「調整寸法」のタブの「＋ 追加」で、キーの所で調整寸法を足し、そのまま式に入れる。
 // 計算はしない（式の文字とカーソルを変えるだけ。formulaEdit.ts）。kidori の ui/components/FormulaInput.tsx のボタンの部分をもとにしたもの
-import { useState, type PointerEvent, type ReactNode } from 'react'
+import { useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { adjustName } from '../../engine/defaults'
 import { validateAdjust, type AdjustDraft } from '../../store/jobs'
 import { formulaLabels } from '../../engine/formula/display'
@@ -12,7 +12,7 @@ import { fmt, parseNum } from '../format'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
 import { ADJUST_PRESETS } from '../settings'
-import { clearAll, deleteBefore, insertAt, moveLeft, moveRight, type Edit, type PadKey } from '../formulaEdit'
+import { caretFromTap, clearAll, deleteBefore, insertAt, moveLeft, moveRight, type Edit, type PadKey } from '../formulaEdit'
 
 /** 数字かどうか（枚数・調整寸法の寸法で押せるキー） */
 const isDigit = (k: string) => /^\d$/.test(k)
@@ -41,11 +41,24 @@ const CHIP_CLASS: Partial<Record<string, string>> = {
 /** ボタンを押しても注目が移らないようにする（画面が跳ねない・スマホのキーボードが出ないように） */
 const keepFocus = (e: PointerEvent) => e.preventDefault()
 
-/** 式を、参照・調整寸法を色つきの塊にして見せる。caret（単位の番号）を渡すとカーソルを出す */
-export function FormulaView({ value, adjusts, caret }: { value: string; adjusts: readonly Adjust[]; caret?: number }) {
+/**
+ * 式を、参照・調整寸法を色つきの塊にして見せる。caret（単位の番号）を渡すとカーソルを出す。
+ * onCaret を渡すと、式を押した所にカーソルを移す（仕様書 18.7。塊の中は近いほうの端。formulaEdit の caretFromTap）
+ */
+export function FormulaView({
+  value,
+  adjusts,
+  caret,
+  onCaret,
+}: {
+  value: string
+  adjusts: readonly Adjust[]
+  caret?: number
+  onCaret?: (cursor: number) => void
+}) {
   const units = formulaUnits(value)
   const labels = formulaLabels(value, adjusts)
-  return (
+  const body = (
     <>
       {units.map((u, i) => {
         const gap = i > 0 && u.start > units[i - 1].end
@@ -61,6 +74,17 @@ export function FormulaView({ value, adjusts, caret }: { value: string; adjusts:
       })}
       {caret !== undefined && caret >= units.length && <span className="caret" aria-hidden="true" />}
     </>
+  )
+  if (!onCaret) return body
+  const tap = (e: MouseEvent<HTMLSpanElement>) => {
+    // 単位ごとの位置を測る（カーソルの棒は数えない）
+    const boxes = [...e.currentTarget.querySelectorAll('.expr-unit')].map((el) => el.getBoundingClientRect())
+    onCaret(caretFromTap(boxes, e.clientX, e.clientY))
+  }
+  return (
+    <span className="expr-tap" onPointerDown={keepFocus} onClick={tap}>
+      {body}
+    </span>
   )
 }
 

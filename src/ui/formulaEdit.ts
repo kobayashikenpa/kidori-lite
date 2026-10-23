@@ -53,13 +53,16 @@ export function moveRight(text: string, cursor: number): number {
 export function insertAt(text: string, cursor: number, piece: string): Edit {
   const units = formulaUnits(text)
   const k = clamp(cursor, units.length)
-  const pos = k < units.length ? units[k].start : text.length
+  // 入れる位置は前の単位のすぐ後ろ（前の単位との間の空白より前）。
+  // こうしないと、先頭に「5」を入れたあと「0」を押したとき「5 0」と空白をはさんで離れてしまう（仕様書 18.5）
+  const pos = k > 0 ? units[k - 1].end : k < units.length ? units[k].start : text.length
   const left = text.slice(0, pos)
-  const right = text.slice(pos)
+  // 後ろの単位との間の空白は入れ直す（要るときだけ1つ）
+  const right = text.slice(pos).trimStart()
   const kind: UnitKind = formulaUnits(piece)[0]?.kind ?? 'bad'
   const me = { kind, text: piece }
   const pre = !endsWithSpace(left) && needsSpace(units[k - 1], me) ? ' ' : ''
-  const post = !startsWithSpace(right) && needsSpace(me, units[k]) ? ' ' : ''
+  const post = needsSpace(me, units[k]) ? ' ' : ''
   const head = left + pre + piece
   const next = head + post + right
   // 入れた単位の後ろにカーソルを置く
@@ -88,4 +91,29 @@ export function deleteBefore(text: string, cursor: number): Edit {
 /** 全部消す */
 export function clearAll(): Edit {
   return { text: '', cursor: 0 }
+}
+
+/** 画面に出した単位の箱（px） */
+export interface UnitBox {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+/**
+ * 式を押した所から、カーソル（単位の番号）を決める（仕様書 18.7）。boxes は単位の順の箱。
+ * 押した高さにいちばん近い行の中で、押した単位の左半分なら前・右半分なら後ろ（部材の寸法・調整寸法の塊も、近いほうの端）。
+ * 行の左の外なら行の始め、右の外なら行の終わり
+ */
+export function caretFromTap(boxes: readonly UnitBox[], x: number, y: number): number {
+  if (boxes.length === 0) return 0
+  // 押した高さに近い行（押した高さとの上下の離れがいちばん小さい箱の並び）
+  const dist = (b: UnitBox) => (y < b.top ? b.top - y : y > b.bottom ? y - b.bottom : 0)
+  const best = Math.min(...boxes.map(dist))
+  const line = boxes.map((b, i) => ({ b, i })).filter(({ b }) => dist(b) === best)
+  for (const { b, i } of line) {
+    if (x < b.right) return x < (b.left + b.right) / 2 ? i : i + 1
+  }
+  return line[line.length - 1].i + 1
 }

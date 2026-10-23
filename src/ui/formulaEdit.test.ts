@@ -1,7 +1,7 @@
 // kidori の ui/formulaEdit.test.ts をもとに、D を外し、逃げを調整寸法にしたもの
 import { describe, expect, it } from 'vitest'
 import { formulaUnits } from '../engine/formula/units'
-import { clearAll, deleteBefore, insertAt, moveLeft, moveRight, unitCount, type Edit, type PadKey } from './formulaEdit'
+import { caretFromTap, clearAll, deleteBefore, insertAt, moveLeft, moveRight, unitCount, type Edit, type PadKey } from './formulaEdit'
 
 type Press = PadKey | { ref: string } | 'BS' | '◀' | '▶'
 
@@ -98,5 +98,60 @@ describe('仕様書 6章の例をボタンだけで作る', () => {
   it('棚板 W＝天板.W − 20 − メラミン1、H＝天板.H − 20 × 2', () => {
     expect(press({ ref: '天板.W' }, '-', '2', '0', '-', { ref: '{n:adjust-melamine}' }).text).toBe('天板.W - 20 - {n:adjust-melamine}')
     expect(press({ ref: '天板.H' }, '-', '2', '0', '*', '2').text).toBe('天板.H - 20 * 2')
+  })
+})
+
+describe('先頭や途中にカーソルを動かして入れる（仕様書 18.5）', () => {
+  it('オーナーの例：「全体.W − 厚み20」の先頭に 5・0・＋ → 「50 + 全体.W − 厚み20」（05 にならない・間に空白が入らない）', () => {
+    let e: Edit = press({ ref: '全体.W' }, '-', { ref: '{n:adjust-a}' })
+    e = { ...e, cursor: 0 }
+    e = pressOn(e, '5')
+    expect(e).toEqual({ text: '5 全体.W - {n:adjust-a}', cursor: 1 })
+    e = pressOn(e, '0')
+    expect(e).toEqual({ text: '50 全体.W - {n:adjust-a}', cursor: 2 })
+    e = pressOn(e, '+')
+    expect(e).toEqual({ text: '50 + 全体.W - {n:adjust-a}', cursor: 3 })
+  })
+  it('途中の数字のあとに数字を足すと、前の数字に続く（「20 − 5」の 2 のあとに 1 → 「210 − 5」）', () => {
+    const e = pressOn({ text: '20 - 5', cursor: 1 }, '1')
+    expect(e).toEqual({ text: '210 - 5', cursor: 2 })
+  })
+  it('数字の前に記号を入れると、間に空白をはさむ（「全体.W 20」の 20 の前に − → 「全体.W - 20」）', () => {
+    expect(pressOn({ text: '全体.W 20', cursor: 1 }, '-')).toEqual({ text: '全体.W - 20', cursor: 2 })
+  })
+})
+
+describe('式を押してカーソルを動かす（仕様書 18.7）', () => {
+  // 1行に 3つの単位：[0,10] [12,60]（塊） [62,70]
+  const boxes = [
+    { left: 0, right: 10, top: 0, bottom: 20 },
+    { left: 12, right: 60, top: 0, bottom: 20 },
+    { left: 62, right: 70, top: 0, bottom: 20 },
+  ]
+  it('単位の左半分を押すと前、右半分を押すと後ろ（塊の中は近いほうの端）', () => {
+    expect(caretFromTap(boxes, 3, 10)).toBe(0)
+    expect(caretFromTap(boxes, 8, 10)).toBe(1)
+    expect(caretFromTap(boxes, 20, 10)).toBe(1)
+    expect(caretFromTap(boxes, 50, 10)).toBe(2)
+    expect(caretFromTap(boxes, 69, 10)).toBe(3)
+  })
+  it('単位の間・左の外・右の外', () => {
+    expect(caretFromTap(boxes, 11, 10)).toBe(1)
+    expect(caretFromTap(boxes, -5, 10)).toBe(0)
+    expect(caretFromTap(boxes, 200, 10)).toBe(3)
+  })
+  it('折り返して2行になったら、押した高さに近い行の中で決める', () => {
+    const two = [
+      { left: 0, right: 50, top: 0, bottom: 20 },
+      { left: 0, right: 30, top: 22, bottom: 42 },
+      { left: 32, right: 40, top: 22, bottom: 42 },
+    ]
+    expect(caretFromTap(two, 45, 10)).toBe(1)
+    expect(caretFromTap(two, 5, 30)).toBe(1)
+    expect(caretFromTap(two, 100, 30)).toBe(3)
+    expect(caretFromTap(two, 100, 5)).toBe(1)
+  })
+  it('単位が無ければ 0', () => {
+    expect(caretFromTap([], 10, 10)).toBe(0)
   })
 })

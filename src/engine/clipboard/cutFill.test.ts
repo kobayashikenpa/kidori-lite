@@ -280,6 +280,12 @@ describe('オートフィル', () => {
     expect(r.job.parts.map((p) => p.name)).toEqual(['棚板2', '棚板3', '棚板', '棚板1'])
   })
 
+  it('「棚板1」を下へ引くと、終わりの数字を外して 棚板2・棚板3（棚板11 にしない）', () => {
+    const job = jobOf('job-a', part('a', '全体'), part('b', '棚板1'))
+    const r = ok(fillCells(job, R(1, 0, 1, 1), R(1, 0, 3, 1), ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '棚板1', '棚板2', '棚板3'])
+  })
+
   it('元の名前が空なら、引いた先の名前も空にする（W・H と同じ）', () => {
     const job = jobOf('job-a', part('a', '', '10', '20'), part('b', 'B', '30', '40'))
     const r = ok(fillCells(job, R(0, 0, 1, 1), R(0, 0, 2, 1), ids()))

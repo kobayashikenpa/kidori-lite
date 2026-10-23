@@ -1,7 +1,7 @@
 // 部材の表（仕様書 15.1）の行と欄の決まり。画面から切り離して試せるようにする（寸法の計算はしない）
 import { partsReferencing } from '../engine/dimensions/resolve'
 import { isBlankPart } from '../engine/parts'
-import type { Adjust, Axis, Part, PartDimensions } from '../engine/types'
+import type { Adjust, Axis, DimensionError, Part, PartDimensions } from '../engine/types'
 import { dimCell, type DimCell } from './partCells'
 
 /** 表の欄（番号の欄は選ばない） */
@@ -132,4 +132,14 @@ export function referencingOthers(parts: readonly Part[], partIds: readonly stri
   return parts
     .filter((p) => found.has(p.id))
     .map((p) => ({ partId: p.id, name: names.get(p.id)!, axes: order.filter((a) => found.get(p.id)!.has(a)) }))
+}
+
+/**
+ * 入力中のセル（W・H のキーを出しているセル）で出すエラー（仕様書 18.5）。
+ * 式の書き方のエラー（記号が抜けている・途中で終わる・かっこ）は出さない。打っている途中に一時的に出やすい
+ * 0 以下・0 で割る も出さない（暫定）。存在しない部材・削除した調整寸法・循環参照・参照先のエラー（from のあるもの）は出す。
+ * 入力を終えたら、表の欄は今までどおり赤い「エラー」
+ */
+export function errorsWhileEditing(errors: readonly DimensionError[]): DimensionError[] {
+  return errors.filter((e) => e.from !== undefined || (e.kind !== 'syntax' && e.kind !== 'nonPositive' && e.kind !== 'divideByZero'))
 }

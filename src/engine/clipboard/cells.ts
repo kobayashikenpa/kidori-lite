@@ -289,10 +289,16 @@ function applyTargets(job: Job, targets: Target[], newId: (prefix: string) => st
   return { job: { ...job, parts: kept }, pasted, skipped, renamed, filled }
 }
 
-/** 名前の後ろに番号を振る：1 から、used（そろえた名前）と重ならない一番小さい番号（棚板 → 棚板1、棚板2 …） */
+/**
+ * 名前の後ろに番号を振る：1 から、used（そろえた名前）と重ならない一番小さい番号（棚板 → 棚板1、棚板2 …）。
+ * 名前の終わりが数字（半角・全角）なら、その数字を外した名前に振る（棚板1 → 棚板2。棚板11 にしない。仕様書 18.3）。
+ * 数字だけの名前は、外すと空になるのでそのまま後ろに振る
+ */
 function numberedName(name: string, used: ReadonlySet<string>): string {
+  const stripped = name.replace(/[0-9０-９]+$/u, '')
+  const base = stripped === '' ? name : stripped
   for (let n = 1; ; n++) {
-    const candidate = `${name}${n}`
+    const candidate = `${base}${n}`
     if (!used.has(normalizePartName(candidate))) return candidate
   }
 }
@@ -393,7 +399,7 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  * - 範囲のコピー：選んだセルの一番左上（いちばん上の行・いちばん左の列）から同じ形で貼る。表の右（枚数）をはみ出す列は貼らない
  * - 空の行に貼ると部材を作る（id は newId('part')、枚数は空から、回転しない）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）
  * - 名前：前後の空白を外して入れる。貼ったあと同じ名前（normalizePartName。名前のある部材どうし）になるときは、
- *   後ろに番号を振って貼る（棚板 → 棚板1、棚板2 …。振ったものは renamed。第1.4版。assignNames）。使えない文字の名前は貼らない。
+ *   後ろに番号を振って貼る（棚板 → 棚板1、棚板2 …。終わりの数字は外して振る：棚板1 → 棚板2。振ったものは renamed。第1.4版。assignNames）。使えない文字の名前は貼らない。
  *   ほかの式の参照は書き換えない
  * - 枚数：0 以上の整数だけ（空は空にする）。W・H：文字のまま式として入れる
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す

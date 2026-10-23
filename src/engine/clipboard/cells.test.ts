@@ -181,6 +181,36 @@ describe('pasteCells：1つのセルをコピーしたとき', () => {
     expect(r.renamed).toEqual([{ cell: c(1, 'name'), from: '棚板', to: '棚板1' }])
   })
 
+  it('仕様書 18.3：コピーした名前の終わりが数字なら、その数字を外した名前に番号を振る（「棚板1」→「棚板2」。「棚板11」にしない）', () => {
+    const job = jobOf(part('a', '棚板1'), part('b', 'B'), part('c', 'C'))
+    const clip = okCopy(copyCells(job, [c(0, 'name')]))
+    const r = okPaste(pasteCells(job, clip, [c(1, 'name'), c(2, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['棚板1', '棚板2', '棚板3'])
+    expect(r.renamed).toEqual([
+      { cell: c(1, 'name'), from: '棚板1', to: '棚板2' },
+      { cell: c(2, 'name'), from: '棚板1', to: '棚板3' },
+    ])
+  })
+
+  it('終わりの数字が全角でも、複数桁でも外して振る（「棚板１２」→ 棚板 に番号）', () => {
+    const job = jobOf(part('a', '棚板１２'), part('b', 'B'))
+    const r = okPaste(pasteCells(job, clipOf([['棚板１２']]), [c(1, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['棚板１２', '棚板1'])
+  })
+
+  it('数字だけの名前は、数字を外すと空になるので、そのまま後ろに番号を振る（「12」→「121」）', () => {
+    const job = jobOf(part('a', '12'), part('b', 'B'))
+    const r = okPaste(pasteCells(job, clipOf([['12']]), [c(1, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['12', '121'])
+  })
+
+  it('終わりが数字でも、重ならなければ番号を振らずにそのまま貼る', () => {
+    const job = jobOf(part('a', 'A'), part('b', 'B'))
+    const r = okPaste(pasteCells(job, clipOf([['棚板5']]), [c(1, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['A', '棚板5'])
+    expect(r.renamed).toEqual([])
+  })
+
   it('今の部材と重ならない名前は、番号を振らずにそのまま貼る（ほかの仕事からのコピーなど）', () => {
     const job = jobOf(part('a', 'A'), part('b', 'B'))
     const r = okPaste(pasteCells(job, clipOf([['棚板']]), [c(1, 'name')], ids()))
@@ -192,7 +222,7 @@ describe('pasteCells：1つのセルをコピーしたとき', () => {
     const job = jobOf(part('a', '棚板1'), part('b', 'B'), part('c', 'C'))
     const r = okPaste(pasteCells(job, clipOf([['棚板１']]), [c(1, 'name')], ids()))
     expect(r.pasted).toBe(1)
-    expect(r.job.parts.map((p) => p.name)).toEqual(['棚板1', '棚板１1', 'C'])
+    expect(r.job.parts.map((p) => p.name)).toEqual(['棚板1', '棚板2', 'C'])
     const r2 = okPaste(pasteCells(job, clipOf([['']]), [c(1, 'name'), c(2, 'name')], ids()))
     expect(r2.job.parts.map((p) => p.name)).toEqual(['棚板1', '', ''])
     expect(r2.pasted).toBe(2)

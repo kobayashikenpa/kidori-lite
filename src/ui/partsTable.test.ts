@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../engine/dimensions'
 import { shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
 import { newPart } from '../store/jobs'
+import type { DimensionError } from '../engine/types'
 import {
   cutDimCell,
   cutQuantityText,
@@ -17,6 +18,7 @@ import {
   addRowsMin,
   sessionTableMinRows,
   setSessionTableMinRows,
+  errorsWhileEditing,
 } from './partsTable'
 
 describe('部材の表の行（仕様書 15.1）', () => {
@@ -134,5 +136,22 @@ describe('全部回転してよい・削除の確認・木取りの表（U-12）
     expect(cutDimCell(tanaita, d, 'W', shelfAdjusts())).toMatchObject({ kind: 'formula', value: 389 })
     expect(cutDimCell(job.parts[2], dims.parts[2], 'H', shelfAdjusts())).toEqual({ kind: 'number', value: 710 })
     expect(cutDimCell(newPart('x'), undefined, 'W', shelfAdjusts())).toEqual({ kind: 'empty' })
+  })
+})
+
+describe('入力中のセルのエラー（仕様書 18.5）', () => {
+  const err = (kind: DimensionError['kind'], extra: Partial<DimensionError> = {}): DimensionError => ({
+    partId: 'p',
+    axis: 'W',
+    kind,
+    message: kind,
+    ...extra,
+  })
+  it('式の書き方のエラー（記号の抜け・途中で終わる・かっこ）と、打っている途中に出やすい 0 以下・0 で割る は出さない', () => {
+    expect(errorsWhileEditing([err('syntax'), err('syntax', { incomplete: true }), err('nonPositive'), err('divideByZero')])).toEqual([])
+  })
+  it('存在しない部材・削除した調整寸法・循環参照・参照先のエラーは出す', () => {
+    const shown = [err('unknownRef'), err('unknownAdjust'), err('cycle'), err('syntax', { from: { partId: 'q', axis: 'W' } })]
+    expect(errorsWhileEditing(shown)).toEqual(shown)
   })
 })

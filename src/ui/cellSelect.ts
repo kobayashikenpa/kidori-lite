@@ -72,22 +72,30 @@ export function clipText(clip: CellClip | null): string | null {
   return `${head}：${clip.rows}行×${clip.cols}列`
 }
 
-/** 貼り付けの知らせ：「3個のセルに貼りました（貼れなかったもの 1個：同じ名前は貼れません）」 */
-export function pasteText(pasted: number, skipped: readonly PasteSkip[]): string {
+/** 名前に番号を振ったときに足す一言（仕様書 18.3） */
+export const RENAMED_NOTE = '同じ名前にならないよう番号を振りました'
+
+const withRenamed = (text: string, renamed: number) => (renamed > 0 ? `${text}。${RENAMED_NOTE}` : text)
+
+/**
+ * 貼り付けの知らせ：「3個のセルに貼りました（貼れなかったもの 1個：…）」。
+ * 名前に番号を振ったセルがあれば（renamed は数）「。同じ名前にならないよう番号を振りました」を足す
+ */
+export function pasteText(pasted: number, skipped: readonly PasteSkip[], renamed = 0): string {
   if (pasted === 0 && skipped.length === 0) return '貼れるセルがありませんでした'
   const head = pasted === 0 ? '貼れませんでした' : `${pasted}個のセルに貼りました`
-  if (skipped.length === 0) return head
+  if (skipped.length === 0) return withRenamed(head, renamed)
   const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
-  return `${head}（貼れなかったもの ${skipped.length}個：${reasons}）`
+  return withRenamed(`${head}（貼れなかったもの ${skipped.length}個：${reasons}）`, renamed)
 }
 
-/** オートフィルの知らせ：「4個のセルに入れました（入れられなかったもの 2個：同じ名前は入れられません）」 */
-export function fillText(pasted: number, skipped: readonly PasteSkip[]): string {
+/** オートフィルの知らせ：「4個のセルに入れました（入れられなかったもの 2個：…）」。番号を振ったら一言足す */
+export function fillText(pasted: number, skipped: readonly PasteSkip[], renamed = 0): string {
   if (pasted === 0 && skipped.length === 0) return '入れるセルがありませんでした'
   const head = pasted === 0 ? '入れられませんでした' : `${pasted}個のセルに入れました`
-  if (skipped.length === 0) return head
+  if (skipped.length === 0) return withRenamed(head, renamed)
   const reasons = [...new Set(skipped.map((s) => s.message))].join('・')
-  return `${head}（入れられなかったもの ${skipped.length}個：${reasons}）`
+  return withRenamed(`${head}（入れられなかったもの ${skipped.length}個：${reasons}）`, renamed)
 }
 
 /**
