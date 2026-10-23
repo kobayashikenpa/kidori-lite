@@ -37,6 +37,8 @@ src/
       yield.ts           歩留まり                                 ← kidori：yield.ts（そのまま）
       sizes.ts           3×6 と 4×8 の比べ                        ← kidori：sizes.ts（材料の行を外す）
       index.ts           packJob(job, dims, options?)：固定した1枚を除いた入口（第1.4版でおまかせをなくした） ← kidori：packing/index.ts
+    hints/
+      saving.ts          板を減らせるときのお知らせ findSavingHint(job, adjusts)（第1.5版。11.1） ← kidori：hints/saving.ts（材料ごと・重ね切り・手持ちを外す）
     progress/
       frozen.ts          固定した1枚・部材が変わったことの検出   ← kidori：progress/frozen.ts
       checks.ts          片のチェックの付け外し（1つ目で固定・全部で切り終わり・全部外すと固定を外す） ← kidori：store/jobs.ts の setPieceCheck・setPartCheck
@@ -75,7 +77,7 @@ src/
 
 - 画面の切り替えはルーター用のパッケージを使わず、状態（今のタブ）で切り替える（依存を増やさない）
 - 計算の呼び出しは画面側で `computeDimensions` → `packJob` の順。`useMemo` で部材・設定・調整寸法が変わったときだけ計算し直す
-- 持ってこない kidori のファイル：`flush.ts` `boards.ts` `dimensions/thickness.ts` `dimensions/finished.ts` `dimensions/cutSize.ts`（index.ts にまとめる）`dimensions/explain.ts` `formula/swapThickness` `packing/stack*` `packing/stock.ts` `packing/offcuts.ts` `packing/pairing.ts` `hints/` `migrate/` `progress/` の重ね切り・手持ち・端材の行の部分
+- 持ってこない kidori のファイル：`flush.ts` `boards.ts` `dimensions/thickness.ts` `dimensions/finished.ts` `dimensions/cutSize.ts`（index.ts にまとめる）`dimensions/explain.ts` `formula/swapThickness` `packing/stack*` `packing/stock.ts` `packing/offcuts.ts` `packing/pairing.ts` `hints/`（第1.5版で `hints/saving.ts` だけ持ってきた。11.1） `migrate/` `progress/` の重ね切り・手持ち・端材の行の部分
 
 ## 2. データ型（`src/engine/types.ts`）
 
@@ -518,3 +520,18 @@ export type CellSelection = CellRange | readonly CellPos[]  // 今までの関�
 - 式の入力（`ui/formulaEdit.ts` の `insertAt`）は、前の単位のすぐ後ろに入れる（先頭に 5・0 と入れても「5 0」と離れない）
 - キーの上の行の式を押すとカーソルが移る：`FormulaView` の `onCaret`。単位ごとの箱を測り `caretFromTap(boxes, x, y)`（押した高さに近い行の中で、単位の左半分なら前・右半分なら後ろ）
 - 貼り付け・オートフィルで番号を振ったら、知らせに「。同じ名前にならないよう番号を振りました」を足す（`ui/cellSelect.ts` の `pasteText`・`fillText` の第3引数）
+
+## 11. 第1.5版の変更（仕様書 19章）
+
+### 11.1 板を減らせるときのお知らせ（E-15。spec 19.2。`src/engine/hints/saving.ts`）
+
+- kidori の `hints/saving.ts` をコピーして直した。外したもの：材料ごとの分け（`materials` の配列）・重ね切りの組（`stackLabel`・`plan`）・手持ちが足りない材料の除外（`noStock`）・「切り代はフラッシュの部材だけ」の決まり・部材ごとの切り代の上書き。板は1種類（`settings.sheet`）
+- 入口は **`findSavingHint(job, adjusts): SavingHint | null`**（kidori は材料ごとの配列 `findSavingHints(job)`。簡易版は板が1種類なので1つか null）
+  - `SavingHint = { change: { kind: 'allowance' | 'trim', value }, from, to, message }`。`from`・`to` は固定した1枚を含む必要な板の枚数（`PackingResult.sheetCount`）
+  - `message` は「切り代を 7mm にすると、板が 1 枚減ります」（`savingMessage(kind, value, from, to)`。値は小数第1位まで）（暫定：kidori の「（2枚 → 1枚）」は付けない。仕様書 19.2 の例のとおり）
+- 試す値は `smallerSteps(今の値)`：今の値より小さい整数を大きい順に 1 まで、最後に 0.5（0 は試さない。今の値が小数なら切り捨てた値から。0.5 以下なら試さない）。kidori と同じ
+- 流れ：今の設定で `packJob(job, computeDimensions(job, adjusts))`。枚数が 1 枚以下なら null。切り代を大きい値から試し、**枚数が減り入らない部材が増えない最初の値**（＝減る一番大きい値）で返す。切り代で減らなければ端切りを同じように。同時には変えない。板・切り方・刃厚は今のまま
+- 減った所で止める（kidori は全部の材料が出たら止める。1種類なので同じ結果）。計算は最大で 1 ＋ 切り代の試す数 ＋ 端切りの試す数 回の `packJob`（初期値 切り代10・端切り5 なら 16 回）。部材 120 枚で 1 秒以内をテストで確かめた
+- 固定した1枚（`frozenSheets`）は `packJob` と同じくそのまま数え、残りの部材だけで試す（kidori と同じ）
+- 仕事のデータは書き換えない。画面は切り代・端切り（設定）・部材・調整寸法・固定した1枚が変わったら計算し直す
+- kidori の画面（`SavingHints.tsx`）はお知らせを押しても値を変えない（知らせるだけ。「設定は変えていません」と添える）

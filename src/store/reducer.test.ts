@@ -81,7 +81,7 @@ describe('仕事の操作', () => {
     expect(sample.name).toBe('見本 棚')
     // メラミン1 はもうあるので、調整寸法は変わらない
     expect(r.state.data.adjusts).toEqual(shelfAdjusts())
-    expect(sample.parts[3].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
+    expect(sample.parts[2].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
     const p = packJob(sample, computeDimensions(sample, r.state.data.adjusts))
     expect(p.sheets).toHaveLength(2)
     expect(Math.round(p.yieldRate * 1000) / 10).toBe(57.2)
@@ -93,7 +93,7 @@ describe('仕事の操作', () => {
     const mel = r.state.data.adjusts.find((a) => a.name === 'メラミン' && a.value === 1)
     expect(mel).toBeDefined()
     const sample = r.state.data.jobs[1]
-    expect(sample.parts[3].expr.W).toBe(`天板.W - 20 - {n:${mel?.id}}`)
+    expect(sample.parts[2].expr.W).toBe(`天板.W - 20 - {n:${mel?.id}}`)
     expect(computeDimensions(sample, r.state.data.adjusts).errors).toEqual([])
   })
 
