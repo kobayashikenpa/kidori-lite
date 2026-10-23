@@ -1,10 +1,13 @@
-// 部材の表（仕様書 15.1・15.2。［仕上がり］のタブ）：番号・名前・W・H・枚数。表の下にいつも空の行。
+// 部材の表（仕様書 15.1・15.2・17.1。［仕上がり］のタブ）：番号・名前・W・H・枚数。表の下にいつも空の行。
+// セルを1回押すと選ぶ（太い枠）、選んでいるセルをもう一度押すと入力（第1.3版）。角の丸い取っ手を引くと範囲が広がる。
+// 番号を押すと行全体、見出しを押すと列全体を選ぶ。範囲は engine の CellRange（left 0＝名前 … 3＝枚数）で持つ。
 // 名前はその場でスマホのキーボード。W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（式も使える。枚数は数字だけ）。
 // 入力はキーを押すたびに保存する。空の行に入れたときに部材を作り、何も入っていない部材は表から外す（保存しない）。
 // 寸法の計算は engine（computeDimensions の結果を受け取る）。式の文字の編集は formulaEdit.ts
 import {
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -14,10 +17,21 @@ import {
 import { createPortal, flushSync } from 'react-dom'
 import { validatePartName } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
+import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { hasName, referableParts } from '../../engine/parts'
-import type { Adjust, Axis, CellPos, DimensionResult, Job, Part } from '../../engine/types'
+import { CELL_COLS, type Adjust, type Axis, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
-import { cellKey } from '../cellSelect'
+import {
+  clampRange,
+  fixedCorner,
+  isSingleAt,
+  keepActive,
+  rangeEnd,
+  rangeHas,
+  singleRange,
+  spanRange,
+  type GridPoint,
+} from '../cellSelect'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import type { Edit } from '../formulaEdit'
@@ -44,14 +58,6 @@ interface Props {
   dims: DimensionResult
   adjusts: readonly Adjust[]
   dispatch: (action: StoreAction) => ReduceResult
-  /**
-   * セルを選ぶ状態（仕様書 16.1）で選んでいるセル（null は選ぶ状態でない）。
-   * 選ぶ状態の間は、セル（名前・W・H・枚数。空の行も）を押すたびに選ぶ／外す。アプリのキー・名前の入力・番号のメニューは出さない
-   */
-  selecting: readonly CellPos[] | null
-  onToggleCell: (pos: CellPos) => void
-  /** 番号を押したとき（番号のメニューを開く） */
-  onOpenMenu: (partId: string) => void
   onError: (message: string | null) => void
   ref?: Ref<PartsTableHandle>
 }
@@ -78,17 +84,32 @@ function cellOf(s: Sel | null, parts: readonly Part[]): TableCell | null {
 
 const FIELD_LABEL: Record<TableField, string> = { name: '名前', W: 'W', H: 'H', qty: '枚数' }
 
+/** 欄の列の位置（0＝名前 … 3＝枚数） */
+const colOf = (f: TableField): number => CELL_COLS.indexOf(f)
+
+/** 取っ手を引いて表の上下の端に近づいたら、表を少しずつスクロールする（端からの距離 px と、1こまの最大の動き px） */
+const EDGE_ZONE = 48
+const EDGE_STEP = 18
+
+const sameRange = (a: CellRange | null, b: CellRange | null) =>
+  a === b || (a !== null && b !== null && a.top === b.top && a.left === b.left && a.rows === b.rows && a.cols === b.cols)
+
 /** キーを押しても注目が移らないようにする（スマホのキーボードが出ない・画面が跳ねないように） */
 const keep = (e: ReactPointerEvent) => e.preventDefault()
 
-export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCell, onOpenMenu, onError, ref }: Props) {
+export function PartsTable({ job, dims, adjusts, dispatch, onError, ref }: Props) {
   const parts = job.parts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ、仕事ごとに覚える。保存しない）
   const [minRows, setMinRows] = useState(() => sessionTableMinRows(job.id))
   const [minRowsJob, setMinRowsJob] = useState(job.id)
+  // 選んでいる範囲と、その起点（アクティブセル）。入力していないときも選んだまま（仕様書 17.1）
+  const [range, setRangeS] = useState<CellRange | null>(null)
+  const [active, setActiveS] = useState<GridPoint | null>(null)
   if (minRowsJob !== job.id) {
     setMinRowsJob(job.id)
     setMinRows(sessionTableMinRows(job.id))
+    setRangeS(null)
+    setActiveS(null)
   }
   const rowCount = tableRowCount(parts.length, minRows)
   const addRows = () => {
@@ -121,10 +142,30 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
     jobRef.current = job
     selSRef.current = selS
   })
+  const rangeRef = useRef(range)
+  const activeRef = useRef(active)
+  useEffect(() => {
+    rangeRef.current = range
+    activeRef.current = active
+  })
   const tableRef = useRef<HTMLDivElement>(null)
   const padRef = useRef<HTMLDivElement>(null)
   const nameInputs = useRef(new Map<number, HTMLInputElement>())
   const rowEls = useRef(new Map<number, HTMLDivElement>())
+  const headEls = useRef<(HTMLButtonElement | null)[]>([])
+
+  /** 範囲を選ぶ（起点は指定が無ければ左上） */
+  const selectRange = (r: CellRange, a: GridPoint = { row: r.top, col: r.left }) => {
+    if (!sameRange(rangeRef.current, r)) {
+      rangeRef.current = r
+      setRangeS(r)
+    }
+    const cur = activeRef.current
+    if (!cur || cur.row !== a.row || cur.col !== a.col) {
+      activeRef.current = a
+      setActiveS(a)
+    }
+  }
 
   const setSel = (s: Sel | null) => {
     selSRef.current = s
@@ -192,6 +233,8 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
     const row = inputRow(cell.row, ps.length)
     const part = ps[row]
     setSel({ partId: part?.id ?? null, field: cell.field })
+    // 入力しているセルを選ぶ（「次へ」で進むと、選ぶ枠も一緒に動く）
+    selectRange(singleRange({ row, col: colOf(cell.field) }))
     if (cell.field === 'name') {
       setDraft(part?.name ?? '')
       return
@@ -210,6 +253,7 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
       // 先に表を描き直して名前の欄を作り、押した操作の中で注目を移す（スマホのキーボードが出るように）
       flushSync(() => {
         setSel({ partId, field: 'name' })
+        selectRange(singleRange({ row, col: 0 }))
         setDraft(nextJob.parts[row].name)
         setNameMsg(null)
       })
@@ -220,12 +264,6 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
     selectRef.current = selectCell
   })
 
-  // 選ぶ状態になったら、入力中の欄を閉じる（書きかけの名前は確定する）
-  const selectingOn = selecting !== null
-  useEffect(() => {
-    if (selectingOn && selSRef.current) selectRef.current(null)
-  }, [selectingOn])
-  const pickedKeys = new Set((selecting ?? []).map(cellKey))
 
   // 何も入っていない部材は表から外す（保存しない）。選んでいる部材は、入力の途中なので外さない
   const selPartId = selS?.partId ?? null
@@ -347,15 +385,152 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
     if (q !== part.quantity) run({ type: 'updatePart', partId: part.id, patch: { quantity: q } })
   }
 
-  /** 「次へ」：名前 → W → H → 枚数 → 次の行の名前。名前に移るときはスマホのキーボードを出す */
+  /** 「次へ」：名前 → W → H → 枚数 → 次の行の名前（入力のまま）。名前に移るときはスマホのキーボードを出す */
   const goNext = () => {
     const cur = curCell()
     if (!cur) return
-    const next = nextCell(cur, jobRef.current.parts.length)
-    selectCell(next)
-    // 押した操作の中で注目を移すと、スマホのキーボードが出る
-    if (next.field === 'name') nameInputs.current.get(next.row)?.focus()
+    startInput(nextCell(cur, jobRef.current.parts.length))
   }
+
+  // ---------- 選ぶ・入力 ----------
+
+  /** そのセルの入力を始める。名前は欄を作ってから、押した操作の中で注目を移す（スマホのキーボードが出るように） */
+  const startInput = (cell: TableCell) => {
+    if (cell.field !== 'name') {
+      selectCell(cell)
+      return
+    }
+    flushSync(() => selectCell(cell))
+    nameInputs.current.get(inputRow(cell.row, jobRef.current.parts.length))?.focus()
+  }
+
+  /** セルを押したとき：1回目は選ぶ、選んでいるセルをもう一度押すと入力（仕様書 17.1） */
+  const pressCell = (row: number, field: TableField) => {
+    const p = { row, col: colOf(field) }
+    const editing = curCell()
+    if (editing) {
+      if (editing.row === row && editing.field === field) return
+      // 入力中にほかのセルを押したら、入力を終えて そのセルを選ぶ
+      selectCell(null)
+      selectRange(singleRange(p))
+      return
+    }
+    onError(null)
+    if (isSingleAt(rangeRef.current, p)) startInput({ row, field })
+    else selectRange(singleRange(p))
+  }
+
+  /** 番号を押すと行全体、見出しを押すと列全体（入力中なら入力を終える） */
+  const pressRow = (row: number) => {
+    if (curCell()) selectCell(null)
+    onError(null)
+    selectRange(rowRange(row))
+  }
+  const pressColumn = (col: number) => {
+    if (curCell()) selectCell(null)
+    onError(null)
+    selectRange(columnRange(jobRef.current, col))
+  }
+
+  // ---------- 取っ手（範囲を広げる・縮める） ----------
+
+  const dragRef = useRef<{
+    id: number
+    fixed: GridPoint
+    x: number
+    y: number
+    raf: number
+    move: (e: PointerEvent) => void
+    up: (e: PointerEvent) => void
+  } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const rowCountRef = useRef(rowCount)
+  useEffect(() => {
+    rowCountRef.current = rowCount
+  })
+
+  /** 画面の位置にある表のセル（表の外なら、いちばん近い行・列） */
+  const pointAt = (x: number, y: number): GridPoint => {
+    let row = 0
+    for (let i = 0; i < rowCountRef.current; i++) {
+      const el = rowEls.current.get(i)?.firstElementChild
+      if (!el) continue
+      row = i
+      if (el.getBoundingClientRect().bottom > y) break
+    }
+    let col = 0
+    for (let c = 1; c < CELL_COLS.length; c++) {
+      const el = headEls.current[c]
+      if (el && x >= el.getBoundingClientRect().left) col = c
+    }
+    return { row, col }
+  }
+
+  const dragTo = () => {
+    const d = dragRef.current
+    const a = activeRef.current
+    if (!d) return
+    const r = spanRange(d.fixed, pointAt(d.x, d.y))
+    selectRange(r, a ? keepActive(a, r, d.fixed) : d.fixed)
+  }
+
+  /** 引いている間：指が表の上下の端（上の見出し・下のタブの近く）にあれば、少しずつスクロールする */
+  const edgeScroll = () => {
+    const d = dragRef.current
+    if (!d) return
+    const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0) + EDGE_ZONE
+    const bottom = (document.querySelector('.tabbar')?.getBoundingClientRect().top ?? window.innerHeight) - EDGE_ZONE
+    let dy = 0
+    if (d.y < top) dy = -Math.min(EDGE_STEP, Math.ceil((top - d.y) / 3))
+    else if (d.y > bottom) dy = Math.min(EDGE_STEP, Math.ceil((d.y - bottom) / 3))
+    if (dy !== 0) {
+      window.scrollBy(0, dy)
+      dragTo()
+    }
+    d.raf = requestAnimationFrame(edgeScroll)
+  }
+
+  /** 引き終わり（指を離した・取り消された） */
+  const endDrag = () => {
+    const d = dragRef.current
+    if (!d) return
+    cancelAnimationFrame(d.raf)
+    window.removeEventListener('pointermove', d.move)
+    window.removeEventListener('pointerup', d.up)
+    window.removeEventListener('pointercancel', d.up)
+    dragRef.current = null
+    setDragging(false)
+  }
+
+  // 取っ手は範囲が変わると別の行に描き直されるので、指の動きは画面全体（window）で追う
+  const onHandleDown = (which: 'start' | 'end') => (e: ReactPointerEvent<HTMLSpanElement>) => {
+    const r = rangeRef.current
+    if (!r) return
+    e.preventDefault()
+    e.stopPropagation()
+    endDrag()
+    const id = e.pointerId
+    const move = (ev: PointerEvent) => {
+      const d = dragRef.current
+      if (!d || ev.pointerId !== id) return
+      d.x = ev.clientX
+      d.y = ev.clientY
+      dragTo()
+    }
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId === id) endDrag()
+    }
+    dragRef.current = { id, fixed: fixedCorner(r, which), x: e.clientX, y: e.clientY, raf: requestAnimationFrame(edgeScroll), move, up }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    setDragging(true)
+  }
+  const endDragRef = useRef(endDrag)
+  useEffect(() => {
+    endDragRef.current = endDrag
+  })
+  useEffect(() => () => endDragRef.current(), [])
 
   // ---------- 表示 ----------
 
@@ -374,117 +549,161 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
   const padAxis: Axis | null = sel && (sel.field === 'W' || sel.field === 'H') ? sel.field : null
 
   const firstEmpty = parts.length
-  const focusFirstEmptyName = () => nameInputs.current.get(firstEmpty)?.focus()
+  // 表に出す範囲（行が減って下にはみ出したら収める）
+  const shown = range ? clampRange(range, rowCount) : null
+  const shownEnd = shown ? rangeEnd(shown) : null
+
+  // 取っ手の位置（表の左上からの px）：範囲の左上の角と右下の角。行の要素と見出しの列の要素から測る。
+  // 取っ手は表に1つずつ置き、引いている間に描き直されても同じ要素のままにする（iPhone で指の動きが途切れないように）
+  type Corners = { top: number; bottom: number; left: number; right: number }
+  const [handleAt, setHandleAt] = useState<Corners | null>(null)
+  const handleTop = shown?.top ?? -1
+  const handleBottom = shownEnd?.row ?? -1
+  const handleLeft = shown?.left ?? -1
+  const handleRight = shownEnd?.col ?? -1
+  useLayoutEffect(() => {
+    const measure = () => {
+      const topEl = rowEls.current.get(handleTop)?.firstElementChild
+      const botEl = rowEls.current.get(handleBottom)?.firstElementChild
+      const leftEl = headEls.current[handleLeft]
+      const rightEl = headEls.current[handleRight]
+      const table = tableRef.current
+      let next: Corners | null = null
+      if (topEl && botEl && leftEl && rightEl && table) {
+        const t = table.getBoundingClientRect()
+        next = {
+          top: topEl.getBoundingClientRect().top - t.top,
+          bottom: botEl.getBoundingClientRect().bottom - t.top,
+          left: leftEl.getBoundingClientRect().left - t.left,
+          right: rightEl.getBoundingClientRect().right - t.left,
+        }
+      }
+      setHandleAt((cur) =>
+        cur && next && cur.top === next.top && cur.bottom === next.bottom && cur.left === next.left && cur.right === next.right ? cur : next,
+      )
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined' || !tableRef.current) return
+    const ro = new ResizeObserver(measure)
+    ro.observe(tableRef.current)
+    return () => ro.disconnect()
+  }, [handleTop, handleBottom, handleLeft, handleRight, rowCount, parts, rowMsg])
 
   const rows = Array.from({ length: rowCount }, (_, i) => i)
+  const showHandles = shown !== null && shownEnd !== null && !anySel
 
   return (
     <>
       <div
-        className={`pt${selecting ? ' selecting' : ''}`}
+        className={`pt pt-edit${dragging ? ' dragging' : ''}`}
         ref={tableRef}
         role="table"
-        aria-label={selecting ? '部材の表（仕上がり寸法）：押してセルを選ぶ' : '部材の表（仕上がり寸法）'}
+        aria-label="部材の表（仕上がり寸法）：押して選ぶ、もう一度押して入力"
       >
         <div className="pt-row pt-head" role="row">
-          <span role="columnheader">番号</span>
-          <span role="columnheader">名前</span>
-          <span role="columnheader">W</span>
-          <span role="columnheader">H</span>
-          <span role="columnheader">枚数</span>
+          <span role="columnheader" className="pt-hno">
+            番号
+          </span>
+          {CELL_COLS.map((f, c) => (
+            <span key={f} role="columnheader" className="pt-hwrap">
+              <button
+                type="button"
+                ref={(el) => {
+                  headEls.current[c] = el
+                }}
+                className={`pt-hcell${c === 0 ? ' left' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
+                aria-label={`${FIELD_LABEL[f]} の列を選ぶ`}
+                onClick={() => pressColumn(c)}
+              >
+                {FIELD_LABEL[f]}
+              </button>
+            </span>
+          ))}
         </div>
         {rows.map((i) => {
           const part = parts[i]
           const key = part ? part.id : `empty-${i}`
           const isSel = (f: TableField) => sel !== null && sel.row === i && sel.field === f
           const rowSel = sel !== null && sel.row === i
-          const picked = (f: TableField) => pickedKeys.has(cellKey({ row: i, col: f }))
+          const rowIn = shown !== null && i >= shown.top && i < shown.top + shown.rows
           const label = part && hasName(part) ? part.name : `#${i + 1}`
           const rowClass = [
             'pt-row',
             part ? 'part' : 'empty',
             part && part.quantity === null ? 'noqty' : '',
-            part?.finishedDone && !selecting ? 'done' : '',
+            part?.finishedDone ? 'done' : '',
             rowSel ? 'sel' : '',
           ]
             .filter(Boolean)
             .join(' ')
 
-          const cellPress = (f: TableField) => () => {
-            if (selecting) {
-              onToggleCell({ row: i, col: f })
-              return
-            }
-            selectCell({ row: i, field: f })
+          const cellPress = (f: TableField) => () => pressCell(i, f)
+          // 選んでいる範囲の印：範囲の中は薄い色、外まわりに太い枠、起点（アクティブセル）は色なし
+          const rangeCls = (f: TableField): string => {
+            if (!shown || !shownEnd) return ''
+            const p = { row: i, col: colOf(f) }
+            if (!rangeHas(shown, p)) return ''
+            const act = active !== null && active.row === i && active.col === p.col
+            return [
+              ' rs',
+              p.row === shown.top ? ' et' : '',
+              p.row === shownEnd.row ? ' eb' : '',
+              p.col === shown.left ? ' el' : '',
+              p.col === shownEnd.col ? ' er' : '',
+              act ? ' act' : '',
+            ].join('')
           }
-          // 選ぶ状態のときのセルの印と読み上げ
-          const pickCls = (f: TableField) => (selecting && picked(f) ? ' picked' : '')
+          const inRange = (f: TableField) => shown !== null && rangeHas(shown, { row: i, col: colOf(f) })
 
-          const numCell = selecting ? (
-            <span className={`pt-cell pt-no${part ? '' : ' muted'} num`} aria-hidden="true">
-              {part && !hasName(part) ? `#${i + 1}` : i + 1}
-            </span>
-          ) : part ? (
+          const numCell = (
             <button
               type="button"
-              className="pt-cell pt-no"
-              aria-label={`${label} のメニュー（回転・仕上がりの完了・複製・上に行を入れる・削除）`}
-              aria-haspopup="dialog"
-              onClick={() => {
-                selectCell(null)
-                onOpenMenu(part.id)
-              }}
+              className={`pt-cell pt-no${part ? '' : ' muted'}${rowIn ? ' hl' : ''}`}
+              aria-label={`${part ? label : `${i + 1}行目`} の行を選ぶ`}
+              onClick={() => pressRow(i)}
             >
-              <span className="num">{hasName(part) ? i + 1 : `#${i + 1}`}</span>
-              {part.rotatable && (
+              <span className="num">{part && !hasName(part) ? `#${i + 1}` : i + 1}</span>
+              {part?.rotatable && (
                 <span className="pt-rot" aria-label="回転してよい">
                   ↺
                 </span>
               )}
             </button>
-          ) : (
-            <span className="pt-cell pt-no muted num" aria-hidden="true">
-              {i + 1}
-            </span>
           )
 
-          // 名前の欄：部材の行といちばん上の空の行はその場で入力できる欄。ほかの空の行は押すといちばん上の空の行へ
-          const nameCell =
-            selecting ? (
-              <button
-                type="button"
-                className={`pt-cell pt-name${pickCls('name')}`}
-                aria-pressed={picked('name')}
-                aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}`}
-                onClick={cellPress('name')}
-              >
-                {part && hasName(part) ? part.name : ''}
-              </button>
-            ) : part || i === firstEmpty ? (
-              <input
-                ref={(el) => {
-                  if (el) nameInputs.current.set(i, el)
-                  else if (nameInputs.current.get(i) === el) nameInputs.current.delete(i)
-                }}
-                className={`pt-cell pt-name pt-input${isSel('name') ? ' on' : ''}${isSel('name') && rowMsg ? ' bad' : ''}`}
-                type="text"
-                autoComplete="off"
-                autoCorrect="off"
-                enterKeyHint="next"
-                aria-label={`${i + 1}行目の名前`}
-                placeholder={part ? '' : '名前'}
-                value={isSel('name') ? nameDraft : (part?.name ?? '')}
-                onFocus={() => selectCell({ row: i, field: 'name' })}
-                onChange={(e) => {
-                  setDraft(e.target.value)
-                  setNameMsg(null)
-                }}
-                onKeyDown={(e) => onNameKey(i, e)}
-                onBlur={() => onNameBlur(i)}
-              />
-            ) : (
-              <button type="button" className="pt-cell pt-name" aria-label={`${i + 1}行目の名前`} onClick={focusFirstEmptyName} />
-            )
+          // 名前の欄：入力しているときだけその場で入力できる欄（スマホのキーボード）。ふだんは押して選ぶボタン
+          const nameCell = isSel('name') ? (
+            <input
+              ref={(el) => {
+                if (el) nameInputs.current.set(i, el)
+                else if (nameInputs.current.get(i) === el) nameInputs.current.delete(i)
+              }}
+              className={`pt-cell pt-name pt-input on${rowMsg ? ' bad' : ''}`}
+              type="text"
+              autoComplete="off"
+              autoCorrect="off"
+              enterKeyHint="next"
+              aria-label={`${i + 1}行目の名前`}
+              placeholder="名前"
+              value={nameDraft}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                setNameMsg(null)
+              }}
+              onKeyDown={(e) => onNameKey(i, e)}
+              onBlur={() => onNameBlur(i)}
+            />
+          ) : (
+            <button
+              type="button"
+              className={`pt-cell pt-name${rangeCls('name')}`}
+              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}`}
+              aria-selected={inRange('name')}
+              onClick={cellPress('name')}
+            >
+              {part && hasName(part) ? part.name : i === firstEmpty ? <span className="pt-ph">名前</span> : ''}
+            </button>
+          )
 
           const dimCellEl = (axis: Axis) => {
             const c = part ? tableDimCell(part, dimsOf(part.id), axis, adjusts) : ({ kind: 'empty' } as const)
@@ -493,9 +712,9 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
             return (
               <button
                 type="button"
-                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${pickCls(axis)}`}
+                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(axis)}`}
                 aria-label={`${label} の ${axis}：${text || '空'}`}
-                aria-pressed={selecting ? picked(axis) : undefined}
+                aria-selected={inRange(axis)}
                 onClick={cellPress(axis)}
               >
                 {c.kind === 'error' ? (
@@ -531,9 +750,9 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
                 {dimCellEl('H')}
                 <button
                   type="button"
-                  className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${pickCls('qty')}`}
+                  className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
                   aria-label={`${label} の枚数：${part?.quantity ?? '空'}`}
-                  aria-pressed={selecting ? picked('qty') : undefined}
+                  aria-selected={inRange('qty')}
                   onClick={cellPress('qty')}
                 >
                   {part?.quantity ?? ''}
@@ -547,12 +766,32 @@ export function PartsTable({ job, dims, adjusts, dispatch, selecting, onToggleCe
             </div>
           )
         })}
+        {showHandles && handleAt && (
+          <>
+            <span
+              key="start"
+              className="pt-handle start"
+              style={{ left: handleAt.left - 22, top: handleAt.top - 22 }}
+              aria-hidden="true"
+              onPointerDown={onHandleDown('start')}
+            >
+              <span className="pt-dot" />
+            </span>
+            <span
+              key="end"
+              className="pt-handle end"
+              style={{ left: handleAt.right - 30, top: handleAt.bottom - 22 }}
+              aria-hidden="true"
+              onPointerDown={onHandleDown('end')}
+            >
+              <span className="pt-dot" />
+            </span>
+          </>
+        )}
       </div>
-      {!selecting && (
-        <button type="button" className="btn add-rows" onClick={addRows}>
-          ＋ 5行足す
-        </button>
-      )}
+      <button type="button" className="btn add-rows" onClick={addRows}>
+        ＋ 5行足す
+      </button>
       {padOpen && <div className="pt-spacer" style={{ height: padH }} aria-hidden="true" />}
       {padOpen &&
         sel &&
