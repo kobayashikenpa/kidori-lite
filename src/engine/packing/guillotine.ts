@@ -229,7 +229,7 @@ export function preferSameWidth(same: WayLayout, old: WayLayout): boolean {
 
 /**
  * 並べ方（同じ幅を優先するか）を選ぶ（kidori 17.13 の chooseWay）。fixed が無ければ両方を並べて preferSameWidth で選ぶ。
- * run はその並べ方で（おまかせなら縦切り・横切りを選んでから）並べた結果を返す
+ * run はその並べ方で並べた結果を返す
  */
 export function chooseWay<L extends WayLayout>(fixed: boolean | undefined, run: (sameWidthFirst: boolean) => L): L {
   if (fixed !== undefined) return run(fixed)

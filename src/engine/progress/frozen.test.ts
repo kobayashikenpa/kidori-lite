@@ -47,9 +47,9 @@ describe('freezeSheet（固定した1枚の写しを作る）', () => {
     expect(freezeSheet(job, r.mode, r.sheets[0], 's', NOW).sheet).toEqual({ sizeKind: 'custom', width: 1220, length: 2430 })
   })
 
-  it('おまかせで横切り優先が選ばれたら、写しの切り方は horizontal', () => {
+  it('横切り優先で計算した1枚は、写しの切り方も horizontal', () => {
     const job = shelfJob()
-    job.settings.cutMode = 'auto'
+    job.settings.cutMode = 'horizontal'
     const r = pack(job)
     expect(freezeSheet(job, 'horizontal', r.sheets[0], 's', NOW).mode).toBe('horizontal')
   })

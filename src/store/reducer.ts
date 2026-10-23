@@ -11,6 +11,7 @@ import {
   fillCells,
   pasteCells,
   type CellSelection,
+  type PasteRenamed,
   type PasteSkip,
 } from '../engine/clipboard/cells'
 import { duplicatePart } from '../engine/clipboard/copy'
@@ -110,7 +111,7 @@ export type StoreAction =
   | ({ type: 'pasteCells' } & SelectionArg & OnJob)
   /**
    * オートフィル（第1.3版。仕様書 17.4）：from の範囲の値を、to の範囲（引いたあとの範囲。元を除いた所だけでもよい）へ上下にくり返して入れる。
-   * 結果の paste は貼り付けと同じ形（名前の列は reason 'fillName'「同じ名前は入れられません」）
+   * 結果の paste は貼り付けと同じ形（名前の列は、重なる名前に番号を振って入れる。第1.4版）
    */
   | ({ type: 'fillCells'; from: CellRange; to: CellRange } & OnJob)
   /** 選んだセルの中身を消す（行の全部の欄が空になった部材は消える） */
@@ -138,6 +139,8 @@ export type StoreAction =
 export interface PasteSummary {
   pasted: number
   skipped: PasteSkip[]
+  /** 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3） */
+  renamed: PasteRenamed[]
 }
 
 /** 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id。paste は貼り付け（pasteCells）・オートフィル（fillCells）のときだけ */
@@ -250,7 +253,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = pasteCells(j, clip, selectionOf(action), env.newId)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped }
+        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
         cutClear = p.cutClear
         return { ok: true, job: p.job }
       })
@@ -272,7 +275,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = fillCells(j, action.from, action.to, env.newId)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped }
+        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
         return { ok: true, job: p.job }
       })
       return r.ok && paste ? { ...r, paste } : r

@@ -13,7 +13,6 @@ export const SHEET_KINDS: { value: BoardSizeKind; label: string }[] = [
 export const CUT_MODES: { value: CutMode; label: string }[] = [
   { value: 'vertical', label: '縦切り優先' },
   { value: 'horizontal', label: '横切り優先' },
-  { value: 'auto', label: 'おまかせ' },
 ]
 
 export function cutModeLabel(mode: CutMode): string {

@@ -55,7 +55,7 @@ describe('仕事', () => {
   })
 
   it('コピーは設定を引き継ぎ、名前は「◯◯のコピー」。部材は式のまま写し id は新しい', () => {
-    const src = okJob(updateSettings(shelfJob(), { kerf: 4, allowance: 5, cutMode: 'auto' }))
+    const src = okJob(updateSettings(shelfJob(), { kerf: 4, allowance: 5, cutMode: 'horizontal' }))
     const withSheet = okJob(setSheet(src, { sizeKind: 'saburoku', width: 0, length: 0 }))
     const c = copyJob(withSheet, NOW, 'job-copy', counter())
     expect(c.id).toBe('job-copy')

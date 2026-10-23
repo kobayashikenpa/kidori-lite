@@ -33,6 +33,16 @@ describe('readTransferFile：読めるファイル', () => {
     expect(r.ok && r.kind === 'job' && r.summary.partCount).toBe(5)
   })
 
+  it('第1.3版までの切り方「おまかせ」（auto）の仕事・バックアップは、縦切り優先にして読む（仕様書 18.2）', () => {
+    const auto = (j: ReturnType<typeof shelfJob>) => JSON.parse(JSON.stringify(j).replace('"cutMode":"vertical"', '"cutMode":"auto"'))
+    const one = readTransferFile(buildJobFile(auto(shelfJob()), shelfAdjusts()))
+    expect(one.ok && one.kind === 'job' && one.file.job.settings.cutMode).toBe('vertical')
+    const h = shelfJob('b', '食器棚')
+    h.settings.cutMode = 'horizontal'
+    const backup = readTransferFile(buildBackupFile({ jobs: [auto(shelfJob('a', '本棚')), h], adjusts: shelfAdjusts() }))
+    expect(backup.ok && backup.kind === 'backup' && backup.file.jobs.map((j) => j.settings.cutMode)).toEqual(['vertical', 'horizontal'])
+  })
+
   it('先頭に BOM があっても読める', () => {
     expect(readTransferFile(`﻿${buildJobFile(shelfJob(), shelfAdjusts())}`).ok).toBe(true)
   })

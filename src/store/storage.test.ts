@@ -84,6 +84,22 @@ describe('保存と読み込み', () => {
     expect('clipboard' in r.data).toBe(false)
   })
 
+  it('第1.3版までの切り方「おまかせ」（auto）は縦切り優先にして読む（仕様書 18.2）', () => {
+    const old = { ...sample(), jobs: [{ ...shelfJob(), settings: { ...shelfJob().settings, cutMode: 'auto' } }, shelfJob('job-h')] }
+    old.jobs[1].settings.cutMode = 'horizontal'
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(old))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data.jobs.map((j) => j.settings.cutMode)).toEqual(['vertical', 'horizontal'])
+    expect(r.data.jobs[0]).toEqual({ ...shelfJob(), settings: { ...shelfJob().settings, cutMode: 'vertical' } })
+  })
+
+  it('切り方が縦切り優先・横切り優先・おまかせのどれでもなければ読めない', () => {
+    const bad = { ...sample(), jobs: [{ ...shelfJob(), settings: { ...shelfJob().settings, cutMode: 'diagonal' } }] }
+    expect(parseAppData(JSON.parse(JSON.stringify(bad)))).toBeNull()
+  })
+
   it('第1.1版の保存データ（名前・枚数が空・コピーした部材が空）も読める', () => {
     const data = { ...sample(), clipboard: null } as Record<string, unknown>
     delete data.cellClip

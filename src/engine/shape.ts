@@ -26,7 +26,7 @@ function isSettings(v: unknown): v is Settings {
     isNonNegative(v.kerf) &&
     isNonNegative(v.trim) &&
     isNonNegative(v.allowance) &&
-    (v.cutMode === 'vertical' || v.cutMode === 'horizontal' || v.cutMode === 'auto')
+    (v.cutMode === 'vertical' || v.cutMode === 'horizontal')
   )
 }
 
@@ -110,6 +110,30 @@ export function isJob(v: unknown): v is Job {
     isString(v.createdAt) &&
     isString(v.updatedAt)
   )
+}
+
+/**
+ * 保存データ・取り込むファイルの仕事を読む（第1.4版）。形が違えば null。
+ * 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
+ */
+export function readJob(v: unknown): Job | null {
+  if (isRecord(v) && isRecord(v.settings) && v.settings.cutMode === 'auto') {
+    const job = { ...v, settings: { ...v.settings, cutMode: 'vertical' } }
+    return isJob(job) ? job : null
+  }
+  return isJob(v) ? v : null
+}
+
+/** 仕事の並びを読む（readJob）。1つでも読めなければ null */
+export function readJobs(v: unknown): Job[] | null {
+  if (!Array.isArray(v)) return null
+  const out: Job[] = []
+  for (const x of v) {
+    const j = readJob(x)
+    if (!j) return null
+    out.push(j)
+  }
+  return out
 }
 
 export function isAdjust(v: unknown): v is Adjust {

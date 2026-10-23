@@ -112,7 +112,7 @@ describe('createJob（新しい仕事）', () => {
     })
   })
   it('設定を渡せばそれを使う（仕事のコピー）。渡した設定とは別のオブジェクト', () => {
-    const settings = { ...defaultSettings(), allowance: 5, cutMode: 'auto' as const }
+    const settings = { ...defaultSettings(), allowance: 5, cutMode: 'horizontal' as const }
     const job = createJob({ id: 'j', name: 'a', now: 't', settings })
     expect(job.settings).toEqual(settings)
     expect(job.settings).not.toBe(settings)

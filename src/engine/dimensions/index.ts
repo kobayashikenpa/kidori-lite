@@ -32,7 +32,7 @@ type Value = { ok: true; value: number } | { ok: false; error: DimensionError }
  * - 名前の無い部材も寸法を計算する（式からは参照できない）。name は表示用の名前（空なら #行番号）。枚数が空（null）の部材も計算する
  */
 export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts: readonly Adjust[]): DimensionResult {
-  const res = resolve(job.parts)
+  const res = resolve(job.parts, adjusts)
   const adjustById = new Map(adjusts.map((a) => [a.id, a.value]))
   const allowance = job.settings.allowance
   // 全角・半角をそろえた部材名 → id（式の中の参照は、そろえた名前で出てくる）
@@ -60,7 +60,7 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
       partId: d.partId,
       axis: d.axis,
       kind: originError.kind,
-      message: `参照している ${label(origin)} が計算できません（${originError.message}）`,
+      message: `参照している「${label(origin)}」が計算できません（${originError.message}）`,
       ...(originError.refs ? { refs: originError.refs } : {}),
       from: origin,
     }
@@ -113,7 +113,7 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
         partId: d.partId,
         axis: d.axis,
         kind: 'nonPositive',
-        message: `計算結果が 0 以下になります（${round1(r.value)}）`,
+        message: `計算結果が 0 以下になります（${signedText(round1(r.value))}）`,
       })
     }
     return { ok: true, value: r.value }
@@ -146,6 +146,11 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
     }
   })
   return { parts, errors: parts.flatMap((p) => p.errors) }
+}
+
+/** 数を画面の書き方で（マイナスは −。例：−200） */
+function signedText(v: number): string {
+  return v < 0 ? `−${-v}` : String(v)
 }
 
 function isComplete(r: Partial<Record<Axis, number>>): r is Record<Axis, number> {

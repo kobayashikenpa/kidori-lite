@@ -153,9 +153,9 @@ describe('部材の操作（開いている仕事）', () => {
   })
 
   it('設定と板のサイズを変える', () => {
-    let s = run(start(), { type: 'updateSettings', patch: { kerf: 4, cutMode: 'auto' } }).state
+    let s = run(start(), { type: 'updateSettings', patch: { kerf: 4, cutMode: 'horizontal' } }).state
     s = run(s, { type: 'setSheet', sheet: { sizeKind: 'saburoku', width: 0, length: 0 } }).state
-    expect(currentJob(s)!.settings).toMatchObject({ kerf: 4, cutMode: 'auto', sheet: { width: 910, length: 1820 } })
+    expect(currentJob(s)!.settings).toMatchObject({ kerf: 4, cutMode: 'horizontal', sheet: { width: 910, length: 1820 } })
     expect(reduce(s, { type: 'updateSettings', patch: { kerf: -1 } }, env()).ok).toBe(false)
   })
 })
@@ -173,7 +173,7 @@ describe('セルのコピーと貼り付け（第1.2版）', () => {
       ['天板', '全体.W'],
       ['側板', '全体.W'],
     ])
-    expect(r.paste).toEqual({ pasted: 4, skipped: [] })
+    expect(r.paste).toEqual({ pasted: 4, skipped: [], renamed: [] })
     expect(currentJob(r.state)!.updatedAt).toBe(T1.toISOString())
   })
 
@@ -214,7 +214,7 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
     expect(W(r.state)[1]).toBe('全体.W') // 切り取っただけでは変えない
     r = run(r.state, { type: 'pasteCells', range: { top: 0, left: 1, rows: 1, cols: 1 } }, env(T1))
     expect(W(r.state).slice(0, 2)).toEqual(['全体.W', ''])
-    expect(r.paste).toEqual({ pasted: 1, skipped: [] })
+    expect(r.paste).toEqual({ pasted: 1, skipped: [], renamed: [] })
     expect(r.state.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [['全体.W']] })
     // 2回目：元（天板の W）に入れ直しても、もう消さない
     r = run(r.state, { type: 'updatePart', partId: 'part-tenita', patch: { expr: { W: '全体.W', H: '全体.H' } } })
@@ -249,25 +249,19 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
     expect(r.state.data.cellClip?.cut).toBeUndefined()
   })
 
-  it('オートフィル：2行の範囲を下に5行引くと くり返して入る。名前の列は入らず理由が返る', () => {
+  it('オートフィル：2行の範囲を下に5行引くと くり返して入る。名前は番号を振って入る（仕様書 18.3）', () => {
     const r = run(start(), { type: 'fillCells', from: { top: 0, left: 0, rows: 2, cols: 2 }, to: { top: 0, left: 0, rows: 7, cols: 2 } }, env(T1))
     expect(currentJob(r.state)!.parts.map((p) => [p.name, p.expr.W])).toEqual([
       ['全体', '400'],
       ['天板', '全体.W'],
-      ['側板', '400'],
-      ['棚板', '全体.W'],
-      ['', '400'],
-      ['', '全体.W'],
-      ['', '400'],
+      ['全体1', '400'],
+      ['天板1', '全体.W'],
+      ['全体2', '400'],
+      ['天板2', '全体.W'],
+      ['全体3', '400'],
     ])
-    expect(r.paste?.pasted).toBe(5)
-    expect(r.paste?.skipped.map((x) => [x.cell.row, x.reason, x.message])).toEqual([
-      [2, 'fillName', '同じ名前は入れられません'],
-      [3, 'fillName', '同じ名前は入れられません'],
-      [4, 'fillName', '同じ名前は入れられません'],
-      [5, 'fillName', '同じ名前は入れられません'],
-      [6, 'fillName', '同じ名前は入れられません'],
-    ])
+    expect(r.paste?.pasted).toBe(10)
+    expect(r.paste?.skipped).toEqual([])
     expect(currentJob(r.state)!.updatedAt).toBe(T1.toISOString())
   })
 

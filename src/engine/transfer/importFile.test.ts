@@ -38,7 +38,7 @@ const dimsOf = (job: Job, adjusts: readonly Adjust[]) =>
 describe('仕事1つのファイルを取り込む', () => {
   it('送って取り込むと、部材・設定・式の値が同じ仕事がコピーとして足される（今ある仕事は変えない）', () => {
     const src = shelfJob()
-    src.settings = { ...src.settings, kerf: 4, allowance: 5, cutMode: 'auto' }
+    src.settings = { ...src.settings, kerf: 4, allowance: 5, cutMode: 'horizontal' }
     const data = receiver()
     const before = JSON.parse(JSON.stringify(data))
     const r = importTransfer(data, readFile(buildJobFile(src, shelfAdjusts())), ids(), NOW)

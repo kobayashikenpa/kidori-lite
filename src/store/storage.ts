@@ -2,7 +2,7 @@
 // kidori の store/storage.ts を参考に作り直したもの（以前の版からの移し替え・材料・フラッシュなどは無い）。
 // キーはすべて「kidori-lite.」で始める（kidori と同じ github.io のドメインで localStorage を分け合うため。kidori は「kidori.」）
 import { defaultAppData } from '../engine/defaults'
-import { isAdjust, isJob, isRecord, readCellClip } from '../engine/shape'
+import { isAdjust, isRecord, readCellClip, readJobs } from '../engine/shape'
 import type { AppData } from '../engine/types'
 
 /** 保存データ（AppData）のキー */
@@ -52,14 +52,16 @@ export function browserStorage(): KeyValueStorage | null {
 /** 保存データとして読めるか。読めれば AppData、読めなければ null */
 export function parseAppData(raw: unknown): AppData | null {
   if (!isRecord(raw) || raw.version !== 1) return null
-  if (!Array.isArray(raw.jobs) || !raw.jobs.every(isJob)) return null
+  // 第1.3版までの切り方「おまかせ」は縦切り優先にして読む（readJobs。仕様書 18.2）
+  const jobs = readJobs(raw.jobs)
+  if (!jobs) return null
   if (!Array.isArray(raw.adjusts) || !raw.adjusts.every(isAdjust)) return null
   // 同じ id の仕事が2つあると開く・消すがおかしくなるので読めないとする
-  if (new Set(raw.jobs.map((j) => j.id)).size !== raw.jobs.length) return null
+  if (new Set(jobs.map((j) => j.id)).size !== jobs.length) return null
   // コピーしたセル（第1.2版）は、形が違えば捨てる（仕事を読めなくしないため）。
   // 第1.1版の「コピーした部材」（clipboard）は使わなくなったので、あっても読んで捨てる
   const cellClip = readCellClip(raw.cellClip)
-  return { version: 1, jobs: raw.jobs, adjusts: raw.adjusts, cellClip }
+  return { version: 1, jobs, adjusts: raw.adjusts, cellClip }
 }
 
 // ---------- 読み込み ----------

@@ -14,7 +14,7 @@ function copyLayout(layout: SheetLayout): SheetLayout {
 
 /**
  * 画面に出ている1枚を写して、固定した1枚を作る（チェックは空）。
- * 板（妻手・長手をそろえる）・刃厚・端切りは job.settings から写す。mode はその1枚を並べた切り方（おまかせなら選ばれたほう＝PackingResult.mode）
+ * 板（妻手・長手をそろえる）・刃厚・端切りは job.settings から写す。mode はその1枚を並べた切り方（PackingResult.mode）
  */
 export function freezeSheet(
   job: Pick<Job, 'settings'>,

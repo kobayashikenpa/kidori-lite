@@ -8,8 +8,8 @@ export const AXES: readonly Axis[] = ['W', 'H']
 
 // ---------- 入力 ----------
 
-/** 切り方：縦切り優先 / 横切り優先 / おまかせ */
-export type CutMode = 'vertical' | 'horizontal' | 'auto'
+/** 切り方：縦切り優先 / 横切り優先（第1.4版で「おまかせ」をなくした。古いデータの 'auto' は読むときに 'vertical' にする。仕様書 18.2） */
+export type CutMode = 'vertical' | 'horizontal'
 
 /** 板のサイズの種類：3×6（サブロク）/ 4×8（シハチ）/ 自由入力 */
 export type BoardSizeKind = 'saburoku' | 'shihachi' | 'custom'
@@ -172,6 +172,11 @@ export interface DimensionError {
   /** unknownRef の部材名、cycle の部材名の並び */
   refs?: string[]
   /**
+   * 入れている途中の形の式（syntax のときだけ。空・終わりが記号や「(」・かっこが閉じていない・「1.」。第1.4版。仕様書 18.5）。
+   * 画面は入力中のセルのこのエラーを出さない。参照している寸法に伝わったエラー（from のあるもの）には付けない
+   */
+  incomplete?: true
+  /**
    * エラーのある寸法を参照しているために計算できないとき、元のエラーがある寸法。
    * 自分の式にエラーがあるときは付かない
    */
@@ -286,7 +291,7 @@ export type UnplacedReason = 'tooLarge'
 export interface PackingResult {
   /** 計算に使った板 */
   sheet: Sheet
-  /** 実際に使った切り方（おまかせなら選ばれたほう） */
+  /** 実際に使った切り方（設定の切り方と同じ） */
   mode: 'vertical' | 'horizontal'
   /** 固定した1枚を除いた、計算した1枚 */
   sheets: SheetLayout[]
@@ -311,7 +316,7 @@ export interface FrozenSheet {
   id: string
   /** 固定したときの板 */
   sheet: Sheet
-  /** 固定したときの切り方（おまかせなら選ばれたほう） */
+  /** 固定したときの切り方 */
   mode: 'vertical' | 'horizontal'
   /** 固定したときの刃厚 */
   kerf: number

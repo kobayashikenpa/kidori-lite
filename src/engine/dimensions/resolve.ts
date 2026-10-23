@@ -4,7 +4,7 @@ import { refsOf } from '../formula/evaluate'
 import { parse, type Expr } from '../formula/parse'
 import { normalizePartName } from '../formula/tokenize'
 import { hasName, partLabels } from '../parts'
-import { AXES, type Axis, type DimensionError, type Part } from '../types'
+import { AXES, type Adjust, type Axis, type DimensionError, type Part } from '../types'
 
 /** 部材の1つの寸法（部材.W など） */
 export interface DimRef {
@@ -33,8 +33,11 @@ export function dimKey(partId: string, axis: Axis): string {
   return `${partId}:${axis}`
 }
 
-/** 部材の式から依存関係を作り、計算順と、存在しない部材・循環参照を求める */
-export function resolve(parts: readonly Part[]): Resolution {
+/**
+ * 部材の式から依存関係を作り、計算順と、存在しない部材・循環参照を求める。
+ * adjusts（アプリ全体の調整寸法）は、式のエラーの文に調整寸法の表示名を出すため（第1.4版）
+ */
+export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Resolution {
   // そろえた部材名 → 部材（名前は重複しない前提。重複していれば先のものを使う）。名前の無い部材は参照できない
   const byName = new Map<string, Part>()
   for (const p of parts) {
@@ -54,10 +57,10 @@ export function resolve(parts: readonly Part[]): Resolution {
 
   for (const p of parts) {
     for (const axis of AXES) {
-      const parsed = parse(p.expr[axis])
+      const parsed = parse(p.expr[axis], adjusts)
       if (!parsed.ok) {
         nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: null, deps: [] })
-        addError({ partId: p.id, axis, kind: 'syntax', message: parsed.error.message })
+        addError({ partId: p.id, axis, kind: 'syntax', message: parsed.error.message, ...(parsed.error.incomplete ? { incomplete: true } : {}) })
         continue
       }
       const deps: DimRef[] = []

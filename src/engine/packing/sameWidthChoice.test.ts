@@ -55,7 +55,10 @@ describe('同じ幅を優先するのは板が増えないときだけ', () => {
     expect(Object.values(xs(r)).sort((a, b) => a - b)).toEqual([0, 0, 364])
   })
 
-  it('おまかせでも、並べ方ごとに縦切り・横切りを選んでから枚数で比べる', () => {
-    expect(run(job(worse().parts, 'auto')).sheetCount).toBe(1)
+  it('横切り優先でも、2つの並べ方を枚数で比べる', () => {
+    const j = () => job(worse().parts, 'horizontal')
+    const r = run(j())
+    expect(r.mode).toBe('horizontal')
+    expect(r.sheetCount).toBe(Math.min(run(j(), true).sheetCount, run(j(), false).sheetCount))
   })
 })

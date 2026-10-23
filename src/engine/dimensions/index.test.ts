@@ -99,6 +99,39 @@ describe('調整寸法', () => {
     expect(dimsOf(shelfJob(), '棚板', adjusts).finished).toEqual({ W: 378, H: 1760 })
   })
 
+  it('入れている途中の式（全体.W -）は syntax に incomplete が付く。参照している寸法に伝わったエラーには付けない（第1.4版）', () => {
+    const job = withParts(mkPart('前板', { W: '全体.W -' }), mkPart('裏板', { W: '前板.W' }))
+    const d = dimsOf(job, '前板')
+    expect(d.errors).toEqual([
+      {
+        partId: 'id-前板',
+        axis: 'W',
+        kind: 'syntax',
+        message: '式が「−」で終わっています（後ろに数値か部材の寸法を入れてください）',
+        incomplete: true,
+      },
+    ])
+    expect(d.finishedByAxis).toEqual({ H: 100 })
+    const back = dimsOf(job, '裏板').errors[0]
+    expect(back).toMatchObject({ kind: 'syntax', from: { partId: 'id-前板', axis: 'W' } })
+    expect(back.incomplete).toBeUndefined()
+    expect(back.message).toBe('参照している「前板.W」が計算できません（式が「−」で終わっています（後ろに数値か部材の寸法を入れてください））')
+  })
+
+  it('記号が抜けている式のエラーの文は、調整寸法を表示名（メラミン1）で出す。途中の印は付かない（第1.4版）', () => {
+    const job = withParts(mkPart('前板', { W: `全体.W {n:${MELAMINE_ID}}`, H: '全体.W 0' }))
+    const d = dimsOf(job, '前板')
+    expect(d.errors.map((e) => [e.axis, e.message, e.incomplete])).toEqual([
+      ['W', '「全体.W」と「メラミン1」の間に ＋ − × ÷ のどれかを入れてください', undefined],
+      ['H', '「全体.W」と「0」の間に ＋ − × ÷ のどれかを入れてください', undefined],
+    ])
+  })
+
+  it('空の W は途中の印つきのエラー（数値か式を入れてください）', () => {
+    const d = dimsOf(withParts(mkPart('前板', { W: '' })), '前板')
+    expect(d.errors[0]).toMatchObject({ kind: 'syntax', message: '数値か式を入れてください', incomplete: true })
+  })
+
   it('削除した調整寸法を使う寸法は unknownAdjust。その軸だけ計算しない', () => {
     const d = dimsOf(shelfJob(), '棚板', [])
     expect(d.finished).toBeNull()
@@ -136,7 +169,7 @@ describe('エラー', () => {
     expect(d.cut).toBeNull()
     expect(d.errors).toHaveLength(1)
     expect(d.errors[0]).toMatchObject({ partId: 'id-X', axis: 'W', kind: 'nonPositive' })
-    expect(d.errors[0].message).toContain('-200')
+    expect(d.errors[0].message).toContain('（−200）')
   })
 
   it('エラーの無い軸の値は軸ごとの値（finishedByAxis・cutByAxis）で出す（式の隣に出す値。仕様書 5.2）', () => {
