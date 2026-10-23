@@ -1,5 +1,5 @@
 // 木取りの画面（仕様書 8・16.3）：上に板（［3×6］［4×8］［自由入力］。それぞれの枚数・歩留まり）・刃厚・端切り・切り代の表示・切り方（BoardSettings）、
-// その下に必要な板の枚数・全体の歩留まり（大きく）、
+// その下に必要な板の枚数・全体の歩留まり（大きく）、板を減らせるときのお知らせ（SavingHint。後回しで計算）、
 // 板に収まらない部材・計算から外した部材の知らせ、板1枚ごとの配置図・歩留まり・端材の一覧・切り出しチェック、部材ごとの進み具合。切る順番は出さない。
 // 計算はすべて engine（computeDimensions → packJob・compareStandardSizes・frozenSheetViews・sheetPartChecklist・partCutProgress）、
 // チェックの付け外しは store の setPartCheck（engine の setPartCheck）。
@@ -18,6 +18,7 @@ import type { SheetLayout } from '../../engine/types'
 import { useJobStore } from '../../store/useJobStore'
 import { BoardSettings } from '../components/BoardSettings'
 import { Help } from '../components/Help'
+import { SavingHint } from '../components/SavingHint'
 import { SheetChecklist } from '../components/SheetChecklist'
 import { SheetDiagram } from '../components/SheetDiagram'
 import { fmt } from '../format'
@@ -177,6 +178,8 @@ export function KidoriScreen() {
           </div>
         </div>
       )}
+
+      {!empty && <SavingHint job={job} adjusts={adjusts} />}
 
       {result.unplaced.length > 0 && (
         <div className="card kd-issues err" role="alert">

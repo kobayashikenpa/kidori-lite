@@ -1,4 +1,4 @@
-// 見本の仕事（仕様書 16.7・6章の棚：全体・天板・側板・棚板）を作る。kidori の store/sample.ts を参考にしたもの。
+// 見本の仕事（仕様書 16.7・19.1：6章の棚から「全体」を除いた 天板・側板・棚板）を作る。kidori の store/sample.ts を参考にしたもの。
 // 設定は初期値。棚板の式で使う調整寸法「メラミン1」は、今の一覧から表示名で探し、無ければ足す
 import { adjustNameKey } from '../engine/defaults'
 import type { Adjust, Job, Part } from '../engine/types'
@@ -36,9 +36,8 @@ export function sampleJob(
     finishedDone: false,
   })
   job.parts = [
-    part('全体', '400', '1800', 0),
-    part('天板', '全体.W', '全体.H', 1),
-    part('側板', '全体.W', '700', 2),
+    part('天板', '400', '1800', 1),
+    part('側板', '天板.W', '700', 2),
     part('棚板', `天板.W - 20 - {n:${melamine.id}}`, '天板.H - 20 × 2', 3),
   ]
   return { job, adjusts: list }

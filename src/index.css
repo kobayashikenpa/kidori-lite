@@ -1160,6 +1160,27 @@ h3 > .help {
   flex-wrap: wrap;
   gap: 4px;
 }
+.kd-hints {
+  margin-top: 12px;
+  border-left: 4px solid var(--ok);
+}
+.kd-hints h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--ok);
+}
+.kd-hints-msg {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.kd-hints-count {
+  white-space: nowrap;
+}
+.kd-hints.pending .kd-hints-msg {
+  opacity: 0.5;
+}
 .kd-issues {
   margin-top: 12px;
   border-left-width: 4px;
