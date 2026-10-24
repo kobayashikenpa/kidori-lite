@@ -221,3 +221,10 @@ describe('仕様書 6章の例', () => {
     expect(r.ok && Math.abs(r.value - 0.3) < 1e-9).toBe(true)
   })
 })
+
+describe('先頭の「＝」で始めた式も計算できる（仕様書 20.2）', () => {
+  it('＝1800 - 40 = 1760、=天板.W - 20 = 380', () => {
+    expect(calc('＝1800 - 40')).toEqual({ ok: true, value: 1760 })
+    expect(evaluateExpr('=天板.W - 20', refLookup((p, a) => (p === '天板' && a === 'W' ? 400 : null)))).toEqual({ ok: true, value: 380 })
+  })
+})

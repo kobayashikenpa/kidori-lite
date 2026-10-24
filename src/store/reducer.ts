@@ -67,7 +67,7 @@ export type SelectionArg = { cells: CellPos[] } | { range: CellRange }
 const selectionOf = (a: SelectionArg): CellSelection => ('range' in a ? a.range : a.cells)
 
 export type StoreAction =
-  /** 新しい仕事を作る（名前が空なら「仕事 10/21」の形）。open（省略で true）なら開く */
+  /** 新しい仕事を作る（名前が空なら「10/21 仕事」の形）。open（省略で true）なら開く */
   | { type: 'createJob'; name?: string; open?: boolean }
   /** 仕事を開く（null で閉じる） */
   | { type: 'openJob'; id: string | null }

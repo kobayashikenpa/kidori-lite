@@ -2,6 +2,7 @@
 // kidori の ui/formulaEdit.ts をもとに、材料の厚み {t:…} を外し、逃げ {n:…} を調整寸法にしたもの。
 // カーソルは「単位の番号」（0〜単位の数。k は k 番目の単位の前）で持つ。
 // 部材の参照（全体.W）・調整寸法 {n:…} は1つの単位なので、1回の ◀ ▶・1字消す で塊ごと動く・消える
+import { parseRefText, splitLeadingEquals } from '../engine/formula/tokenize'
 import { formulaUnits, type Unit, type UnitKind } from '../engine/formula/units'
 
 export interface Edit {
@@ -116,4 +117,41 @@ export function caretFromTap(boxes: readonly UnitBox[], x: number, y: number): n
     if (x < b.right) return x < (b.left + b.right) / 2 ? i : i + 1
   }
   return line[line.length - 1].i + 1
+}
+
+/**
+ * もう一度入力するとき「＝」で始まった形で開くか（仕様書 20.2）：部材の寸法・調整寸法を使っている式、
+ * または先頭に「＝」が付いたまま保存された式。数字や計算（1800 − 40）だけなら「＝」なしで開く
+ */
+export function opensAsFormula(text: string): boolean {
+  if (splitLeadingEquals(text).equals) return true
+  return formulaUnits(text).some((u) => u.kind === 'partRef' || u.kind === 'adjust')
+}
+
+/** 色の枠の色の数（index.css の .refc-0 〜 .refc-4） */
+export const REF_COLOR_COUNT = 5
+
+/**
+ * 式に入っている部材の、色の枠の番号（エクセルと同じく部材ごとに色を変える。仕様書 20.2）。
+ * 鍵は そろえた部材名（normalizePartName と同じ形）。出てきた順に 0, 1, 2…（REF_COLOR_COUNT で回す）
+ */
+export function refColorsOf(text: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const u of formulaUnits(text)) {
+    if (u.kind !== 'partRef') continue
+    const ref = parseRefText(u.text)
+    if (ref && !out.has(ref.part)) out.set(ref.part, out.size % REF_COLOR_COUNT)
+  }
+  return out
+}
+
+/** 式に入っている部材の寸法（「そろえた部材名.W」の形の集まり）。色の枠を付けるセルを決める */
+export function refCellsOf(text: string): Set<string> {
+  const out = new Set<string>()
+  for (const u of formulaUnits(text)) {
+    if (u.kind !== 'partRef') continue
+    const ref = parseRefText(u.text)
+    if (ref) out.add(`${ref.part}.${ref.axis}`)
+  }
+  return out
 }

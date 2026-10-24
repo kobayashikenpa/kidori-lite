@@ -1,7 +1,21 @@
 // kidori の ui/formulaEdit.test.ts をもとに、D を外し、逃げを調整寸法にしたもの
 import { describe, expect, it } from 'vitest'
 import { formulaUnits } from '../engine/formula/units'
-import { caretFromTap, clearAll, deleteBefore, insertAt, moveLeft, moveRight, unitCount, type Edit, type PadKey } from './formulaEdit'
+import {
+  caretFromTap,
+  clearAll,
+  deleteBefore,
+  insertAt,
+  moveLeft,
+  moveRight,
+  opensAsFormula,
+  refCellsOf,
+  refColorsOf,
+  REF_COLOR_COUNT,
+  unitCount,
+  type Edit,
+  type PadKey,
+} from './formulaEdit'
 
 type Press = PadKey | { ref: string } | 'BS' | '◀' | '▶'
 
@@ -153,5 +167,56 @@ describe('式を押してカーソルを動かす（仕様書 18.7）', () => {
   })
   it('単位が無ければ 0', () => {
     expect(caretFromTap([], 10, 10)).toBe(0)
+  })
+})
+
+describe('「＝」で始める式（仕様書 20.2）', () => {
+  it('部材の寸法・調整寸法を使っている式は「＝」付きで開く。数字や計算だけなら付けない', () => {
+    expect(opensAsFormula('天板.W - 20')).toBe(true)
+    expect(opensAsFormula('全体.H - {n:adjust-1}')).toBe(true)
+    expect(opensAsFormula('{n:adjust-1}')).toBe(true)
+    expect(opensAsFormula('1800 - 40')).toBe(false)
+    expect(opensAsFormula('400')).toBe(false)
+    expect(opensAsFormula('')).toBe(false)
+  })
+
+  it('先頭に「＝」が付いたまま保存された式も「＝」付きで開く', () => {
+    expect(opensAsFormula('＝1800 - 40')).toBe(true)
+    expect(opensAsFormula('=5')).toBe(true)
+  })
+
+  it('セルを押して入れた寸法は、カーソルの位置に入る（天板.W のあとに − 2 0）', () => {
+    const e1 = insertAt('', 0, '天板.W')
+    const e2 = pressOn(pressOn(pressOn(e1, '-'), '2'), '0')
+    expect(e2.text).toBe('天板.W - 20')
+  })
+})
+
+describe('refColorsOf（式に入っている部材の色の枠の番号）', () => {
+  it('出てきた順に 0, 1, 2…。同じ部材は同じ番号（W・H とも）', () => {
+    const m = refColorsOf('天板.W - 側板.H * 2 + 天板.H')
+    expect([...m.entries()]).toEqual([
+      ['天板', 0],
+      ['側板', 1],
+    ])
+  })
+
+  it('全角で書いた名前もそろえて同じ部材にする', () => {
+    expect([...refColorsOf('ＡＢ.W + AB.H').entries()]).toEqual([['AB', 0]])
+  })
+
+  it('色の数より多いときは、はじめの色に戻る', () => {
+    const expr = Array.from({ length: REF_COLOR_COUNT + 1 }, (_, i) => `P${i}.W`).join(' + ')
+    expect(refColorsOf(expr).get(`P${REF_COLOR_COUNT}`)).toBe(0)
+  })
+
+  it('参照の無い式は空', () => {
+    expect(refColorsOf('1800 - {n:adjust-1}').size).toBe(0)
+  })
+})
+
+describe('refCellsOf（色の枠を付けるセル）', () => {
+  it('式に入っている 部材名.W・部材名.H だけ（全角はそろえる）', () => {
+    expect([...refCellsOf('天板.W - 側板．Ｈ * 2 + 天板.W')]).toEqual(['天板.W', '側板.H'])
   })
 })

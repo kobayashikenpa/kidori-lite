@@ -1,14 +1,17 @@
-// 式のボタンの並び（仕様書 5.4・15.1・16.2・16.5）：「部材｜調整寸法」のタブ・数字・記号・◀▶・1字消す・全部消す。
+// 式のボタンの並び（仕様書 20.1。スマホの数字キーボードと同じく、真ん中の3列が数字で 1 2 3 が上）：
+//   ＝ ＋ − × ÷ ／ 全部消す 1 2 3 ⌫ ／ ◀ 4 5 6 ▶ ／ ( 7 8 9 ) ／ 閉じる 0（2列） . 次へ
+// 一番上の段の上に、調整寸法のボタンの欄（メラミン1・シート0.5・＋ 追加）。部材の寸法はキーでなく、表のセルを押して入れる（仕様書 20.2）。
 // 部材の表のアプリのキー（PartsTable）で使う。枚数のキーも同じ並び（使わないキーは薄く出して押せない）。
-// 「調整寸法」のタブの「＋ 追加」で、キーの所で調整寸法を足し、そのまま式に入れる。
+// 「＋ 追加」で、キーの所で調整寸法を足し、そのまま式に入れる。
 // 計算はしない（式の文字とカーソルを変えるだけ。formulaEdit.ts）。kidori の ui/components/FormulaInput.tsx のボタンの部分をもとにしたもの
 import { useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import { adjustName } from '../../engine/defaults'
 import { validateAdjust, type AdjustDraft } from '../../store/jobs'
 import { formulaLabels } from '../../engine/formula/display'
+import { parseRefText } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
-import { AXES, type Adjust, type Axis, type Part } from '../../engine/types'
-import { fmt, parseNum } from '../format'
+import type { Adjust } from '../../engine/types'
+import { parseNum } from '../format'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
 import { ADJUST_PRESETS } from '../settings'
@@ -16,20 +19,6 @@ import { caretFromTap, clearAll, deleteBefore, insertAt, moveLeft, moveRight, ty
 
 /** 数字かどうか（枚数・調整寸法の寸法で押せるキー） */
 const isDigit = (k: string) => /^\d$/.test(k)
-
-/** 数字・記号のボタン（表示, 入れる文字）。× ÷ − は * / - として式に入れる。5列 */
-const KEYS: [string, PadKey][][] = [
-  [['7', '7'], ['8', '8'], ['9', '9'], ['(', '('], [')', ')']],
-  [['4', '4'], ['5', '5'], ['6', '6'], ['×', '*'], ['÷', '/']],
-  [['1', '1'], ['2', '2'], ['3', '3'], ['+', '+'], ['−', '-']],
-  [['0', '0'], ['.', '.']],
-]
-
-type RefTab = 'part' | 'adjust'
-const REF_TABS: { id: RefTab; label: string }[] = [
-  { id: 'part', label: '部材' },
-  { id: 'adjust', label: '調整寸法' },
-]
 
 /** 式の中で色つきの塊として見せる単位 */
 const CHIP_CLASS: Partial<Record<string, string>> = {
@@ -43,32 +32,43 @@ const keepFocus = (e: PointerEvent) => e.preventDefault()
 
 /**
  * 式を、参照・調整寸法を色つきの塊にして見せる。caret（単位の番号）を渡すとカーソルを出す。
- * onCaret を渡すと、式を押した所にカーソルを移す（仕様書 18.7。塊の中は近いほうの端。formulaEdit の caretFromTap）
+ * onCaret を渡すと、式を押した所にカーソルを移す（仕様書 18.7。塊の中は近いほうの端。formulaEdit の caretFromTap）。
+ * equals なら先頭に「＝」を付けて出す（仕様書 20.2。「＝」は式の文字には入れない）。
+ * refColors を渡すと、部材の寸法の塊を、表の色の枠と同じ色にする（鍵はそろえた部材名）
  */
 export function FormulaView({
   value,
   adjusts,
   caret,
   onCaret,
+  equals = false,
+  refColors,
 }: {
   value: string
   adjusts: readonly Adjust[]
   caret?: number
   onCaret?: (cursor: number) => void
+  equals?: boolean
+  refColors?: ReadonlyMap<string, number>
 }) {
   const units = formulaUnits(value)
   const labels = formulaLabels(value, adjusts)
   const body = (
     <>
+      {equals && <span className="expr-eq">＝</span>}
       {units.map((u, i) => {
         const gap = i > 0 && u.start > units[i - 1].end
         // 削除した調整寸法は赤で見せる（直す場所が分かるように）
         const missing = u.kind === 'adjust' && labels[i].startsWith('（削除した')
         const chip = missing ? 'chip-bad' : CHIP_CLASS[u.kind]
+        const ref = u.kind === 'partRef' && refColors ? parseRefText(u.text) : null
+        const color = ref ? refColors?.get(ref.part) : undefined
         return (
           <span key={`${u.start}-${u.text}`} className="expr-unit-wrap">
             {caret === i && <span className="caret" aria-hidden="true" />}
-            <span className={`expr-unit num${gap ? ' gap' : ''}${chip ? ` chip ${chip}` : ''}`}>{labels[i]}</span>
+            <span className={`expr-unit num${gap ? ' gap' : ''}${chip ? ` chip ${chip}` : ''}${color !== undefined ? ` refc-${color}` : ''}`}>
+              {labels[i]}
+            </span>
           </span>
         )
       })}
@@ -77,7 +77,7 @@ export function FormulaView({
   )
   if (!onCaret) return body
   const tap = (e: MouseEvent<HTMLSpanElement>) => {
-    // 単位ごとの位置を測る（カーソルの棒は数えない）
+    // 単位ごとの位置を測る（カーソルの棒と「＝」は数えない。「＝」を押したら先頭）
     const boxes = [...e.currentTarget.querySelectorAll('.expr-unit')].map((el) => el.getBoundingClientRect())
     onCaret(caretFromTap(boxes, e.clientX, e.clientY))
   }
@@ -89,48 +89,71 @@ export function FormulaView({
 }
 
 interface Props {
-  /** 式の文字 */
+  /** 式の文字（先頭の「＝」は入れない） */
   value: string
   /** カーソル（単位の番号） */
   cursor: number
   /** 式かカーソルが変わったとき */
   onEdit: (e: Edit) => void
+  /** 「＝」で始めた入力か（仕様書 20.2） */
+  equals?: boolean
+  /** 「＝」を付けた・外したとき（「＝」のキー・カーソルが先頭のときの 1字消す・全部消す） */
+  onEquals?: (on: boolean) => void
   adjusts: readonly Adjust[]
-  /** 参照ボタンに出す部材（名前のある部材だけ。編集中の部材自身は除く） */
-  parts: readonly Part[]
-  /** 参照ボタンに添える、部材ごとの仕上がり寸法（軸ごと。計算できない軸は無い） */
-  finishedOf: (partId: string) => Partial<Record<Axis, number>>
-  /** いちばん下の段の「全部消す」の後ろに並べるボタン（完了・閉じる・次へ など。合わせて3列ぶん） */
-  actions: ReactNode
+  /** 「閉じる」「次へ」（W・H・枚数で同じ位置） */
+  onClose: () => void
+  onNext: () => void
   /**
-   * 枚数のキーにする（仕様書 16.2）：数字・1字消す・全部消す だけ押せる（onKey に '0'〜'9'・'back'・'clear'）。
-   * 「部材｜調整寸法」のタブ・記号・◀▶・小数点は同じ場所に薄く出して押せない
+   * 枚数のキーにする（仕様書 16.2・20.1）：数字・1字消す・全部消す だけ押せる（onKey に '0'〜'9'・'back'・'clear'）。
+   * 調整寸法のボタン・＝・記号・( )・◀▶・小数点は同じ場所に薄く出して押せない
    */
   quantity?: { onKey: (key: string) => void }
-  /** 「調整寸法」のタブの「＋ 追加」で足すとき（store の addAdjust）。足せたら id、だめなら理由 */
+  /** 「＋ 追加」で足すとき（store の addAdjust）。足せたら id、だめなら理由 */
   onAddAdjust?: (draft: AdjustDraft) => { ok: true; id: string } | { ok: false; message: string }
   id?: string
   ariaLabel?: string
 }
 
+/** キーの1つ（表示, 入れる文字か操作）。null は「0」の2列目（何も置かない） */
+type KeyDef =
+  | { kind: 'put'; label: string; k: PadKey; aria?: string }
+  | { kind: 'eq' | 'clear' | 'back' | 'left' | 'right' | 'close' | 'next' }
+
+/** キーの並び（5列 × 5段。仕様書 20.1）。0 は2列ぶん */
+const LAYOUT: KeyDef[][] = [
+  [
+    { kind: 'eq' },
+    { kind: 'put', label: '＋', k: '+', aria: '足す' },
+    { kind: 'put', label: '−', k: '-', aria: '引く' },
+    { kind: 'put', label: '×', k: '*', aria: '掛ける' },
+    { kind: 'put', label: '÷', k: '/', aria: '割る' },
+  ],
+  [{ kind: 'clear' }, { kind: 'put', label: '1', k: '1' }, { kind: 'put', label: '2', k: '2' }, { kind: 'put', label: '3', k: '3' }, { kind: 'back' }],
+  [{ kind: 'left' }, { kind: 'put', label: '4', k: '4' }, { kind: 'put', label: '5', k: '5' }, { kind: 'put', label: '6', k: '6' }, { kind: 'right' }],
+  [
+    { kind: 'put', label: '(', k: '(', aria: 'かっこ開き' },
+    { kind: 'put', label: '7', k: '7' },
+    { kind: 'put', label: '8', k: '8' },
+    { kind: 'put', label: '9', k: '9' },
+    { kind: 'put', label: ')', k: ')', aria: 'かっこ閉じ' },
+  ],
+  [{ kind: 'close' }, { kind: 'put', label: '0', k: '0' }, { kind: 'put', label: '.', k: '.', aria: '小数点' }, { kind: 'next' }],
+]
+
 export function FormulaKeys({
   value,
   cursor,
   onEdit,
+  equals = false,
+  onEquals,
   adjusts,
-  parts,
-  finishedOf,
-  actions,
+  onClose,
+  onNext,
   quantity,
   onAddAdjust,
   id,
   ariaLabel,
 }: Props) {
-  // 部材の寸法と調整寸法は、タブで切り替える1つの欄にまとめる（部材が多くてもボタンが画面に収まるように）
-  const [tab, setTab] = useState<RefTab>('part')
-  // 部材の参照は2段階：まず部材名、次に W・H
-  const [refPartId, setRefPartId] = useState<string | null>(null)
-  const refPart = tab === 'part' ? (parts.find((p) => p.id === refPartId) ?? null) : null
   // 調整寸法の追加の欄（キーの所に出す）。null は出していない
   const [adding, setAdding] = useState<AddDraft | null>(null)
 
@@ -167,6 +190,118 @@ export function FormulaKeys({
   /** このキーを押せるか（枚数は数字だけ、調整寸法の追加は数字と小数点だけ） */
   const enabled = (k: PadKey) => (qty ? isDigit(k) : adding ? isDigit(k) || k === '.' : true)
 
+  /** 1字消す：カーソルが先頭で「＝」があれば「＝」を消す（式でない入力に戻る。仕様書 20.2） */
+  const back = () => {
+    if (adding) addNum('back')
+    else if (quantity) quantity.onKey('back')
+    else if (cursor === 0 && equals) onEquals?.(false)
+    else apply(deleteBefore)
+  }
+  /** 全部消す（「＝」も外す） */
+  const clear = () => {
+    if (adding) addNum('clear')
+    else if (quantity) quantity.onKey('clear')
+    else {
+      apply(clearAll)
+      if (equals) onEquals?.(false)
+    }
+  }
+
+  const keyOf = (d: KeyDef, i: number): ReactNode => {
+    const base = { type: 'button' as const, onPointerDown: keep }
+    switch (d.kind) {
+      case 'put':
+        return (
+          <button
+            key={i}
+            {...base}
+            className={`pad-key num${d.k === '0' ? ' span2' : ''}${/^\d$/.test(d.k) ? ' digit' : ' sym'}`}
+            aria-label={d.aria}
+            disabled={!enabled(d.k)}
+            onClick={() => pressKeyOf(d.k)}
+          >
+            {d.label}
+          </button>
+        )
+      case 'eq':
+        return (
+          <button
+            key={i}
+            {...base}
+            className={`pad-key num sym eq${equals && !qty ? ' on' : ''}`}
+            aria-label="＝（式を始める）"
+            aria-pressed={!qty ? equals : undefined}
+            disabled={qty || adding !== null || !onEquals}
+            onClick={() => onEquals?.(true)}
+          >
+            ＝
+          </button>
+        )
+      case 'clear':
+        return (
+          <button key={i} {...base} className="pad-key" onClick={clear}>
+            全部消す
+          </button>
+        )
+      case 'back':
+        return (
+          <button key={i} {...base} className="pad-key" aria-label="1字消す" onClick={back}>
+            <span className="pad-key-icon" aria-hidden="true">
+              ⌫
+            </span>
+            <span className="pad-key-sub" aria-hidden="true">
+              1字消す
+            </span>
+          </button>
+        )
+      case 'left':
+      case 'right':
+        return (
+          <button
+            key={i}
+            {...base}
+            className="pad-key"
+            aria-label={d.kind === 'left' ? 'カーソルを左へ' : 'カーソルを右へ'}
+            disabled={qty || adding !== null}
+            onClick={() => onEdit({ text: value, cursor: (d.kind === 'left' ? moveLeft : moveRight)(value, cursor) })}
+          >
+            {d.kind === 'left' ? '◀' : '▶'}
+          </button>
+        )
+      case 'close':
+        return adding ? (
+          <button
+            key={i}
+            {...base}
+            className="pad-key"
+            onClick={() => {
+              closeKeyboard()
+              setAdding(null)
+            }}
+          >
+            やめる
+          </button>
+        ) : (
+          <button key={i} {...base} className="pad-key" onClick={onClose}>
+            閉じる
+          </button>
+        )
+      case 'next':
+        return adding ? (
+          <button key={i} {...base} className="pad-key done" disabled={!check?.draft} onClick={submitAdd}>
+            追加
+          </button>
+        ) : (
+          <button key={i} {...base} className="pad-key done" aria-label="次へ" onClick={onNext}>
+            <span>次へ</span>
+            <span className="pad-key-sub" aria-hidden="true">
+              ↵
+            </span>
+          </button>
+        )
+    }
+  }
+
   return (
     <div className={`pad${qty ? ' qty' : ''}`} id={id} role="group" aria-label={ariaLabel}>
       {adding ? (
@@ -177,96 +312,13 @@ export function FormulaKeys({
           onDraft={setAdding}
         />
       ) : (
-        <>
-          <div className="pad-tabs" role="tablist" aria-label="式に入れるもの">
-            {REF_TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={!qty && tab === t.id}
-                className={`pad-tab ${t.id}${!qty && tab === t.id ? ' on' : ''}`}
-                disabled={qty}
-                onPointerDown={keep}
-                onClick={() => {
-                  setTab(t.id)
-                  setRefPartId(null)
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="pad-refs" role="tabpanel" aria-label={qty ? '枚数' : REF_TABS.find((t) => t.id === tab)?.label}>
-            {qty && <p className="pad-empty">枚数は数字だけ入れます</p>}
-            {!qty && tab === 'part' &&
-              (parts.length === 0 ? (
-                <p className="pad-empty">名前のあるほかの部材がありません</p>
-              ) : refPart ? (
-                // 2段階目：選んだ部材の W・H。押すと式に入れて、部材名の並びに戻る
-                <div className="pad-grid">
-                  <button
-                    type="button"
-                    className="pad-ref back"
-                    aria-label={`${refPart.name} の選択をやめて部材の一覧に戻る`}
-                    onPointerDown={keep}
-                    onClick={() => setRefPartId(null)}
-                  >
-                    <span className="ref-name">{refPart.name}</span>
-                    <span className="ref-val">◀ 戻る</span>
-                  </button>
-                  {AXES.map((a) => {
-                    const v = finishedOf(refPart.id)[a]
-                    return (
-                      <button
-                        key={a}
-                        type="button"
-                        className="pad-ref"
-                        aria-label={`${refPart.name}.${a}（${v !== undefined ? fmt(v) : '計算できない'}）を入れる`}
-                        onPointerDown={keep}
-                        onClick={() => {
-                          put(`${refPart.name}.${a}`)
-                          setRefPartId(null)
-                        }}
-                      >
-                        <span className="ref-name">
-                          {refPart.name}.{a}
-                        </span>
-                        <span className="ref-val num">{v !== undefined ? fmt(v) : '―'}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                // 1段階目：部材名の並び（多いときは中でスクロール）
-                <div className="pad-grid">
-                  {parts.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className="pad-ref part"
-                      aria-label={`${p.name} の寸法を選ぶ`}
-                      onPointerDown={keep}
-                      onClick={() => setRefPartId(p.id)}
-                    >
-                      <span className="ref-name">{p.name}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            {!qty && tab === 'adjust' && (
-              <div className="pad-grid">
-                {onAddAdjust && (
-                  <button
-                    type="button"
-                    className="pad-ref add"
-                    aria-label="調整寸法を追加して式に入れる"
-                    onPointerDown={keep}
-                    onClick={() => setAdding({ choice: null, freeName: '', size: '', error: null })}
-                  >
-                    <span className="ref-name">＋ 追加</span>
-                  </button>
-                )}
+        // 調整寸法のボタンの欄（1段。多いときは横にスクロール。「＋ 追加」はいつも右端に見せる）
+        <div className="pad-refs" role="group" aria-label={qty ? '枚数' : '調整寸法'}>
+          {qty ? (
+            <p className="pad-empty">枚数は数字だけ入れます</p>
+          ) : (
+            <>
+              <div className="pad-strip">
                 {adjusts.map((a) => (
                   <button key={a.id} type="button" className="pad-ref adjust" onPointerDown={keep} onClick={() => put(`{n:${a.id}}`)}>
                     <span className="ref-name">{adjustName(a)}</span>
@@ -274,80 +326,22 @@ export function FormulaKeys({
                 ))}
                 {adjusts.length === 0 && !onAddAdjust && <p className="pad-empty">調整寸法がありません</p>}
               </div>
-            )}
-          </div>
-        </>
+              {onAddAdjust && (
+                <button
+                  type="button"
+                  className="pad-ref add"
+                  aria-label="調整寸法を追加して式に入れる"
+                  onPointerDown={keep}
+                  onClick={() => setAdding({ choice: null, freeName: '', size: '', error: null })}
+                >
+                  <span className="ref-name">＋ 追加</span>
+                </button>
+              )}
+            </>
+          )}
+        </div>
       )}
-      <div className="pad-keys expr-keys">
-        {KEYS.flat().map(([label, k]) => (
-          <button
-            key={label}
-            type="button"
-            className="pad-key num"
-            disabled={!enabled(k)}
-            onPointerDown={keep}
-            onClick={() => pressKeyOf(k)}
-          >
-            {label}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="pad-key"
-          aria-label="カーソルを左へ"
-          disabled={qty || adding !== null}
-          onPointerDown={keep}
-          onClick={() => onEdit({ text: value, cursor: moveLeft(value, cursor) })}
-        >
-          ◀
-        </button>
-        <button
-          type="button"
-          className="pad-key"
-          aria-label="カーソルを右へ"
-          disabled={qty || adding !== null}
-          onPointerDown={keep}
-          onClick={() => onEdit({ text: value, cursor: moveRight(value, cursor) })}
-        >
-          ▶
-        </button>
-        <button
-          type="button"
-          className="pad-key"
-          onPointerDown={keep}
-          onClick={() => (adding ? addNum('back') : quantity ? quantity.onKey('back') : apply(deleteBefore))}
-        >
-          1字消す
-        </button>
-        <button
-          type="button"
-          className="pad-key span2"
-          onPointerDown={keep}
-          onClick={() => (adding ? addNum('clear') : quantity ? quantity.onKey('clear') : apply(clearAll))}
-        >
-          全部消す
-        </button>
-        {adding ? (
-          <>
-            <button
-              type="button"
-              className="pad-key"
-              onPointerDown={keep}
-              onClick={() => {
-                closeKeyboard()
-                setAdding(null)
-              }}
-            >
-              やめる
-            </button>
-            <button type="button" className="pad-key done span2" disabled={!check?.draft} onPointerDown={keep} onClick={submitAdd}>
-              追加
-            </button>
-          </>
-        ) : (
-          actions
-        )}
-      </div>
+      <div className="pad-keys expr-keys">{LAYOUT.flat().map(keyOf)}</div>
     </div>
   )
 }
@@ -374,7 +368,7 @@ function checkAdd(adjusts: readonly Adjust[], d: AddDraft): { draft: AdjustDraft
 }
 
 /**
- * 調整寸法の追加の欄（仕様書 4.1・16.5）。「部材｜調整寸法」のタブと一覧の所に出す（下のキーの位置は変わらない）。
+ * 調整寸法の追加の欄（仕様書 4.1・16.5）。調整寸法のボタンの欄の所に出す（下のキーの位置は変わらない）。
  * 名前は［逃げ］［ほぞ］［自由入力］（自由入力はスマホのキーボード）、寸法は下の数字のキーで入れる
  */
 function AdjustAddPanel({

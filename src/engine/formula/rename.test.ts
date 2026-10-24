@@ -113,3 +113,9 @@ describe('全角で書いた参照のつけ替え', () => {
     expect(renameRefsInExpr('側板．Ｗ　＋　１０', '側板', '側')).toBe('側.W　＋　１０')
   })
 })
+
+describe('renameRefsInExpr：先頭の「＝」はそのまま残す（仕様書 20.2）', () => {
+  it('＝天板.W - 20 → ＝天板A.W - 20', () => {
+    expect(renameRefsInExpr('＝天板.W - 20', '天板', '天板A')).toBe('＝天板A.W - 20')
+  })
+})

@@ -25,6 +25,12 @@
   --sans: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', 'Noto Sans JP', system-ui, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
   --tabbar-h: 60px;
+  /* 式に入っている部材のセルの色の枠（第1.6版 仕様書 20.2。エクセルと同じく部材ごとに色を変える） */
+  --refc-0: #1f6fd1;
+  --refc-1: #7a3fc4;
+  --refc-2: #1e8a4a;
+  --refc-3: #c46a00;
+  --refc-4: #c2307a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -50,6 +56,11 @@
     --ok: #7cc897;
     --ok-soft: #1c3526;
     --shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+    --refc-0: #6fb0ff;
+    --refc-1: #c49bff;
+    --refc-2: #6fd69a;
+    --refc-3: #ffb35c;
+    --refc-4: #ff8cc6;
   }
 }
 
@@ -943,11 +954,6 @@ h3 > .help {
   flex-direction: column;
   gap: 6px;
 }
-.pad-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-}
 .pad-tab {
   appearance: none;
   min-height: 44px;
@@ -961,32 +967,48 @@ h3 > .help {
   cursor: pointer;
   touch-action: manipulation;
 }
-.pad-tab.part.on {
-  background: var(--fin-soft);
-  border-color: var(--fin);
-  color: var(--fin);
-}
 .pad-tab.adjust.on {
   background: var(--ok-soft);
   border-color: var(--ok);
   color: var(--ok);
 }
-/* 部材・調整寸法は1つの欄。高さは決めておき、多いときは中でスクロール（下の数字のボタンの位置がずれない） */
+/* 調整寸法のボタンの欄（第1.6版）。1段で高さは決めておき、多いときは横にスクロール。「＋ 追加」は右端に置いたまま */
 .pad-refs {
-  height: 96px;
-  overflow-y: auto;
+  height: 44px;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+.pad-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.pad-strip::-webkit-scrollbar {
+  display: none;
+}
+.pad-strip .pad-ref {
+  flex: 0 0 auto;
+  min-width: 88px;
+  padding: 0 12px;
+}
+.pad-strip .pad-ref .ref-name {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.pad-refs > .pad-ref.add {
+  flex: 0 0 auto;
+  width: 88px;
 }
 .pad-empty {
   margin: 0;
-  padding: 12px 4px;
+  padding: 10px 4px;
   font-size: 13px;
   color: var(--muted);
-}
-.pad-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
 }
 .pad-ref {
   appearance: none;
@@ -1006,16 +1028,10 @@ h3 > .help {
   touch-action: manipulation;
   min-width: 0;
 }
-.pad-ref.part,
 .pad-ref.adjust {
   align-items: center;
   text-align: center;
-}
-.pad-ref.adjust {
   background: var(--ok-soft);
-}
-.pad-ref.back {
-  background: var(--surface);
 }
 .pad-ref .ref-name {
   font-size: 14px;
@@ -1023,11 +1039,6 @@ h3 > .help {
   line-height: 1.3;
   overflow-wrap: anywhere;
   max-width: 100%;
-}
-.pad-ref .ref-val {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.3;
 }
 .pad-keys.expr-keys {
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1043,6 +1054,83 @@ h3 > .help {
 }
 .expr-keys .pad-key.done {
   background: var(--accent);
+}
+/* キーの並び（第1.6版 仕様書 20.1）：数字は真ん中の3列。記号の段・左右の列は色を少し変える */
+.expr-keys .pad-key {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+.expr-keys .pad-key.sym,
+.expr-keys .pad-key:not(.num):not(.done) {
+  background: var(--sunk);
+}
+.expr-keys .pad-key.digit {
+  font-size: 20px;
+}
+.expr-keys .pad-key.sym {
+  font-size: 19px;
+}
+.pad-key-icon {
+  font-size: 18px;
+}
+.pad-key-sub {
+  font-size: 10px;
+  font-weight: 400;
+}
+.expr-keys .pad-key.done .pad-key-sub {
+  font-size: 13px;
+}
+/* 「＝」で始めた入力中は「＝」のキーに色を付ける */
+.pad-key.eq.on {
+  background: var(--fin-soft);
+  border-color: var(--fin);
+  color: var(--fin);
+  font-weight: 700;
+}
+/* キーの上の行の式の先頭の「＝」 */
+.expr-eq {
+  font-weight: 700;
+  color: var(--fin);
+  margin-right: 2px;
+}
+.pt-show-hint.pick {
+  margin-left: 6px;
+}
+/* 式に入っている部材のセルの色の枠（入力中だけ） */
+.pt-cell.refc {
+  position: relative;
+  opacity: 1 !important;
+}
+.pt-cell.refc::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 2px dashed var(--refc);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.refc-0 {
+  --refc: var(--refc-0);
+}
+.refc-1 {
+  --refc: var(--refc-1);
+}
+.refc-2 {
+  --refc: var(--refc-2);
+}
+.refc-3 {
+  --refc: var(--refc-3);
+}
+.refc-4 {
+  --refc: var(--refc-4);
+}
+/* キーの上の行の部材の寸法の塊も、同じ色にする */
+.expr-unit.chip-ref[class*='refc-'] {
+  color: var(--refc);
+  box-shadow: inset 0 0 0 1.5px var(--refc);
 }
 
 .msg.warn {
@@ -1966,7 +2054,7 @@ h3 > .help {
   background: none;
 }
 .pt-pad .pad-refs {
-  height: 92px;
+  height: 44px;
 }
 .pt-show {
   display: flex;
@@ -2038,7 +2126,7 @@ h3 > .help {
   overflow: hidden;
 }
 
-/* 式のキーの「調整寸法」のタブの「＋ 追加」と、キーの所に出す追加の欄（第1.2版 16.5） */
+/* 式のキーの調整寸法の「＋ 追加」と、キーの所に出す追加の欄（第1.2版 16.5） */
 .pad-ref.add {
   align-items: center;
   text-align: center;
@@ -2047,8 +2135,8 @@ h3 > .help {
   color: var(--ok);
 }
 .pad-add {
-  /* 「部材｜調整寸法」のタブ（44px）＋ 間（6px）＋ 一覧（92px）と同じ高さにして、下のキーの位置を変えない */
-  height: 142px;
+  /* 調整寸法のボタンの欄（44px）の所に出す。中身のぶんだけ上に伸びる（キーは画面の下に付いているので、キーの位置は変わらない） */
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   gap: 6px;

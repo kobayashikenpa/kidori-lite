@@ -85,3 +85,14 @@ describe('formulaUnits（カーソルで動く単位）', () => {
     expect(formulaUnits('   ')).toEqual([])
   })
 })
+
+describe('formulaUnits：先頭の「＝」（仕様書 20.2）', () => {
+  it('先頭の ＝ は単位にしない', () => {
+    expect(units('＝天板.W - 20')).toEqual([
+      ['partRef', '天板.W'],
+      ['op', '-'],
+      ['digit', '2'],
+      ['digit', '0'],
+    ])
+  })
+})
