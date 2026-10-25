@@ -249,6 +249,7 @@ export interface PackingResult {
 - 帯詰め・同じ幅の優先・右上から詰める・切る順番・端材（30mm 以上・大きい順）・歩留まりは kidori のまま
 - 帯詰め（`guillotine.ts`）：`packGuillotine(pieces, usable, kerf, mode, sameWidthFirst = true)`。同じ幅を優先する並べ方（true）と、幅が収まる最初の帯に入れる並べ方（false。kidori 第2.4版まで）を持つ
 - 並べ方の選び方（`guillotine.ts` の `chooseWay(fixed, run)`・`preferSameWidth`。kidori 17.13 の `packing/index.ts` から移した）：両方を計算し、入らない片が少ないほう → 板が少ないほう → 同じなら同じ幅を優先するほう。`packJob`（E-06）は設定の切り方で、2つの並べ方を `chooseWay` で比べる（第1.4版でおまかせをなくした）
+- 回転してよい片の向き（E-17。仕様書 23）：`packGuillotine` の引数 `orientFirst: 'long' | 'short'`（初期値 'long'）。'short' は、すでにある帯に置くときだけ帯の中の方向に短い向き（帯の長さを使わない向き）を先に試す（新しい帯を作るとき・並べる順は 'long' と同じ）。`chooseLayout(fixed, run, rotatable)` が向きごとに `chooseWay` で同じ幅の優先を選び、'short' が「入らない片が少ない → 板が少ない」で勝つときだけ 'short' を採る（同じなら 'long'＝今までの並べ方。`betterThan`）。回転してよい片が無ければ 'short' は計算しない。`packJob` の `options.orientFirst` で向きを決めて計算できる（比べ・テスト用）
 - 部材 → 片（`pieces.ts`）：`expandPieces(job, dims, frozen)` で部材ごとの片の並び（枚数0 は除く、寸法のエラーは `skipped`）、`piecesOf(runs, board, trim, mode)` で向きを決めて片にする（どう置いても入らない部材は `unplaced`＝tooLarge）。向きの判定は設定の切り方の範囲
 - 入口は `packJob(job, dims, options?)`。`options.sameWidthFirst` を指定するとその並べ方だけで計算する（比べ・テスト用。ふつうは指定しない）。`unplaced` は部材の並び
 - 固定した1枚（`frozenSheets`）の片は、部材ごとの必要な枚数から数だけで引いてから並べる（`progress/frozen.ts` の `frozenDemand(job)` → `expandPieces` の引数 `frozen`。kidori と同じ）
