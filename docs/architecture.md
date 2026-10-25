@@ -67,7 +67,7 @@ src/
       AdjustList.tsx     調整寸法の一覧・追加（逃げ／ほぞ／自由入力）
       PartRow.tsx        部材の1行（式 ｜ 計算した寸法、仕上がりの完了）
       PartEditor.tsx     部材の編集（名前・W・H・枚数・回転・複製）
-      FormulaInput.tsx   式の入力（ボタン・カーソル・部材｜調整寸法のタブ）← kidori の操作を参考
+      FormulaInput.tsx   式の入力（ボタン・カーソル・調整寸法のボタン。部材の寸法は表のセルを押して入れる＝第1.6版）← kidori の操作を参考
       Numpad.tsx         数字キー
       PastePreview.tsx   貼り付けの確認（第1.2版でなくした）
       SheetDiagram.tsx   配置図（SVG）
@@ -307,7 +307,7 @@ export interface PackingResult {
 | 仕事 | 一覧（名前・最後に変えた日・部材の数。新しい順）。新しく作る・開く・名前を変える・コピー・削除（確認） |
 | 部材 | 上に設定（たたむ）。［仕上がり］［木取り］のタブ。部材の行：名前・W・H（式 ｜ 計算した寸法）・枚数・回転の印・仕上がりの完了（仕上がりのタブだけ）。「＋ 部材を追加」「選んでコピー」「貼り付け（◯件）」 |
 | 部材の編集 | 名前（キーボード）、W・H（式の入力）、枚数（数字キー）、回転しない／回転してよい、複製、削除 |
-| 式の入力 | 欄の上の1行に計算結果かエラー。下にボタン：「部材｜調整寸法」のタブ（部材は部材名 → W・H の2段階）、数字、`+ − × ÷ ( )`、←→、1字消す・全部消す |
+| 式の入力 | 欄の上の1行に計算結果かエラー。下にボタン（第1.6版 20.1）：調整寸法のボタンの欄、`＝ ＋ − × ÷`／全部消す 1 2 3 ⌫／◀ 4 5 6 ▶／( 7 8 9 )／閉じる 0 . 次へ。「＝」で始めた入力中は、ほかの部材の W・H のセルを押すと 部材名.W が入る（20.2。第1.5版までの「部材」のタブはなくした） |
 | 設定 | 板のサイズ（3×6／4×8／自由入力）、刃厚、端切り、切り代、切り方、調整寸法の一覧と追加 |
 | 木取り | 上に必要な枚数・全体の歩留まり、3×6 と 4×8 の比べ。板ごとに配置図（端材の寸法入り）・歩留まり・端材の一覧・切り出しチェック。切り終わりの1枚は下にたたむ。入らない部材・エラーの部材の知らせ |
 
@@ -337,7 +337,7 @@ export interface Part {
 - `hasName(part)`：名前があるか（前後の空白を外して空でない）
 - `partLabel(job, partId)` → 名前があれば名前、空なら「#行番号」（`job.parts` の並びで 1 から）。部材が無ければ `''`
 - `partLabelAt(part, index)`・`partLabels(parts)`（id → 表示用の名前の Map）：たくさん出すとき用
-- `referableParts(parts)`：式の「部材」のボタンに出す部材（名前のある部材だけ）
+- `referableParts(parts)`：式から使える部材（名前のある部材だけ。第1.6版で「部材」のタブはなくし、画面では名前の無い部材のセルを押したときに知らせる）
 - `cutQuantity(quantity)`：切り出す枚数（null と 0 は 0）
 - 表示用の名前を使う所：`computeDimensions` の `PartDimensions.name`（→ `Placement.name`・`unplaced`・`skipped`）、エラーの文の `部材.W`、`partsReferencing`、`adjustUsages`・`partsUsingAdjust` の部材名、`sheetChecklist`・`sheetPartChecklist`、`frozenSheetViews` の drift、`partCutProgress`
 - 行番号は今の並び順なので、上に行を入れると変わる。チェックの一覧・進み具合・drift は今の行番号で出す。固定した1枚の写しの `Placement.name` は固定したときの表示名のまま（部材を消したときだけ使う）
@@ -417,8 +417,9 @@ export interface CellClip { rows: number; cols: number; cells: string[][] } // c
 
 ### 8.2 枚数のキー・行を足す・調整寸法（U-15。spec 16.2・16.5・16.6）
 
-- 枚数のキーも `FormulaKeys.tsx` を使う（`quantity: { onKey }` を渡すと数字・1字消す・全部消す だけ押せ、「部材｜調整寸法」のタブ・記号・◀▶・小数点は同じ場所に薄く出して押せない）。「閉じる」「次へ」は W・H・枚数で同じ部品（`PartsTable.tsx` の `PadActions`）
-- 「調整寸法」のタブの「＋ 追加」：`FormulaKeys` の `onAddAdjust(draft)`（`PartsTable` が store の `addAdjust` を呼び、足した id を返す）。重なりの判定は `store/jobs.ts` の `validateAdjust`。足したら `{n:id}` をカーソルの位置に入れる
+- 枚数のキーも `FormulaKeys.tsx` を使う（`quantity: { onKey }` を渡すと数字・1字消す・全部消す だけ押せ、調整寸法のボタン・＝・記号・( )・◀▶・小数点は同じ場所に薄く出して押せない）。「閉じる」「次へ」は `FormulaKeys` の `onClose`・`onNext`（W・H・枚数で同じ位置）
+- 「＝」（第1.6版 20.2）：式の文字には入れず、`PartsTable` の `equals` で持つ。開くときは `formulaEdit.ts` の `opensAsFormula`（部材の寸法・調整寸法を使っている式か、先頭に「＝」が付いた式）。engine は式の先頭の「＝」「=」を読み飛ばす（`tokenize.ts` の `splitChunks`・`splitLeadingEquals`）。色の枠は `refColorsOf`・`refCellsOf`
+- 調整寸法のボタンの欄の「＋ 追加」：`FormulaKeys` の `onAddAdjust(draft)`（`PartsTable` が store の `addAdjust` を呼び、足した id を返す）。重なりの判定は `store/jobs.ts` の `validateAdjust`。足したら `{n:id}` をカーソルの位置に入れる
 - 「＋ 5行足す」：`ui/partsTable.ts` の `tableRowCount(partCount, minRows)`・`addRowsMin`。足した行の下限は `sessionTableMinRows`／`setSessionTableMinRows`（モジュールの中の Map。仕事ごと・保存しない）
 - 部材の画面の上のたたんだ欄は `AdjustPanel.tsx`（中身は `AdjustList.tsx`）
 

@@ -34,14 +34,14 @@ function counter() {
 }
 
 describe('仕事', () => {
-  it('新しい仕事の名前の初期値は「仕事 10/21」の形（月/日）', () => {
-    expect(defaultJobName(NOW)).toBe('仕事 10/21')
-    expect(defaultJobName(new Date(2026, 0, 5))).toBe('仕事 1/5')
+  it('新しい仕事の名前の初期値は「10/21 仕事」の形（月/日 が先。仕様書 20.3）', () => {
+    expect(defaultJobName(NOW)).toBe('10/21 仕事')
+    expect(defaultJobName(new Date(2026, 0, 5))).toBe('1/5 仕事')
   })
 
   it('新しい仕事は初期値の設定・部材なし。名前が空なら日付の名前', () => {
     const job = makeJob('  ', NOW, 'job-1')
-    expect(job.name).toBe('仕事 10/21')
+    expect(job.name).toBe('10/21 仕事')
     expect(job.settings).toEqual(defaultSettings())
     expect(job.parts).toEqual([])
     expect(job.createdAt).toBe(NOW.toISOString())

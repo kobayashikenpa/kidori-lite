@@ -1,4 +1,4 @@
-// 式の字句の切り出し：数値・参照（部材名.W/H）・調整寸法 {n:調整寸法のid}・記号（+ - * / ( )）
+// 式の字句の切り出し：数値・参照（部材名.W/H）・調整寸法 {n:調整寸法のid}・記号（+ - * / ( )）。先頭の「＝」は読み飛ばす（第1.6版）
 // kidori の formula/tokenize.ts をもとに、軸を W・H だけにし、材料の厚み {t:…} を外したもの
 import { AXES, type Axis } from '../types'
 
@@ -58,6 +58,22 @@ function symbolOf(ch: string): Operator | '(' | ')' | null {
   return SYMBOL_SET.has(n) ? (n as Operator | '(' | ')') : null
 }
 
+/** 先頭の空白と「＝」（全角 ＝・半角 =）1つの後ろの位置。「＝」が無ければ 0 */
+function leadingEqualsEnd(expr: string): number {
+  let i = 0
+  while (i < expr.length && isSpace(expr[i])) i++
+  return i < expr.length && normalizeFormulaText(expr[i]) === '=' ? i + 1 : 0
+}
+
+/**
+ * 式の先頭の「＝」（全角 ＝・半角 =。前の空白も）を外す（第1.6版。仕様書 20.2）。
+ * rest は「＝」と、その前後の空白を外した残り。equals は「＝」が付いていたか。保存する式は「＝」を付けない形（rest）
+ */
+export function splitLeadingEquals(expr: string): { equals: boolean; rest: string } {
+  const end = leadingEqualsEnd(expr)
+  return end === 0 ? { equals: false, rest: expr } : { equals: true, rest: expr.slice(end).trimStart() }
+}
+
 /** 記号と空白で区切った「ひとかたまり」の文字列。記号・空白以外が続く部分 */
 export interface Chunk {
   text: string
@@ -73,7 +89,8 @@ export interface Chunk {
  */
 export function splitChunks(expr: string): (Token | Chunk)[] {
   const order: (Token | Chunk)[] = []
-  let i = 0
+  // 先頭の「＝」（エクセルと同じく「＝」で始めた式。第1.6版 仕様書 20.2）は読み飛ばす
+  let i = leadingEqualsEnd(expr)
   while (i < expr.length) {
     const ch = expr[i]
     if (isSpace(ch)) {

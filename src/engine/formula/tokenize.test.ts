@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeFormulaText, tokenize, validatePartName } from './tokenize'
+import { normalizeFormulaText, splitLeadingEquals, tokenize, validatePartName } from './tokenize'
 
 /** 位置の情報を除いて、字句の中身だけを比べる */
 function kinds(expr: string) {
@@ -266,5 +266,32 @@ describe('validatePartName：{ } は使えない', () => {
   it('全角の ｛ ｝ も使えない', () => {
     expect(validatePartName('棚｛1')).not.toBeNull()
     expect(validatePartName('棚1｝')).not.toBeNull()
+  })
+})
+
+describe('先頭の「＝」（仕様書 20.2。エクセルと同じく「＝」で始めた式）', () => {
+  it('先頭の ＝（全角）・=（半角）は読み飛ばす', () => {
+    expect(kinds('＝天板.W - 20')).toEqual([{ ref: ['天板', 'W'] }, '-', { number: 20 }])
+    expect(kinds('=天板.W-20')).toEqual([{ ref: ['天板', 'W'] }, '-', { number: 20 }])
+  })
+
+  it('前の空白・「＝」の後ろの空白も読み飛ばす', () => {
+    expect(kinds('  = 1800 - 40')).toEqual([{ number: 1800 }, '-', { number: 40 }])
+  })
+
+  it('「＝」だけなら字句は空', () => {
+    expect(kinds('＝')).toEqual([])
+  })
+
+  it('途中の「＝」は読めない（読み飛ばすのは先頭の1つだけ）', () => {
+    expect(tokenize('1 = 2').ok).toBe(false)
+    expect(tokenize('==1').ok).toBe(false)
+  })
+
+  it('splitLeadingEquals：先頭の「＝」と前後の空白を外した式と、付いていたか', () => {
+    expect(splitLeadingEquals('＝天板.W - 20')).toEqual({ equals: true, rest: '天板.W - 20' })
+    expect(splitLeadingEquals(' = 5')).toEqual({ equals: true, rest: '5' })
+    expect(splitLeadingEquals('天板.W - 20')).toEqual({ equals: false, rest: '天板.W - 20' })
+    expect(splitLeadingEquals('')).toEqual({ equals: false, rest: '' })
   })
 })
