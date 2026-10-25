@@ -11,7 +11,7 @@ export type SortKey = 'name' | 'W' | 'H' | 'qty'
 /** 並べる向き：asc は小さい順（名前はあいうえお順）、desc は大きい順（名前は逆の順） */
 export type SortOrder = 'asc' | 'desc'
 
-const collator = new Intl.Collator('ja')
+const collator = new Intl.Collator('ja', { numeric: true }) // 名前の中の数字は大きさで比べる（棚板2 → 棚板10）
 
 /** 部材の比べる値。空・エラーなら null（一番下に置く） */
 function sortValue(part: Part, dims: DimensionResult, key: SortKey): number | string | null {

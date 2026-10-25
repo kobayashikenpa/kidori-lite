@@ -134,3 +134,13 @@ describe('行の移動（仕様書 24.2）', () => {
     expect(ids(ps)).toEqual(before)
   })
 })
+
+describe('名前の中の数字は大きさで比べる', () => {
+  it('棚板2 が 棚板10 より前（あいうえお順）', () => {
+    const mk = (id: string, name: string) => ({ id, name, expr: { W: '1', H: '1' }, quantity: 1, rotatable: false, finishedDone: false })
+    const parts = [mk('a', '棚板10'), mk('b', '棚板2'), mk('c', '棚板1')]
+    const dims = { parts: [], errors: [] }
+    const out = sortParts(parts, dims as never, 'name', 'asc')
+    expect(out.map((p) => p.name)).toEqual(['棚板1', '棚板2', '棚板10'])
+  })
+})
