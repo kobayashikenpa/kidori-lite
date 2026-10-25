@@ -13,14 +13,14 @@ export interface TableCell {
   field: TableField
 }
 
-/** 空の行で埋める行の数（10行に満たないときは10行まで） */
-export const TABLE_MIN_ROWS = 10
+/** 空の行で埋める行の数（5行に満たないときは5行まで。仕様書 21.4。第1.6版までは 10行） */
+export const TABLE_MIN_ROWS = 5
 
 /** 「＋ 5行足す」で足す空の行の数（仕様書 16.6） */
 export const ADD_ROWS = 5
 
 /**
- * 表の行の数：部材の数 ＋ いつも空の行1つ、ただし minRows（初めは 10 行。「＋ 5行足す」で増える）に満たなければ minRows 行
+ * 表の行の数：部材の数 ＋ いつも空の行1つ、ただし minRows（初めは 5 行。「＋ 5行足す」で増える）に満たなければ minRows 行
  */
 export function tableRowCount(partCount: number, minRows: number = TABLE_MIN_ROWS): number {
   return Math.max(TABLE_MIN_ROWS, minRows, partCount + 1)

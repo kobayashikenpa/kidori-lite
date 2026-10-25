@@ -614,4 +614,13 @@ export interface AdjustClip { rows: number; cols: number; cells: string[][]; cut
 | `{ type: 'insertAdjustRow', index }` | `id`＝入れた空の行の id（入力を終えて空のままなら画面が `removeAdjusts` で外す） |
 
 - `adjustTableOutcome(data, action, newId)`：上の操作を当てたあとの `{ adjusts, adjustClip, id?, adjustPaste? }`（純粋関数。reduce もこれを使う）。画面の確認（12.3）に使う
-- 画面（U-23 まで）：`PartsScreen`・`KidoriScreen`・`AdjustList`・`AdjustPanel` は `usableAdjusts(data.adjusts)` を使うように型の直しだけした
+- 画面：`PartsScreen`・`KidoriScreen` は `usableAdjusts(data.adjusts)` を使う
+
+### 12.5 画面（U-23。spec 21.1〜21.4。`src/ui`）
+
+- `useGrid.ts`：表のセルを選ぶ仕組み（選んでいる範囲と起点・丸い取っ手・オートフィルの取っ手・長押し・表の端でのスクロール・取っ手と点線の位置 `useGridBoxes`・キーの高さ `usePadHeight`・入力している行を見せる `useRevealRow`）。`PartsTable` から外に出し、`AdjustTable` でも使う。選んでいる範囲はアプリで1つの表だけ（`exclusive.ts` の `claimOpen('cellRange')`。ほかの表が選んだら範囲を外し、入力を終える）。取っ手と点線は `components/GridOverlay.tsx`
+- `components/AdjustTable.tsx`：部材の表の下の調整寸法の表（`PartsTable` の中に置き、`picking`（「＝」の入力中に押した行を式に入れる）と `refIds`（色の枠）を受け取る）。保存データは `useJobStore` から直接。入力は確定したときに `setAdjustCell`。表を変える操作は `adjustTableOutcome` → `adjustChangeUsages` → 確認の文（`ui/adjustTable.ts` の `adjustConfirmText`）があれば確かめてから dispatch
+- `ui/adjustTable.ts`：行の数（初め5行・「＋ 5行足す」はアプリを開いている間だけ）・「次へ」の行き先・行の呼び方・確認の文
+- `FormulaKeys`：キーの上の調整寸法のボタンと「＋ 追加」の欄をなくした。`numeric`（数字だけのキー。`decimal` なら小数点も）で枚数・調整寸法の寸法のキーにする
+- なくしたもの：`AdjustPanel`・`AdjustList`・`settings.ts` の `ADJUST_PRESETS`・`groupUsages`
+- 部材の表の初めの行は5行（`TABLE_MIN_ROWS`）

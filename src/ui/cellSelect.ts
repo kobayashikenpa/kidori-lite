@@ -60,8 +60,8 @@ export function clampRange(r: CellRange, rowCount: number): CellRange | null {
 
 const CLIP_TEXT_MAX = 10
 
-/** 今コピーしているもの：「コピー中：1つ（400）」「コピー中：2行×2列」（切り取りなら「切り取り中：…」）。無ければ null */
-export function clipText(clip: CellClip | null): string | null {
+/** 今コピーしているもの（部材の表・調整寸法の表で同じ）：「コピー中：1つ（400）」「コピー中：2行×2列」（切り取りなら「切り取り中：…」）。無ければ null */
+export function clipText(clip: (Pick<CellClip, 'rows' | 'cols' | 'cells'> & { cut?: unknown }) | null): string | null {
   if (!clip) return null
   const head = clip.cut ? '切り取り中' : 'コピー中'
   if (clip.rows === 1 && clip.cols === 1) {
@@ -81,7 +81,7 @@ const withRenamed = (text: string, renamed: number) => (renamed > 0 ? `${text}�
  * 貼り付けの知らせ：「3個のセルに貼りました（貼れなかったもの 1個：…）」。
  * 名前に番号を振ったセルがあれば（renamed は数）「。同じ名前にならないよう番号を振りました」を足す
  */
-export function pasteText(pasted: number, skipped: readonly PasteSkip[], renamed = 0): string {
+export function pasteText(pasted: number, skipped: readonly Pick<PasteSkip, 'message'>[], renamed = 0): string {
   if (pasted === 0 && skipped.length === 0) return '貼れるセルがありませんでした'
   const head = pasted === 0 ? '貼れませんでした' : `${pasted}個のセルに貼りました`
   if (skipped.length === 0) return withRenamed(head, renamed)
@@ -90,7 +90,7 @@ export function pasteText(pasted: number, skipped: readonly PasteSkip[], renamed
 }
 
 /** オートフィルの知らせ：「4個のセルに入れました（入れられなかったもの 2個：…）」。番号を振ったら一言足す */
-export function fillText(pasted: number, skipped: readonly PasteSkip[], renamed = 0): string {
+export function fillText(pasted: number, skipped: readonly Pick<PasteSkip, 'message'>[], renamed = 0): string {
   if (pasted === 0 && skipped.length === 0) return '入れるセルがありませんでした'
   const head = pasted === 0 ? '入れられませんでした' : `${pasted}個のセルに入れました`
   if (skipped.length === 0) return withRenamed(head, renamed)

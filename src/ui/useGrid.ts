@@ -1,0 +1,539 @@
+// エクセルのような表（部材の表・調整寸法の表）のセルを選ぶ仕組み（仕様書 17.1・17.2・17.4・21.1）。
+// 選んでいる範囲と起点・丸い取っ手で範囲を広げる・四角い取っ手でオートフィル・長押しでメニュー・取っ手と点線の印の位置。
+// 第1.7版で PartsTable から外に出し、調整寸法の表（AdjustTable）でも同じ仕組みを使う。
+// 選んでいる範囲はアプリで1つの表だけ（ほかの表が選んだら、こちらの範囲は外す。exclusive.ts の claimOpen）
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react'
+import type { CellRange } from '../engine/types'
+import { fillTarget, fixedCorner, keepActive, spanRange, type GridPoint } from './cellSelect'
+import { claimOpen } from './exclusive'
+
+/** 取っ手を引いて表の上下の端に近づいたら、表を少しずつスクロールする（端からの距離 px と、1こまの最大の動き px） */
+const EDGE_ZONE = 48
+const EDGE_STEP = 18
+
+/** 長押しでメニューを出すまでの時間（ms）と、取り消しにする指の動き（px） */
+const LONG_PRESS_MS = 500
+const LONG_PRESS_SLOP = 10
+
+/** 長押しした所：セル（col は列の位置）か、番号（行全体。col が null） */
+export type PressAt = { row: number; col: number | null }
+
+/** 押した要素から、表のセル・番号を探す（data-row・data-col。名前の入力欄は除く） */
+export function pressAtOf(target: EventTarget | null): PressAt | null {
+  if (!(target instanceof Element) || target.closest('input')) return null
+  const el = target.closest<HTMLElement>('[data-row]')
+  if (!el) return null
+  const row = Number(el.dataset.row)
+  const col = el.dataset.col === undefined ? null : Number(el.dataset.col)
+  return Number.isInteger(row) ? { row, col } : null
+}
+
+/** 画面の位置にある、その表のセル・番号（取っ手は除いて、その下を見る）。表の外なら null */
+function cellUnder(table: HTMLElement | null, x: number, y: number): PressAt | null {
+  const el = document.elementsFromPoint(x, y).find((e) => !e.closest('.pt-handle'))
+  if (!el || !table || !table.contains(el)) return null
+  return pressAtOf(el)
+}
+
+/** 表の左上からの四角（点線の印に使う） */
+export type Box = { top: number; left: number; width: number; height: number }
+
+/** 範囲を文字にする（描き直しの鍵）・戻す */
+export const rangeKey = (r: CellRange | null): string => (r ? `${r.top}:${r.left}:${r.rows}:${r.cols}` : '')
+function rangeOfKey(key: string): CellRange | null {
+  if (key === '') return null
+  const [top, left, rows, cols] = key.split(':').map(Number)
+  return { top, left, rows, cols }
+}
+const sameBox = (a: Box | null, b: Box | null) =>
+  a === b || (a !== null && b !== null && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height)
+
+export const sameRange = (a: CellRange | null, b: CellRange | null) =>
+  a === b || (a !== null && b !== null && a.top === b.top && a.left === b.left && a.rows === b.rows && a.cols === b.cols)
+
+export interface GridOptions {
+  tableRef: RefObject<HTMLDivElement | null>
+  /** 行の要素（中の1つ目の要素がセルの並び）。行の番号が鍵 */
+  rowEls: RefObject<Map<number, HTMLDivElement>>
+  /** 見出しの列の要素（列の位置の順） */
+  headEls: RefObject<(HTMLElement | null)[]>
+  rowCount: number
+  colCount: number
+  /** 取っ手を動かさずに離したとき：指の位置のセルを押したことにする */
+  onPressCell: (row: number, col: number) => void
+  /** 同じく番号（行全体） */
+  onPressRow: (row: number) => void
+  /** 長押し（メニューを開く） */
+  onLongPress: (at: PressAt) => void
+  /** 長押しのメニューを出さないとき（「＝」で寸法を入れている間など） */
+  noLongPress: () => boolean
+  /** オートフィル（指を離したとき。to は元を含む範囲） */
+  onFill: (from: CellRange, to: CellRange) => void
+  /** オートフィルの取っ手を押し始めたとき */
+  onFillStart: () => void
+  /** ほかの表が範囲を選んだとき（この表は選んでいる範囲を外され、入力していれば終える） */
+  onRelease: () => void
+  /** これが変わったら選んでいる範囲を外す（部材の表は仕事の id） */
+  resetKey?: string
+}
+
+export function useGrid(opts: GridOptions) {
+  const o = useRef(opts)
+  useEffect(() => {
+    o.current = opts
+  })
+
+  // 選んでいる範囲と、その起点（アクティブセル）。入力していないときも選んだまま（仕様書 17.1）
+  const [range, setRangeS] = useState<CellRange | null>(null)
+  const [active, setActiveS] = useState<GridPoint | null>(null)
+  const [key, setKey] = useState(opts.resetKey)
+  if (key !== opts.resetKey) {
+    setKey(opts.resetKey)
+    setRangeS(null)
+    setActiveS(null)
+  }
+  const rangeRef = useRef(range)
+  const activeRef = useRef(active)
+  useEffect(() => {
+    rangeRef.current = range
+    activeRef.current = active
+  })
+  // ほかの表が選んだときに呼ばれる（同じ関数のままにする）
+  const [release] = useState(() => () => {
+    rangeRef.current = null
+    activeRef.current = null
+    setRangeS(null)
+    setActiveS(null)
+    o.current.onRelease()
+  })
+
+  /** 範囲を選ぶ（起点は指定が無ければ左上）。ほかの表の範囲は外す */
+  const selectRange = (r: CellRange, a: GridPoint = { row: r.top, col: r.left }) => {
+    claimOpen('cellRange', release)
+    if (!sameRange(rangeRef.current, r)) {
+      rangeRef.current = r
+      setRangeS(r)
+    }
+    const cur = activeRef.current
+    if (!cur || cur.row !== a.row || cur.col !== a.col) {
+      activeRef.current = a
+      setActiveS(a)
+    }
+  }
+  /** 範囲を外す（選んでいない） */
+  const clearRange = () => {
+    rangeRef.current = null
+    activeRef.current = null
+    setRangeS(null)
+    setActiveS(null)
+  }
+
+  // ---------- 取っ手（丸＝範囲を広げる・縮める、四角＝オートフィル） ----------
+
+  // 長押しのあと・取っ手の上を押したあとに来る「押した」（指を離したときの click）を1回だけ捨てる（入力が始まったり、メニューがすぐ閉じたりしないように）
+  const swallowClick = useRef(false)
+
+  const dragRef = useRef<{
+    id: number
+    /** range：丸い取っ手で範囲を変える。fill：四角い取っ手でオートフィル */
+    mode: 'range' | 'fill'
+    fixed: GridPoint
+    /** オートフィルの元の範囲 */
+    from: CellRange
+    /** 押し始めた位置（動かさずに離したら、下のセルを押したことにする） */
+    sx: number
+    sy: number
+    /** 指が LONG_PRESS_SLOP より動いたか（動くまでは範囲を変えない。取っ手の上の「押す」「長押し」と分ける） */
+    moved: boolean
+    /** 取っ手の上で動かさずに押し続けたら、指の下のセルの長押しとしてメニューを開く */
+    timer: number
+    x: number
+    y: number
+    raf: number
+    move: (e: PointerEvent) => void
+    up: (e: PointerEvent) => void
+  } | null>(null)
+  const [dragging, setDragging] = useState<'range' | 'fill' | null>(null)
+  // オートフィルで引いた先（元を含む範囲。引いている間だけ）
+  const [fillTo, setFillToS] = useState<CellRange | null>(null)
+  const fillToRef = useRef<CellRange | null>(null)
+  const setFillTo = (r: CellRange | null) => {
+    if (sameRange(fillToRef.current, r)) return
+    fillToRef.current = r
+    setFillToS(r)
+  }
+
+  /** 画面の位置にある表のセル（表の外なら、いちばん近い行・列） */
+  const pointAt = (x: number, y: number): GridPoint => {
+    const { rowEls, headEls, rowCount, colCount } = o.current
+    let row = 0
+    for (let i = 0; i < rowCount; i++) {
+      const el = rowEls.current.get(i)?.firstElementChild
+      if (!el) continue
+      row = i
+      if (el.getBoundingClientRect().bottom > y) break
+    }
+    let col = 0
+    for (let c = 1; c < colCount; c++) {
+      const el = headEls.current[c]
+      if (el && x >= el.getBoundingClientRect().left) col = c
+    }
+    return { row, col }
+  }
+
+  const dragTo = () => {
+    const d = dragRef.current
+    if (!d || !d.moved) return
+    const p = pointAt(d.x, d.y)
+    if (d.mode === 'fill') {
+      // 表の上の知らせは変えない（引いている間に表が上下にずれないように。引いた先の行数は点線の中に出す）
+      setFillTo(fillTarget(d.from, p))
+      return
+    }
+    const a = activeRef.current
+    const r = spanRange(d.fixed, p)
+    selectRange(r, a ? keepActive(a, r, d.fixed) : d.fixed)
+  }
+
+  /** 引いている間：指が表の上下の端（上の見出し・下のタブの近く）にあれば、少しずつスクロールする */
+  const edgeScroll = () => {
+    const d = dragRef.current
+    if (!d) return
+    if (!d.moved) {
+      d.raf = requestAnimationFrame(edgeScroll)
+      return
+    }
+    const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0) + EDGE_ZONE
+    const bottom = (document.querySelector('.tabbar')?.getBoundingClientRect().top ?? window.innerHeight) - EDGE_ZONE
+    let dy = 0
+    if (d.y < top) dy = -Math.min(EDGE_STEP, Math.ceil((top - d.y) / 3))
+    else if (d.y > bottom) dy = Math.min(EDGE_STEP, Math.ceil((d.y - bottom) / 3))
+    if (dy !== 0) {
+      window.scrollBy(0, dy)
+      dragTo()
+    }
+    d.raf = requestAnimationFrame(edgeScroll)
+  }
+
+  /** 引き終わり（指を離した＝commit、取り消された＝commit なし）。オートフィルは離したときに入れる */
+  const endDrag = (commit = false) => {
+    const d = dragRef.current
+    if (!d) return
+    cancelAnimationFrame(d.raf)
+    clearTimeout(d.timer)
+    window.removeEventListener('pointermove', d.move)
+    window.removeEventListener('pointerup', d.up)
+    window.removeEventListener('pointercancel', d.up)
+    dragRef.current = null
+    setDragging(null)
+    // 取っ手を動かさずに離したら、指の位置のセル（番号）を押したことにする（取っ手がセルに重なっても押せるように。
+    // 選んでいるセル自身なら2回目の押し方＝入力）
+    if (!d.moved) {
+      setFillTo(null)
+      const at = commit ? cellUnder(o.current.tableRef.current, d.x, d.y) : null
+      if (at) {
+        // 指を離したあとに来る click は捨てる（ここで押したことにしたので。出てきたキーなどに当たらないように）
+        swallowClick.current = true
+        if (at.col === null) o.current.onPressRow(at.row)
+        else o.current.onPressCell(at.row, at.col)
+      }
+      return
+    }
+    if (d.mode !== 'fill') return
+    const to = fillToRef.current
+    setFillTo(null)
+    if (!commit || !to) return
+    o.current.onFill(d.from, to)
+  }
+
+  // 取っ手は範囲が変わると別の行に描き直されるので、指の動きは画面全体（window）で追う
+  const onHandleDown = (which: 'start' | 'end' | 'fill') => (e: ReactPointerEvent<HTMLSpanElement>) => {
+    const r = rangeRef.current
+    if (!r) return
+    e.preventDefault()
+    e.stopPropagation()
+    endDrag()
+    cancelPress()
+    const id = e.pointerId
+    const move = (ev: PointerEvent) => {
+      const d = dragRef.current
+      if (!d || ev.pointerId !== id) return
+      d.x = ev.clientX
+      d.y = ev.clientY
+      if (!d.moved && Math.hypot(d.x - d.sx, d.y - d.sy) > LONG_PRESS_SLOP) {
+        d.moved = true
+        clearTimeout(d.timer)
+      }
+      dragTo()
+    }
+    // 動かさずに押し続けたら：引くのをやめて、指の下のセルの長押し（メニュー）にする
+    const hold = () => {
+      const d = dragRef.current
+      if (!d || d.id !== id || d.moved) return
+      const at = cellUnder(o.current.tableRef.current, d.x, d.y)
+      endDrag()
+      if (at) longPress(at)
+    }
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId === id) endDrag(ev.type === 'pointerup')
+    }
+    const mode = which === 'fill' ? 'fill' : 'range'
+    dragRef.current = {
+      id,
+      mode,
+      fixed: fixedCorner(r, which === 'start' ? 'start' : 'end'),
+      from: r,
+      sx: e.clientX,
+      sy: e.clientY,
+      moved: false,
+      timer: window.setTimeout(hold, LONG_PRESS_MS),
+      x: e.clientX,
+      y: e.clientY,
+      raf: requestAnimationFrame(edgeScroll),
+      move,
+      up,
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    setDragging(mode)
+    if (mode === 'fill') o.current.onFillStart()
+  }
+  const endDragRef = useRef(endDrag)
+  useEffect(() => {
+    endDragRef.current = endDrag
+  })
+  useEffect(() => () => endDragRef.current(), [])
+
+  // ---------- 長押し（仕様書 17.2） ----------
+
+  const pressRef = useRef<{ id: number; x: number; y: number; timer: number; at: PressAt } | null>(null)
+
+  const cancelPress = () => {
+    const p = pressRef.current
+    if (!p) return
+    clearTimeout(p.timer)
+    pressRef.current = null
+  }
+
+  /** 長押しのメニューを開くとき（引いている間は開かない）。開いたら、指を離したときの click を捨てる */
+  const longPress = (at: PressAt) => {
+    cancelPress()
+    if (dragRef.current) return
+    swallowClick.current = true
+    o.current.onLongPress(at)
+  }
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    cancelPress()
+    // マウスの右ボタンは contextmenu で開く
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (o.current.noLongPress()) return
+    const at = pressAtOf(e.target)
+    if (!at) return
+    const timer = window.setTimeout(() => longPress(at), LONG_PRESS_MS)
+    pressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer, at }
+  }
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const p = pressRef.current
+    if (!p || p.id !== e.pointerId) return
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > LONG_PRESS_SLOP) cancelPress()
+  }
+  const onPointerEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (pressRef.current?.id === e.pointerId) cancelPress()
+  }
+  /** 長押しの決まったメニュー（Android の長押し・マウスの右クリック）は止めて、このアプリのメニューを出す。名前の入力欄の中は止めない */
+  const onContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.target instanceof Element && e.target.closest('input')) return
+    e.preventDefault()
+    if (o.current.noLongPress()) return
+    const at = pressAtOf(e.target)
+    if (at) longPress(at)
+  }
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (!swallowClick.current) return
+      swallowClick.current = false
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    // 次に押し始めたら、捨てる印は消す（長押しのあとに click が来なかったとき）
+    const onDown = () => {
+      swallowClick.current = false
+    }
+    window.addEventListener('click', onClick, true)
+    window.addEventListener('pointerdown', onDown, true)
+    return () => {
+      window.removeEventListener('click', onClick, true)
+      window.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [])
+  const cancelPressRef = useRef(cancelPress)
+  useEffect(() => {
+    cancelPressRef.current = cancelPress
+  })
+  useEffect(() => () => cancelPressRef.current(), [])
+
+  return {
+    range,
+    active,
+    rangeRef,
+    activeRef,
+    selectRange,
+    clearRange,
+    dragging,
+    fillTo,
+    onHandleDown,
+    tableHandlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: onPointerEnd,
+      onPointerCancel: onPointerEnd,
+      onContextMenu,
+    },
+  }
+}
+
+/** 取っ手の位置（表の左上からの px）：範囲の左上の角と右下の角 */
+export type Corners = { top: number; bottom: number; left: number; right: number }
+
+/**
+ * 取っ手と点線の印の位置を測る。行の要素と見出しの列の要素から測る。描き直すたびと、表の大きさが変わったときに測り直す
+ * （同じ位置なら状態は変えない）。shown は表に出す範囲、fillKey・cutKey は点線の印の範囲（rangeKey）
+ */
+export function useGridBoxes(
+  tableRef: RefObject<HTMLDivElement | null>,
+  rowEls: RefObject<Map<number, HTMLDivElement>>,
+  headEls: RefObject<(HTMLElement | null)[]>,
+  shown: CellRange | null,
+  fillKey: string,
+  cutKey: string,
+) {
+  const [handleAt, setHandleAt] = useState<Corners | null>(null)
+  const [fillBox, setFillBox] = useState<Box | null>(null)
+  const [cutBox, setCutBox] = useState<Box | null>(null)
+  const handleTop = shown?.top ?? -1
+  const handleBottom = shown ? shown.top + shown.rows - 1 : -1
+  const handleLeft = shown?.left ?? -1
+  const handleRight = shown ? shown.left + shown.cols - 1 : -1
+  const measure = () => {
+    const topEl = rowEls.current.get(handleTop)?.firstElementChild
+    const botEl = rowEls.current.get(handleBottom)?.firstElementChild
+    const leftEl = headEls.current[handleLeft]
+    const rightEl = headEls.current[handleRight]
+    const table = tableRef.current
+    let next: Corners | null = null
+    if (topEl && botEl && leftEl && rightEl && table) {
+      const t = table.getBoundingClientRect()
+      next = {
+        top: topEl.getBoundingClientRect().top - t.top,
+        bottom: botEl.getBoundingClientRect().bottom - t.top,
+        left: leftEl.getBoundingClientRect().left - t.left,
+        right: rightEl.getBoundingClientRect().right - t.left,
+      }
+    }
+    setHandleAt((cur) =>
+      cur && next && cur.top === next.top && cur.bottom === next.bottom && cur.left === next.left && cur.right === next.right ? cur : next,
+    )
+    /** 範囲の四角（表の左上から） */
+    const boxOf = (key: string): Box | null => {
+      const r = rangeOfKey(key)
+      if (!r || !table) return null
+      const tEl = rowEls.current.get(r.top)?.firstElementChild
+      const bEl = rowEls.current.get(r.top + r.rows - 1)?.firstElementChild
+      const lEl = headEls.current[r.left]
+      const rEl = headEls.current[r.left + r.cols - 1]
+      if (!tEl || !bEl || !lEl || !rEl) return null
+      const t = table.getBoundingClientRect()
+      const top = tEl.getBoundingClientRect().top - t.top
+      const left = lEl.getBoundingClientRect().left - t.left
+      return { top, left, width: rEl.getBoundingClientRect().right - t.left - left, height: bEl.getBoundingClientRect().bottom - t.top - top }
+    }
+    const fill = boxOf(fillKey)
+    setFillBox((cur) => (sameBox(cur, fill) ? cur : fill))
+    const cut = boxOf(cutKey)
+    setCutBox((cur) => (sameBox(cur, cut) ? cur : cut))
+  }
+  const measureRef = useRef(measure)
+  // 描き直すたびに測る（行・知らせ・範囲が変わると位置が変わるため）
+  useLayoutEffect(() => {
+    measureRef.current = measure
+    measureRef.current()
+  })
+  // 表の大きさが変わったとき（画面の向き・文字の大きさなど）
+  useEffect(() => {
+    const table = tableRef.current
+    if (typeof ResizeObserver === 'undefined' || !table) return
+    const ro = new ResizeObserver(() => measureRef.current())
+    ro.observe(table)
+    return () => ro.disconnect()
+  }, [tableRef])
+  return { handleAt, fillBox, cutBox }
+}
+
+/** 画面の下に出したアプリのキーの高さ（表の下に同じだけ余白を足して、いちばん下の行もキーの上に出せるようにする）。出していなければ 0 */
+export function usePadHeight(padRef: RefObject<HTMLDivElement | null>, openKey: string | null): number {
+  const [padH, setPadH] = useState(0)
+  useEffect(() => {
+    const el = padRef.current
+    if (!openKey || !el) return
+    const measure = () => setPadH(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [padRef, openKey])
+  return padH
+}
+
+/**
+ * 入力している行が、上の見出しとキー（名前のときはスマホのキーボード）の間に見えるようにスクロールする。
+ * selKey は入力しているセルの鍵（"行:列"。入力していなければ ''）
+ */
+export function useRevealRow(
+  rowEls: RefObject<Map<number, HTMLDivElement>>,
+  padRef: RefObject<HTMLDivElement | null>,
+  selKey: string,
+  padH: number,
+) {
+  useEffect(() => {
+    if (!selKey) return
+    const row = Number(selKey.split(':')[0])
+    const reveal = () => {
+      const rowEl = rowEls.current.get(row)
+      if (!rowEl) return
+      const vv = window.visualViewport
+      const viewTop = vv ? vv.offsetTop : 0
+      const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+      const head = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0
+      const top = Math.max(viewTop, head)
+      const bottom = padRef.current ? Math.min(viewBottom, padRef.current.getBoundingClientRect().top) : viewBottom
+      const r = rowEl.getBoundingClientRect()
+      const margin = 8
+      let delta = 0
+      if (r.bottom > bottom - margin) delta = r.bottom - (bottom - margin)
+      if (r.top - delta < top + margin) delta = r.top - (top + margin)
+      if (Math.abs(delta) < 1) return
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      window.scrollBy({ top: delta, behavior: reduce ? 'auto' : 'smooth' })
+    }
+    const frame = requestAnimationFrame(reveal)
+    // 名前の欄：スマホのキーボードが出て見えている範囲が変わったら、もう一度合わせる
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', reveal)
+    return () => {
+      cancelAnimationFrame(frame)
+      vv?.removeEventListener('resize', reveal)
+    }
+  }, [rowEls, padRef, selKey, padH])
+}

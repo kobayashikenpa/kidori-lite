@@ -586,54 +586,7 @@ h3 > .help {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
-/* ---------- 設定（部材の画面の上にたたむ） ---------- */
-.settings {
-  margin-top: 12px;
-  padding: 0;
-}
-.settings-head {
-  appearance: none;
-  border: 0;
-  background: none;
-  width: 100%;
-  min-height: 52px;
-  padding: 8px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-align: left;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.settings-title {
-  font-weight: 700;
-  font-size: 16px;
-  flex: none;
-}
-.settings-sum {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-  line-height: 1.4;
-}
-.settings-arrow {
-  flex: none;
-  font-size: 20px;
-  color: var(--muted);
-  transition: transform 0.15s;
-}
-.settings-arrow.open {
-  transform: rotate(90deg);
-}
-.settings-body {
-  border-top: 1px solid var(--line);
-  padding: 4px 14px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+/* ---------- 板・切り方の設定の欄（木取りの画面） ---------- */
 .settings-sec {
   display: flex;
   flex-direction: column;
@@ -654,14 +607,6 @@ h3 > .help {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 6px;
 }
-.settings-note {
-  margin: 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-.settings .msg {
-  margin: 0;
-}
 .cut-ink {
   color: var(--cut);
 }
@@ -674,49 +619,7 @@ h3 > .help {
   color: var(--cut);
 }
 
-/* ---------- 調整寸法の一覧（設定の中） ---------- */
-.adjust-empty {
-  margin: 0;
-}
-.adjust-rows {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.adjust-rows > * + * {
-  border-top: 1px solid var(--line);
-}
-.adjust-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 52px;
-  padding: 4px 6px 4px 12px;
-  background: var(--surface);
-}
-.adjust-name {
-  flex: 1;
-  min-width: 0;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-.adjust-row .btn.small {
-  min-width: 60px;
-}
-.adjust-check {
-  appearance: none;
-  border: 0;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-  touch-action: manipulation;
-  color: var(--ink);
-}
-.adjust-check.on {
-  background: var(--err-soft);
-}
+/* チェックの四角（切り出しチェックの表） */
 .check-box {
   flex: none;
   width: 24px;
@@ -729,63 +632,9 @@ h3 > .help {
   font-weight: 700;
   margin-right: 6px;
 }
-.adjust-check.on .check-box {
-  border-color: var(--err);
-  background: var(--err);
-  color: var(--surface);
-}
-.adjust-box {
-  padding: 10px;
-  background: var(--sunk);
-  border-radius: 8px;
-}
-.adjust-rows > .adjust-box {
-  border-radius: 0;
-}
-.adjust-rows > .adjust-box.confirm-box {
-  background: var(--err-soft);
-}
-.adjust-add-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.adjust-form .label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.adjust-form .seg {
-  background: var(--surface);
-}
-.adjust-form .seg button[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.adjust-preview {
-  margin: 0;
-  font-size: 14px;
-}
 .confirm-text {
   margin: 0;
 }
-.usage {
-  font-size: 13px;
-}
-.usage-head {
-  margin: 0;
-  font-weight: 700;
-  color: var(--err);
-}
-.usage-list {
-  margin: 4px 0 0;
-  padding-left: 1.2em;
-  overflow-wrap: anywhere;
-}
-.usage-job {
-  font-weight: 700;
-}
-
 /* ---------- 部材の一覧（仕様書 5.1・5.2） ---------- */
 .parts-tabs {
   display: grid;
@@ -953,92 +802,6 @@ h3 > .help {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.pad-tab {
-  appearance: none;
-  min-height: 44px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--muted);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.pad-tab.adjust.on {
-  background: var(--ok-soft);
-  border-color: var(--ok);
-  color: var(--ok);
-}
-/* 調整寸法のボタンの欄（第1.6版）。1段で高さは決めておき、多いときは横にスクロール。「＋ 追加」は右端に置いたまま */
-.pad-refs {
-  height: 44px;
-  display: flex;
-  gap: 4px;
-  min-width: 0;
-}
-.pad-strip {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-.pad-strip::-webkit-scrollbar {
-  display: none;
-}
-.pad-strip .pad-ref {
-  flex: 0 0 auto;
-  min-width: 88px;
-  padding: 0 12px;
-}
-.pad-strip .pad-ref .ref-name {
-  white-space: nowrap;
-  overflow-wrap: normal;
-}
-.pad-refs > .pad-ref.add {
-  flex: 0 0 auto;
-  width: 88px;
-}
-.pad-empty {
-  margin: 0;
-  padding: 10px 4px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.pad-ref {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: var(--fin-soft);
-  color: var(--ink);
-  border-radius: 7px;
-  min-height: 44px;
-  padding: 2px 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  touch-action: manipulation;
-  min-width: 0;
-}
-.pad-ref.adjust {
-  align-items: center;
-  text-align: center;
-  background: var(--ok-soft);
-}
-.pad-ref .ref-name {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-  max-width: 100%;
 }
 .pad-keys.expr-keys {
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2053,9 +1816,6 @@ h3 > .help {
   border: 0;
   background: none;
 }
-.pt-pad .pad-refs {
-  height: 44px;
-}
 .pt-show {
   display: flex;
   flex-wrap: wrap;
@@ -2117,87 +1877,54 @@ h3 > .help {
   color: var(--err);
 }
 /* 枚数のキーも W・H と同じ並び（第1.2版 16.2）。使わないキーは薄く出して押せない */
-.pad-key:disabled,
-.pad-tab:disabled {
+.pad-key:disabled {
   opacity: 0.35;
   cursor: default;
 }
-.pad.qty .pad-refs {
-  overflow: hidden;
+/* ---------- 調整寸法の表（第1.7版 仕様書 21.1）：番号・名前・寸法。部材の表の下 ---------- */
+.adj {
+  margin-top: 20px;
 }
-
-/* 式のキーの調整寸法の「＋ 追加」と、キーの所に出す追加の欄（第1.2版 16.5） */
-.pad-ref.add {
-  align-items: center;
-  text-align: center;
-  background: var(--surface);
-  border: 1px dashed var(--ok);
+.adj-title {
+  margin: 0 0 6px;
+}
+.pt.adj-table {
+  border-top: 1px solid var(--line);
+  border-radius: 10px;
+}
+.adj-table .pt-row {
+  grid-template-columns: 40px minmax(0, 1.6fr) minmax(0, 1fr);
+}
+.pt.pt-edit.adj-table .pt-item:last-child .adj-value {
+  border-bottom-right-radius: 9px;
+}
+.adj-table .pt-head .pt-hwrap:last-child .pt-hcell {
+  border-top-right-radius: 9px;
+}
+.adj-value {
   color: var(--ok);
 }
-.pad-add {
-  /* 調整寸法のボタンの欄（44px）の所に出す。中身のぶんだけ上に伸びる（キーは画面の下に付いているので、キーの位置は変わらない） */
-  min-height: 44px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+/* 書きかけの行（名前だけ・寸法だけ）は薄く。式ではまだ使えない */
+.pt-row.adj-draft .pt-name,
+.pt-row.adj-draft .adj-value {
+  opacity: 0.55;
 }
-.pad-add-names {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+.pt-row.adj-draft .pt-cell.on {
+  opacity: 1;
 }
-.pad-add-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 4px;
+/* 「＝」で入力している間は、行を押すと式に入る（押せることが分かるよう、名前と寸法の欄に色を付ける） */
+.adj-table.picking .pt-row:not(.empty) .pt-name,
+.adj-table.picking .pt-row:not(.empty) .adj-value {
+  background: var(--ok-soft);
 }
-.pad-add-name.label-box,
-.pad-add-size {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: 16px;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
+/* 式に入っている調整寸法の行の色の枠 */
+.refa {
+  --refc: var(--ok);
 }
-.pad-add-name.label-box {
-  font-weight: 700;
-  color: var(--ok);
-}
-.pad-add-name.label-box.muted {
-  font-weight: 400;
-  font-size: 14px;
-  color: var(--muted);
-}
-.pad-add-size {
-  justify-content: flex-end;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-  font-weight: 700;
-}
-.pad-add-size .unit {
+.pt-show-expr .unit {
   color: var(--muted);
   font-size: 13px;
   font-weight: 400;
-}
-.pad-add-msg {
-  margin: 0;
-  padding: 0 4px;
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--muted);
-  overflow: hidden;
-}
-.pad-add-msg.bad {
-  color: var(--err);
-  font-weight: 700;
 }
 
 /* 表の下の「＋ 5行足す」（第1.2版 16.6） */
