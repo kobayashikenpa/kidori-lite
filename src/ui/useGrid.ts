@@ -20,8 +20,8 @@ const EDGE_ZONE = 48
 const EDGE_STEP = 18
 
 /** 長押しでメニューを出すまでの時間（ms）と、取り消しにする指の動き（px） */
-const LONG_PRESS_MS = 500
-const LONG_PRESS_SLOP = 10
+export const LONG_PRESS_MS = 500
+export const LONG_PRESS_SLOP = 10
 
 /** 長押しした所：セル（col は列の位置）か、番号（行全体。col が null） */
 export type PressAt = { row: number; col: number | null }

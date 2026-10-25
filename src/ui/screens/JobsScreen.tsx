@@ -1,7 +1,7 @@
-// 仕事の画面（仕様書 10）：保存した仕事の一覧（名前・最後に変えた日・部材の数。新しい順）、
-// 新しく作る・開く・名前を変える・コピー・削除（画面の中で確認）。kidori の JobsScreen.tsx をもとにしたもの。
-// 共有とバックアップ（仕様書 15.3・15.4）：この仕事を送る・バックアップを書き出す・ファイルから取り込む
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+// 仕事の画面（仕様書 10・22）：保存した仕事の一覧は1行1仕事（名前・部材の数・最後に変えた日・開いている印。新しい順）。
+// 行を押すと開き、長押しでメニュー（名前を変える・コピー・この仕事を送る・削除（確認つき））。kidori の JobsScreen.tsx をもとにしたもの。
+// 共有とバックアップ（仕様書 15.3・15.4）：この仕事を送る（メニュー）・バックアップを書き出す・ファイルから取り込む（一覧の下）
+import { useRef, useState, type ChangeEvent, type FocusEvent, type FormEvent } from 'react'
 import { backupFileName, buildBackupFile } from '../../engine/transfer/backup'
 import { MAX_TRANSFER_SIZE, READ_FAILED } from '../../engine/transfer/envelope'
 import { importTransfer } from '../../engine/transfer/importFile'
@@ -15,9 +15,22 @@ import { ImportDialog } from '../components/ImportDialog'
 import { jobMeta, sortJobsNewestFirst } from '../jobList'
 import { jsonFile, shareFile } from '../platform/shareSheet'
 import { MAKE_FAILED, shareResultText } from '../transferView'
+import { useLongPress } from '../useLongPress'
+import { Sheet } from '../components/Sheet'
 
-/** 一覧の1件で、いま何をしているか */
-type Mode = { kind: 'rename'; jobId: string } | { kind: 'delete'; jobId: string } | null
+/** 長押しのメニューで、いま何をしているか（menu：4つのボタン） */
+type Mode = { kind: 'menu' | 'rename' | 'delete'; jobId: string } | null
+
+/** 名前の欄を開いたとき、カーソルを後ろに置く（「10/25 」に続けて打てるように。仕様書 22） */
+const caretToEnd = (e: FocusEvent<HTMLInputElement>) => {
+  const el = e.currentTarget
+  const n = el.value.length
+  try {
+    el.setSelectionRange(n, n)
+  } catch {
+    // 選べない入力欄では何もしない
+  }
+}
 
 export function JobsScreen({ onOpened }: { onOpened: () => void }) {
   const { data, state, dispatch } = useJobStore()
@@ -27,11 +40,12 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
   const [renameText, setRenameText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  /** 送る・書き出す・取り込むの知らせ。jobId があればその仕事の「この仕事を送る」の下、無ければ下の「共有とバックアップ」に出す */
+  /** 送る・書き出す・取り込むの知らせ。jobId があれば（この仕事を送る）一覧の上、無ければ一覧の下のボタンの下に出す */
   const [transferMsg, setTransferMsg] = useState<{ ok: boolean; text: string; jobId?: string } | null>(null)
   /** 読めたファイル（確認の画面を出している間） */
   const [pending, setPending] = useState<Extract<TransferRead, { ok: true }> | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const longPress = useLongPress()
 
   const jobs = sortJobsNewestFirst(data.jobs)
 
@@ -48,6 +62,7 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
 
   const startCreate = () => {
     reset()
+    setError(null)
     setNewName(defaultJobName(new Date()))
     setCreating(true)
   }
@@ -64,9 +79,15 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
     onOpened()
   }
 
-  const startRename = (job: Job) => {
+  /** 長押し：その仕事のメニューを出す（新しい仕事の入力は閉じる） */
+  const openMenu = (job: Job) => {
     reset()
     setCreating(false)
+    setMode({ kind: 'menu', jobId: job.id })
+  }
+
+  const startRename = (job: Job) => {
+    setError(null)
     setRenameText(job.name)
     setMode({ kind: 'rename', jobId: job.id })
   }
@@ -177,11 +198,18 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
     if (r.ok) setNotice(`「${job.name}」を消しました`)
   }
 
+  /** メニューを出している仕事（消えていたら出さない） */
+  const menuJob = mode ? jobs.find((j) => j.id === mode.jobId) : undefined
+  const menuIsOpen = menuJob !== undefined && menuJob.id === state.currentJobId
+  /** 名前の欄の外に出す失敗の知らせ（見本・コピーなど） */
+  const looseError = !creating && mode?.kind !== 'rename' ? error : null
+
   return (
     <section>
       <h2>
         <Help title="仕事">
           仕事は1回の木取りの入力のまとまり（設定と部材）です。このスマホの中に自動で保存されます。新しい仕事はいつも初めの設定から始まり、コピーした仕事は元の設定を引き継ぎます。
+          一覧の行を押すと開きます。長押しすると、名前を変える・コピー・この仕事を送る・削除 のメニューが出ます。
         </Help>
       </h2>
 
@@ -196,6 +224,8 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
               className="input"
               value={newName}
               enterKeyHint="done"
+              autoFocus
+              onFocus={caretToEnd}
               onChange={(e) => setNewName(e.target.value)}
             />
           </div>
@@ -215,129 +245,72 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
         </button>
       )}
 
-      <div className="sample-row">
-        <button type="button" className="btn wide" onClick={addSample}>
-          見本（棚）を追加
-        </button>
-        <Help className="lead" title="見本について">
-          試しに使える見本です。ふつうの仕事と同じく直したり消したりできます
-        </Help>
-      </div>
-
       {notice && (
         <p className="msg ok banner" role="status">
           {notice}
         </p>
       )}
+      {looseError && (
+        <p className="msg err banner" role="alert">
+          {looseError}
+        </p>
+      )}
+      {transferMsg?.jobId !== undefined && (
+        <p className={`msg ${transferMsg.ok ? 'ok' : 'err'} banner`} role={transferMsg.ok ? 'status' : 'alert'}>
+          {transferMsg.text}
+        </p>
+      )}
 
       <h3>保存した仕事（{jobs.length}件）</h3>
-      {jobs.length === 0 && <p className="lead">まだ仕事がありません。上の「＋ 新しい仕事を作る」から始めてください。</p>}
-      <div className="stack">
-        {jobs.map((job) => {
-          const isOpen = job.id === state.currentJobId
-          const renaming = mode?.kind === 'rename' && mode.jobId === job.id
-          const deleting = mode?.kind === 'delete' && mode.jobId === job.id
-          return (
-            <div key={job.id} className={`card job-item${isOpen ? ' open' : ''}`}>
-              <div className="job-head">
-                <span className="job-name">{job.name}</span>
-                {isOpen && <span className="chip ok">開いている</span>}
-              </div>
-              <p className="job-meta">
-                {jobMeta(job)}
-              </p>
-
-              {renaming ? (
-                <form className="stack" onSubmit={(e) => submitRename(e, job.id)}>
-                  <div className="field">
-                    <label className="label" htmlFor={`rename-${job.id}`}>
-                      新しい名前
-                    </label>
-                    <input
-                      id={`rename-${job.id}`}
-                      className={`input${error ? ' bad' : ''}`}
-                      value={renameText}
-                      enterKeyHint="done"
-                      onChange={(e) => {
-                        setRenameText(e.target.value)
-                        setError(null)
-                      }}
-                    />
-                  </div>
-                  {error && <p className="msg err">{error}</p>}
-                  <div className="foot">
-                    <button type="button" className="btn" onClick={reset}>
-                      やめる
-                    </button>
-                    <button type="submit" className="btn primary">
-                      名前を決める
-                    </button>
-                  </div>
-                </form>
-              ) : deleting ? (
-                <div className="stack confirm-box" role="alert">
-                  <p style={{ margin: 0 }}>
-                    「{job.name}」を消しますか？{isOpen && 'いま開いている仕事です。'}設定と部材の入力もすべて消えます。
-                    <strong>元に戻せません。</strong>
-                  </p>
-                  <div className="foot">
-                    <button type="button" className="btn" onClick={reset}>
-                      やめる
-                    </button>
-                    <button type="button" className="btn danger solid" onClick={() => remove(job)}>
-                      消す
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <button type="button" className="btn primary wide" onClick={() => open(job.id)}>
-                    {isOpen ? '続きを開く' : '開く'}
+      {jobs.length === 0 ? (
+        <p className="lead">まだ仕事がありません。上の「＋ 新しい仕事を作る」から始めてください。</p>
+      ) : (
+        <>
+          <ul className="job-list">
+            {jobs.map((job) => {
+              const isOpen = job.id === state.currentJobId
+              return (
+                <li key={job.id}>
+                  <button
+                    type="button"
+                    className={`job-row${isOpen ? ' open' : ''}`}
+                    aria-label={`${job.name}${isOpen ? '（開いている）' : ''}を開く。長押しでメニュー`}
+                    {...longPress(
+                      () => open(job.id),
+                      () => openMenu(job),
+                    )}
+                  >
+                    <span className="job-head">
+                      <span className="job-name">{job.name}</span>
+                      {isOpen && <span className="chip ok">開いている</span>}
+                    </span>
+                    <span className="job-meta">{jobMeta(job)}</span>
                   </button>
-                  <div className="job-actions">
-                    <button type="button" className="btn" onClick={() => startRename(job)}>
-                      名前を変える
-                    </button>
-                    <button type="button" className="btn" onClick={() => copy(job)}>
-                      コピー
-                    </button>
-                    <button
-                      type="button"
-                      className="btn danger"
-                      onClick={() => {
-                        reset()
-                        setMode({ kind: 'delete', jobId: job.id })
-                      }}
-                    >
-                      削除
-                    </button>
-                  </div>
-                  <button type="button" className="btn wide" onClick={() => send(job)}>
-                    この仕事を送る
-                  </button>
-                  {transferMsg?.jobId === job.id && <TransferMessage msg={transferMsg} />}
-                </>
-              )}
-            </div>
-          )
-        })}
-      </div>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="job-hint">長押しでメニュー</p>
+        </>
+      )}
 
-      <h3>
-        <Help title="共有とバックアップ">
-          「この仕事を送る」は、その仕事（設定・部材と、式で使っている調整寸法）を1つのファイルにして、LINE・メール・AirDrop などで送ります。切り出しチェックと仕上がりの完了は外して送ります。
+      <div className="job-tools">
+        <button type="button" className="btn small" onClick={addSample}>
+          見本（棚）を追加
+        </button>
+        <button type="button" className="btn small" onClick={exportBackup}>
+          バックアップを書き出す
+        </button>
+        <button type="button" className="btn small" onClick={() => fileInput.current?.click()}>
+          ファイルから取り込む
+        </button>
+        <Help className="lead" title="見本・共有とバックアップ">
+          「見本（棚）を追加」は、試しに使える見本の仕事を足します。ふつうの仕事と同じく直したり消したりできます。
+          「この仕事を送る」（行の長押し）は、その仕事（設定・部材と、式で使っている調整寸法）を1つのファイルにして、LINE・メール・AirDrop などで送ります。切り出しチェックと仕上がりの完了は外して送ります。
           「バックアップを書き出す」は、全部の仕事と調整寸法を1つのファイルにします（「ファイル」に保存しておく、新しいスマホに移すなど）。
           「ファイルから取り込む」で、受け取ったファイルやバックアップのファイルを選ぶと、コピーとして仕事に足します（今の仕事は変わりません）。
           ファイルを持っている人は、誰でも中身を見られます。
         </Help>
-      </h3>
-      <div className="stack">
-        <button type="button" className="btn wide" onClick={exportBackup}>
-          バックアップを書き出す
-        </button>
-        <button type="button" className="btn wide" onClick={() => fileInput.current?.click()}>
-          ファイルから取り込む
-        </button>
         {/* accept は付けない（iPhone で .json が選べないことがあるため。kidori と同じ。中身で判断する） */}
         <input
           ref={fileInput}
@@ -346,8 +319,74 @@ export function JobsScreen({ onOpened }: { onOpened: () => void }) {
           style={{ display: 'none' }}
           onChange={(e) => void pickFile(e)}
         />
-        {transferMsg && transferMsg.jobId === undefined && <TransferMessage msg={transferMsg} />}
       </div>
+      {transferMsg && transferMsg.jobId === undefined && <TransferMessage msg={transferMsg} />}
+
+      {mode && menuJob && (
+        <Sheet title={menuJob.name} onClose={reset}>
+          {mode.kind === 'rename' ? (
+            <form className="stack" onSubmit={(e) => submitRename(e, menuJob.id)}>
+              <div className="field">
+                <label className="label" htmlFor="rename-job">
+                  新しい名前
+                </label>
+                <input
+                  id="rename-job"
+                  className={`input${error ? ' bad' : ''}`}
+                  value={renameText}
+                  enterKeyHint="done"
+                  autoFocus
+                  onFocus={caretToEnd}
+                  onChange={(e) => {
+                    setRenameText(e.target.value)
+                    setError(null)
+                  }}
+                />
+              </div>
+              {error && <p className="msg err">{error}</p>}
+              <div className="foot">
+                <button type="button" className="btn" onClick={reset}>
+                  やめる
+                </button>
+                <button type="submit" className="btn primary">
+                  名前を決める
+                </button>
+              </div>
+            </form>
+          ) : mode.kind === 'delete' ? (
+            <div className="stack confirm-box" role="alertdialog" aria-label="削除の確認">
+              <p style={{ margin: 0 }}>
+                「{menuJob.name}」を消しますか？{menuIsOpen && 'いま開いている仕事です。'}設定と部材の入力もすべて消えます。
+                <strong>元に戻せません。</strong>
+              </p>
+              <div className="foot">
+                <button type="button" className="btn" onClick={() => setMode({ kind: 'menu', jobId: menuJob.id })}>
+                  やめる
+                </button>
+                <button type="button" className="btn danger solid" onClick={() => remove(menuJob)}>
+                  消す
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="job-menu">
+              <p className="job-meta">{jobMeta(menuJob)}</p>
+              <button type="button" className="btn wide" onClick={() => startRename(menuJob)}>
+                名前を変える
+              </button>
+              <button type="button" className="btn wide" onClick={() => copy(menuJob)}>
+                コピー
+              </button>
+              <button type="button" className="btn wide" onClick={() => send(menuJob)}>
+                この仕事を送る
+              </button>
+              <button type="button" className="btn danger wide" onClick={() => setMode({ kind: 'delete', jobId: menuJob.id })}>
+                削除
+              </button>
+            </div>
+          )}
+        </Sheet>
+      )}
 
       {pending && (
         <ImportDialog read={pending} canSave={state.canSave} onImport={importPending} onCancel={() => setPending(null)} />

@@ -34,10 +34,10 @@ function run(state: StoreState, action: StoreAction, e: Env = env()) {
 }
 
 describe('仕事の操作', () => {
-  it('作る：名前の初期値は「10/21 仕事」、開く、作った id を返す', () => {
+  it('作る：名前が無ければ日付だけの「10/21」、開く、作った id を返す', () => {
     const r = run(start(), { type: 'createJob' })
     const job = currentJob(r.state)
-    expect(job?.name).toBe('10/21 仕事')
+    expect(job?.name).toBe('10/21')
     expect(r.id).toBe(job?.id)
     expect(r.state.data.jobs).toHaveLength(2)
   })
