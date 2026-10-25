@@ -25,14 +25,14 @@ export function newId(prefix: string): string {
 
 // ---------- 仕事 ----------
 
-/** 新しい仕事の名前の初期値（例：「10/21 仕事」＝月/日 が先。仕様書 20.3） */
+/** 新しい仕事の名前の初期値（例：「10/25 」＝月/日 と半角スペース。続けて打てるように。仕様書 22） */
 export function defaultJobName(now: Date): string {
-  return `${now.getMonth() + 1}/${now.getDate()} 仕事`
+  return `${now.getMonth() + 1}/${now.getDate()} `
 }
 
-/** 新しい仕事：いつも初期値の設定から始める（仕様書 10）。名前が空なら「10/21 仕事」の形 */
+/** 新しい仕事：いつも初期値の設定から始める（仕様書 10）。名前が空なら「10/25」（日付だけ。前後の空白は取る） */
 export function makeJob(name: string, now: Date, id: string): Job {
-  return createJob({ id, name: name.trim() || defaultJobName(now), now: now.toISOString() })
+  return createJob({ id, name: name.trim() || defaultJobName(now).trim(), now: now.toISOString() })
 }
 
 /** 仕事の名前を変える。空の名前は断る */
