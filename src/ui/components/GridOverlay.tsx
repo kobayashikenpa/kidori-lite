@@ -1,7 +1,8 @@
 // 表の上に重ねる取っ手と点線の印（部材の表・調整寸法の表で同じ。仕様書 17.1・17.4）。
 // 取っ手は表に1つずつ置き、引いている間に描き直されても同じ要素のままにする（iPhone で指の動きが途切れないように）
+// 第2.0版：番号を引いて行を動かしている間は、動かす先に線を出す（仕様書 24.2）
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import type { Box, Corners } from '../useGrid'
+import type { Box, Corners, MoveLine } from '../useGrid'
 
 interface Props {
   /** 取っ手の位置（出さないときは null） */
@@ -12,9 +13,11 @@ interface Props {
   fillLabel: string | null
   /** 切り取った元 */
   cutBox: Box | null
+  /** 番号を引いて行を動かす先（表の左上からの px）。引いていなければ null */
+  moveLine?: MoveLine | null
 }
 
-export function GridOverlay({ handleAt, onHandleDown, fillBox, fillLabel, cutBox }: Props) {
+export function GridOverlay({ handleAt, onHandleDown, fillBox, fillLabel, cutBox, moveLine = null }: Props) {
   return (
     <>
       {handleAt && (
@@ -54,6 +57,11 @@ export function GridOverlay({ handleAt, onHandleDown, fillBox, fillLabel, cutBox
         </span>
       )}
       {cutBox && <span className="pt-mark cut" style={cutBox} aria-hidden="true" />}
+      {moveLine && (
+        <span className="pt-moveline" style={{ top: moveLine.top }} aria-hidden="true">
+          <span className="pt-moveline-label">{moveLine.rows > 1 ? `${moveLine.rows}行をここへ` : 'ここへ'}</span>
+        </span>
+      )}
     </>
   )
 }

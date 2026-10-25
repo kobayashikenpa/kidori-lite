@@ -9,13 +9,16 @@
 // 「＝」で始めた入力中は、ほかの部材の W・H のセルを押すと、その寸法（天板.W）をカーソルの位置に入れる（仕様書 20.2。エクセルと同じ）。
 // 表の下に調整寸法の表（AdjustTable。仕様書 21.1）を置き、「＝」の入力中にその行を押すと調整寸法を入れる（仕様書 21.2）。
 // 選ぶ・取っ手・長押しの指の動きは useGrid（調整寸法の表と同じ仕組み）
-import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type Ref } from 'react'
+// 第2.0版（仕様書 24）：見出しを長押しすると並べ替えのメニュー（大きい順・小さい順／あいうえお順・逆の順。並べ替えは engine の sortParts）。
+// 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）
+import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { normalizePartName, splitLeadingEquals, validatePartName } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
 import { adjustIdsInExpr } from '../../engine/formula/usages'
 import { isUsableAdjust } from '../../engine/adjusts'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
+import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
 import { hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type AdjustRow, type Axis, type CellClip, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
@@ -40,11 +43,13 @@ import {
   type TableCell,
   type TableField,
 } from '../partsTable'
-import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
+import { useLongPress } from '../useLongPress'
+import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
 import { AdjustTable } from './AdjustTable'
 import { CellMenu } from './CellMenu'
 import { FormulaKeys, FormulaView } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
+import { Sheet } from './Sheet'
 
 interface Props {
   job: Job
@@ -85,6 +90,22 @@ const AXIS_SIDE: Record<Axis, string> = { W: '妻手', H: '長手' }
 /** 欄の列の位置（0＝名前 … 3＝枚数） */
 const colOf = (f: TableField): number => CELL_COLS.indexOf(f)
 
+/** 見出しの列 → 並べ替えに使う列（engine の SortKey） */
+const SORT_KEY: Record<TableField, SortKey> = { name: 'name', W: 'W', H: 'H', qty: 'qty' }
+
+/** 並べ替えのメニューのボタン（仕様書 24.1）：W・H・枚数は大きい順・小さい順、名前はあいうえお順・逆の順 */
+function sortChoices(f: TableField): { order: SortOrder; label: string }[] {
+  return f === 'name'
+    ? [
+        { order: 'asc', label: 'あいうえお順' },
+        { order: 'desc', label: '逆の順' },
+      ]
+    : [
+        { order: 'desc', label: '大きい順' },
+        { order: 'asc', label: '小さい順' },
+      ]
+}
+
 export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }: Props) {
   const parts = job.parts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ、仕事ごとに覚える。保存しない）
@@ -93,10 +114,13 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   // 長押しのメニューを開いているか・操作のあとの知らせ（表の上に短く出す）
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // 見出しを長押しして開いた並べ替えのメニューの列（仕様書 24.1。開いていなければ null）
+  const [sortCol, setSortCol] = useState<number | null>(null)
   if (minRowsJob !== job.id) {
     setMinRowsJob(job.id)
     setMinRows(sessionTableMinRows(job.id))
     setMenuOpen(false)
+    setSortCol(null)
     setNotice(null)
   }
   const rowCount = tableRowCount(parts.length, minRows)
@@ -164,8 +188,11 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     },
     // 仕事を切り替えたら、選んでいる範囲を外す
     resetKey: job.id,
+    // 選んでいる行の番号を引くと、その行を動かす（仕様書 24.2）
+    moveRowsFrom: (row) => movableRows(row),
+    onMoveRows: (top, rows, to) => moveDone(top, rows, to),
   })
-  const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo } = grid
+  const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo, moving, moveLine } = grid
 
   const setSel = (s: Sel | null) => {
     selSRef.current = s
@@ -476,6 +503,48 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     navigator.vibrate?.(10)
   }
 
+  // ---------- 並べ替え・行の移動（仕様書 24） ----------
+
+  /** 見出しを長押ししたとき：その列を選び、並べ替えのメニューを開く（入力中なら入力を終える） */
+  const openSort = (col: number) => {
+    if (menuOpen || formulaPicking()) return
+    pressColumn(col)
+    setSortCol(col)
+    navigator.vibrate?.(10)
+  }
+
+  /** 並べ替えて保存する（engine の sortParts。並びが同じなら何も変えない） */
+  const sortBy = (col: number, order: SortOrder, label: string) => {
+    setSortCol(null)
+    const before = jobRef.current.parts.map((p) => p.id).join(',')
+    const r = run({ type: 'sortParts', key: SORT_KEY[CELL_COLS[col]], order })
+    if (!r.ok) return
+    const changed = jobRef.current.parts.map((p) => p.id).join(',') !== before
+    setNotice(changed ? `${FIELD_LABEL[CELL_COLS[col]]}の${label}に並べ替えました` : `もう${FIELD_LABEL[CELL_COLS[col]]}の${label}です`)
+  }
+
+  /** 番号を押し始めたとき：選んでいる行全体の番号なら、引いて動かせる行（部材のある行だけ）。入力中・メニューを開いている間は動かさない */
+  const movableRows = (row: number): MovableRows | null => {
+    const r = rangeRef.current
+    const n = jobRef.current.parts.length
+    if (!r || curCell() || menuOpen || sortCol !== null) return null
+    if (r.left !== 0 || r.cols !== CELL_COLS.length || row < r.top || row >= r.top + r.rows || row >= n) return null
+    return { top: r.top, rows: Math.min(r.top + r.rows, n) - r.top, limit: n }
+  }
+
+  /** 番号を引いて離したとき：行を動かして保存し、動かした行を選んだままにする */
+  const moveDone = (top: number, rows: number, to: number) => {
+    const n = jobRef.current.parts.length
+    const r = run({ type: 'moveParts', from: top, count: rows, to })
+    if (!r.ok) return
+    onError(null)
+    setNotice(null)
+    const nextTop = movedTop(n, top, rows, to)
+    const a = activeRef.current
+    const act = a && a.row >= top && a.row < top + rows ? { row: nextTop + (a.row - top), col: a.col } : { row: nextTop, col: 0 }
+    selectRange({ top: nextTop, left: 0, rows, cols: CELL_COLS.length }, act)
+  }
+
   /**
    * 「＝」で始めた入力中に、調整寸法の表の行を押したとき（仕様書 21.2）：その調整寸法をカーソルの位置に入れる。
    * 書きかけの行（名前だけ・寸法だけ）は入れずに知らせる
@@ -556,7 +625,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
         </div>
       )}
       <div
-        className={`pt pt-edit${dragging ? ' dragging' : ''}`}
+        className={`pt pt-edit${dragging ? ' dragging' : ''}${moving ? ' moving' : ''}`}
         ref={tableRef}
         role="table"
         aria-label="部材の表（仕上がり寸法）：押して選ぶ、もう一度押して入力、長押しでメニュー"
@@ -568,14 +637,14 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           </span>
           {CELL_COLS.map((f, c) => (
             <span key={f} role="columnheader" className="pt-hwrap">
-              <button
-                type="button"
-                ref={(el) => {
+              <HeadButton
+                buttonRef={(el) => {
                   headEls.current[c] = el
                 }}
                 className={`pt-hcell${c === 0 ? ' left' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
-                aria-label={`${f === 'W' || f === 'H' ? `${f}（${AXIS_SIDE[f]}）` : FIELD_LABEL[f]} の列を選ぶ`}
-                onClick={() => pressColumn(c)}
+                label={`${f === 'W' || f === 'H' ? `${f}（${AXIS_SIDE[f]}）` : FIELD_LABEL[f]} の列を選ぶ（長押しで並べ替え）`}
+                onPress={() => pressColumn(c)}
+                onLong={() => openSort(c)}
               >
                 {f === 'W' || f === 'H' ? (
                   // W は板の妻手・H は板の長手（仕様書 18.4）。375px に収まるよう下の段は小さく
@@ -586,7 +655,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
                 ) : (
                   FIELD_LABEL[f]
                 )}
-              </button>
+              </HeadButton>
             </span>
           ))}
         </div>
@@ -596,6 +665,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           const isSel = (f: TableField) => sel !== null && sel.row === i && sel.field === f
           const rowSel = sel !== null && sel.row === i
           const rowIn = shown !== null && i >= shown.top && i < shown.top + shown.rows
+          // 選んでいる行全体の番号は、上下に引くと行を動かせる（なぞってもスクロールしない。仕様書 24.2）
+          const grab = !!part && rowIn && !anySel && shown.left === 0 && shown.cols === CELL_COLS.length
           const label = part && hasName(part) ? part.name : `#${i + 1}`
           const rowClass = [
             'pt-row',
@@ -628,7 +699,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           const numCell = (
             <button
               type="button"
-              className={`pt-cell pt-no${part ? '' : ' muted'}${rowIn ? ' hl' : ''}`}
+              className={`pt-cell pt-no${part ? '' : ' muted'}${rowIn ? ' hl' : ''}${grab ? ' grab' : ''}`}
               data-row={i}
               aria-label={`${part ? label : `${i + 1}行目`} の行を選ぶ`}
               onClick={() => pressRow(i)}
@@ -754,6 +825,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           fillBox={fillBox}
           fillLabel={shown && fillTo ? fillHint(shown, fillTo) : null}
           cutBox={cutBox}
+          moveLine={moveLine}
         />
       </div>
       <button type="button" className="btn add-rows" onClick={addRows}>
@@ -778,6 +850,22 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           onInsertAbove={insertAbove}
           onRowsDeleted={() => selectRange(singleRange({ row: shown.top, col: shown.left }))}
         />
+      )}
+      {sortCol !== null && (
+        <Sheet
+          title={`${CELL_COLS[sortCol] === 'W' || CELL_COLS[sortCol] === 'H' ? `${CELL_COLS[sortCol]}（${AXIS_SIDE[CELL_COLS[sortCol] as Axis]}）` : FIELD_LABEL[CELL_COLS[sortCol]]}で並べ替え`}
+          onClose={() => setSortCol(null)}
+        >
+          <div className="cm-group">
+            <div className="cm-keys two">
+              {sortChoices(CELL_COLS[sortCol]).map((c) => (
+                <button key={c.order} type="button" className="btn" onClick={() => sortBy(sortCol, c.order, c.label)}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Sheet>
       )}
       {padOpen &&
         sel &&
@@ -822,6 +910,27 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           document.body,
         )}
     </>
+  )
+}
+
+interface HeadButtonProps {
+  buttonRef: (el: HTMLButtonElement | null) => void
+  className: string
+  label: string
+  /** 押したとき（列全体を選ぶ） */
+  onPress: () => void
+  /** 長押ししたとき（並べ替えのメニュー。仕様書 24.1） */
+  onLong: () => void
+  children: ReactNode
+}
+
+/** 表の見出しのボタン：押すと列全体を選び、長押しで並べ替えのメニュー（長押しの決まりは useLongPress：500ms・指が動いたら取り消し） */
+function HeadButton({ buttonRef, className, label, onPress, onLong, children }: HeadButtonProps) {
+  const longPress = useLongPress()
+  return (
+    <button type="button" ref={buttonRef} className={className} aria-label={label} {...longPress(onPress, onLong)}>
+      {children}
+    </button>
   )
 }
 

@@ -2,6 +2,7 @@
 // 選んでいる範囲と起点・丸い取っ手で範囲を広げる・四角い取っ手でオートフィル・長押しでメニュー・取っ手と点線の印の位置。
 // 第1.7版で PartsTable から外に出し、調整寸法の表（AdjustTable）でも同じ仕組みを使う。
 // 選んでいる範囲はアプリで1つの表だけ（ほかの表が選んだら、こちらの範囲は外す。exclusive.ts の claimOpen）
+// 第2.0版：選んでいる行の番号を上下に引くと、その行を動かす（部材の表だけ。moveRowsFrom・onMoveRows。仕様書 24.2）
 import {
   useEffect,
   useLayoutEffect,
@@ -43,6 +44,21 @@ function cellUnder(table: HTMLElement | null, x: number, y: number): PressAt | n
   return pressAtOf(el)
 }
 
+/** 引いている指が表の上下の端（上の見出し・下のタブの近く）にあるとき、1こまにスクロールする量（px。端に無ければ 0） */
+function edgeDelta(y: number): number {
+  const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0) + EDGE_ZONE
+  const bottom = (document.querySelector('.tabbar')?.getBoundingClientRect().top ?? window.innerHeight) - EDGE_ZONE
+  if (y < top) return -Math.min(EDGE_STEP, Math.ceil((top - y) / 3))
+  if (y > bottom) return Math.min(EDGE_STEP, Math.ceil((y - bottom) / 3))
+  return 0
+}
+
+/** 番号を引いて動かせる行：top から rows 行（部材のある行だけ）と、動かせる先の数（部材の数） */
+export type MovableRows = { top: number; rows: number; limit: number }
+
+/** 番号を引いている間に出す、動かす先の線（表の左上からの px）と動かす行の数 */
+export type MoveLine = { top: number; rows: number }
+
 /** 表の左上からの四角（点線の印に使う） */
 export type Box = { top: number; left: number; width: number; height: number }
 
@@ -83,6 +99,13 @@ export interface GridOptions {
   onRelease: () => void
   /** これが変わったら選んでいる範囲を外す（部材の表は仕事の id） */
   resetKey?: string
+  /**
+   * 番号を引いて行を動かす（仕様書 24.2）：row の番号を押し始めたとき、引いて動かせるなら動かす行を返す（選んでいる行の番号のときだけ）。
+   * 無ければ（または null なら）ふつうの番号（なぞるとスクロール）
+   */
+  moveRowsFrom?: (row: number) => MovableRows | null
+  /** 番号を引いて離したとき：top から rows 行を、元の並びの to の位置（to 行目の上）へ動かす */
+  onMoveRows?: (top: number, rows: number, to: number) => void
 }
 
 export function useGrid(opts: GridOptions) {
@@ -211,11 +234,7 @@ export function useGrid(opts: GridOptions) {
       d.raf = requestAnimationFrame(edgeScroll)
       return
     }
-    const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0) + EDGE_ZONE
-    const bottom = (document.querySelector('.tabbar')?.getBoundingClientRect().top ?? window.innerHeight) - EDGE_ZONE
-    let dy = 0
-    if (d.y < top) dy = -Math.min(EDGE_STEP, Math.ceil((top - d.y) / 3))
-    else if (d.y > bottom) dy = Math.min(EDGE_STEP, Math.ceil((d.y - bottom) / 3))
+    const dy = edgeDelta(d.y)
     if (dy !== 0) {
       window.scrollBy(0, dy)
       dragTo()
@@ -262,6 +281,17 @@ export function useGrid(opts: GridOptions) {
     e.stopPropagation()
     endDrag()
     cancelPress()
+    // 左上の丸い取っ手は、選んでいる行の一番上の番号に重なる。番号の上なら、取っ手ではなく番号を押したことにする（引くと行を動かす。仕様書 24.2）
+    if (which === 'start' && !o.current.noLongPress()) {
+      const under = cellUnder(o.current.tableRef.current, e.clientX, e.clientY)
+      const rows = under && under.col === null ? (o.current.moveRowsFrom?.(under.row) ?? null) : null
+      if (under && rows) {
+        const timer = window.setTimeout(() => longPress(under), LONG_PRESS_MS)
+        pressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer, at: under }
+        startMove(e, rows, under.row)
+        return
+      }
+    }
     const id = e.pointerId
     const move = (ev: PointerEvent) => {
       const d = dragRef.current
@@ -324,10 +354,138 @@ export function useGrid(opts: GridOptions) {
     pressRef.current = null
   }
 
+  // ---------- 番号を引いて行を動かす（仕様書 24.2） ----------
+
+  const moveRef = useRef<{
+    id: number
+    sx: number
+    sy: number
+    y: number
+    /** 指が LONG_PRESS_SLOP より動いたか（動くまでは動かさない。動かずに押し続けたら長押しのメニュー） */
+    moved: boolean
+    rows: MovableRows
+    /** 動かす先（元の並びの行と行の間。0〜limit）。並びが変わらない所なら null */
+    to: number | null
+    /** 取っ手の下の番号から始めたとき、その行（動かさずに離したら、番号を押したことにする） */
+    pressRow: number | null
+    raf: number
+    move: (e: PointerEvent) => void
+    up: (e: PointerEvent) => void
+  } | null>(null)
+  const [moveLine, setMoveLineS] = useState<MoveLine | null>(null)
+  const [moving, setMoving] = useState(false)
+  const setMoveLine = (l: MoveLine | null) =>
+    setMoveLineS((cur) => (cur === l || (cur && l && cur.top === l.top && cur.rows === l.rows) ? cur : l))
+
+  /** 指の位置から動かす先（行と行の間）を決め、線の位置を測る */
+  const moveTo = () => {
+    const m = moveRef.current
+    const table = o.current.tableRef.current
+    if (!m || !m.moved || !table) return
+    const { top, rows, limit } = m.rows
+    const rowEl = (i: number) => o.current.rowEls.current.get(i)?.firstElementChild ?? null
+    let gap = limit
+    for (let i = 0; i < limit; i++) {
+      const el = rowEl(i)
+      if (!el) continue
+      const r = el.getBoundingClientRect()
+      if (m.y < r.top + r.height / 2) {
+        gap = i
+        break
+      }
+    }
+    // 動かす行の中・すぐ上・すぐ下は並びが変わらないので、線は出さない
+    if (gap >= top && gap <= top + rows) {
+      m.to = null
+      setMoveLine(null)
+      return
+    }
+    const t = table.getBoundingClientRect().top
+    const el = gap < limit ? rowEl(gap) : rowEl(limit - 1)
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    m.to = gap
+    setMoveLine({ top: (gap < limit ? r.top : r.bottom) - t, rows })
+  }
+
+  /** 引いている間：指が表の上下の端にあれば、少しずつスクロールする */
+  const moveScroll = () => {
+    const m = moveRef.current
+    if (!m) return
+    if (m.moved) {
+      const dy = edgeDelta(m.y)
+      if (dy !== 0) {
+        window.scrollBy(0, dy)
+        moveTo()
+      }
+    }
+    m.raf = requestAnimationFrame(moveScroll)
+  }
+
+  /** 引き終わり（commit：指を離した）。動かしていれば、離した位置へ行を動かす */
+  const endMove = (commit = false) => {
+    const m = moveRef.current
+    if (!m) return
+    cancelAnimationFrame(m.raf)
+    window.removeEventListener('pointermove', m.move)
+    window.removeEventListener('pointerup', m.up)
+    window.removeEventListener('pointercancel', m.up)
+    moveRef.current = null
+    setMoving(false)
+    setMoveLine(null)
+    if (!m.moved) {
+      // 取っ手の下の番号を動かさずに押して離したとき：番号を押したことにする（取っ手に当たった click は捨てる）
+      if (commit && m.pressRow !== null) {
+        swallowClick.current = true
+        o.current.onPressRow(m.pressRow)
+      }
+      return
+    }
+    // 指を離したあとに来る click（番号を押した＝行を選ぶ）は捨てる
+    swallowClick.current = true
+    if (commit && m.to !== null) o.current.onMoveRows?.(m.rows.top, m.rows.rows, m.to)
+  }
+
+  const startMove = (e: ReactPointerEvent<Element>, rows: MovableRows, pressRow: number | null = null) => {
+    endMove()
+    const id = e.pointerId
+    const move = (ev: PointerEvent) => {
+      const m = moveRef.current
+      if (!m || ev.pointerId !== id) return
+      m.y = ev.clientY
+      if (!m.moved && Math.hypot(ev.clientX - m.sx, ev.clientY - m.sy) > LONG_PRESS_SLOP) {
+        m.moved = true
+        cancelPress()
+        setMoving(true)
+      }
+      if (m.moved) {
+        ev.preventDefault()
+        moveTo()
+      }
+    }
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId === id) endMove(ev.type === 'pointerup')
+    }
+    moveRef.current = { id, sx: e.clientX, sy: e.clientY, y: e.clientY, moved: false, rows, to: null, pressRow, raf: requestAnimationFrame(moveScroll), move, up }
+    window.addEventListener('pointermove', move, { passive: false })
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+  const endMoveRef = useRef(endMove)
+  useEffect(() => {
+    endMoveRef.current = endMove
+  })
+  useEffect(() => () => endMoveRef.current(), [])
+
   /** 長押しのメニューを開くとき（引いている間は開かない）。開いたら、指を離したときの click を捨てる */
   const longPress = (at: PressAt) => {
     cancelPress()
     if (dragRef.current) return
+    // 番号を動かさずに押し続けたら、引くのはやめて長押しのメニュー（仕様書 24.2）
+    if (moveRef.current) {
+      if (moveRef.current.moved) return
+      endMove()
+    }
     swallowClick.current = true
     o.current.onLongPress(at)
   }
@@ -341,6 +499,11 @@ export function useGrid(opts: GridOptions) {
     if (!at) return
     const timer = window.setTimeout(() => longPress(at), LONG_PRESS_MS)
     pressRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, timer, at }
+    // 選んでいる行の番号なら、上下に引くとその行を動かせる（仕様書 24.2）
+    if (at.col === null) {
+      const rows = o.current.moveRowsFrom?.(at.row) ?? null
+      if (rows) startMove(e, rows)
+    }
   }
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const p = pressRef.current
@@ -393,6 +556,9 @@ export function useGrid(opts: GridOptions) {
     dragging,
     fillTo,
     onHandleDown,
+    /** 番号を引いて行を動かしている間か・動かす先の線 */
+    moving,
+    moveLine,
     tableHandlers: {
       onPointerDown,
       onPointerMove,
