@@ -14,9 +14,22 @@ import {
   type PasteRenamed,
   type PasteSkip,
 } from '../engine/clipboard/cells'
+import {
+  clearAdjustCells,
+  copyAdjustCells,
+  cutAdjustCells,
+  deleteAdjustRows,
+  fillAdjustCells,
+  insertAdjustRow,
+  pasteAdjustCells,
+  setAdjustCell,
+  type AdjustPasteSkip,
+  type AdjustRenamed,
+  type AdjustSelection,
+} from '../engine/clipboard/adjustCells'
 import { duplicatePart } from '../engine/clipboard/copy'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
-import type { AppData, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
+import type { AdjustCellPos, AdjustRow, AppData, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -65,6 +78,34 @@ interface OnJob {
 export type SelectionArg = { cells: CellPos[] } | { range: CellRange }
 
 const selectionOf = (a: SelectionArg): CellSelection => ('range' in a ? a.range : a.cells)
+
+/** 調整寸法の表で選んだセル（第1.7版）：セルの配列か四角い範囲（left は 0＝名前・1＝寸法） */
+export type AdjustSelectionArg = { cells: AdjustCellPos[] } | { range: CellRange }
+
+const adjustSelectionOf = (a: AdjustSelectionArg): AdjustSelection => ('range' in a ? a.range : a.cells)
+
+/**
+ * 調整寸法の表の操作（第1.7版。仕様書 21.1）。どれもアプリ全体の調整寸法の表（AppData.adjusts）を変える（仕事の updatedAt は変えない）。
+ * 値・名前が変わる調整寸法をほかの仕事で使っているかの確認は、画面で先に行う
+ * （adjustTableOutcome で変えたあとの表を作り、engine/adjusts の adjustChangeUsages(jobs, 前, 後, 開いている仕事) で調べる）
+ */
+export type AdjustTableAction =
+  /** セルに入力する（名前・寸法）。表の下の空の行なら行を足す。結果の id は入れた行の id */
+  | { type: 'setAdjustCell'; pos: AdjustCellPos; text: string }
+  /** 選んだセルをコピーする（AppData.adjustClip。部材の表の cellClip とは別）。表は変えない */
+  | ({ type: 'copyAdjustCells' } & AdjustSelectionArg)
+  /** 選んだセルを切り取る（adjustClip.cut に元の範囲）。表はまだ変えない */
+  | ({ type: 'cutAdjustCells' } & AdjustSelectionArg)
+  /** adjustClip を選んだセルに貼る。結果の adjustPaste に貼った数・貼れなかったセル・番号を振ったセル。切り取りなら元を空にし、クリップをふつうのコピーに */
+  | ({ type: 'pasteAdjustCells' } & AdjustSelectionArg)
+  /** オートフィル。結果の adjustPaste は貼り付けと同じ形 */
+  | { type: 'fillAdjustCells'; from: CellRange; to: CellRange }
+  /** 選んだセルの中身を空にする（名前も寸法も空になった行は消える） */
+  | ({ type: 'clearAdjustCells' } & AdjustSelectionArg)
+  /** 選んだセルのある行をまとめて消す */
+  | ({ type: 'deleteAdjustRows' } & AdjustSelectionArg)
+  /** 行を上に挿入：index の位置に空の行を入れる。結果の id は入れた行の id（空の行は画面が入力を終えたら removeAdjusts で外す） */
+  | { type: 'insertAdjustRow'; index: number }
 
 export type StoreAction =
   /** 新しい仕事を作る（名前が空なら「10/21 仕事」の形）。open（省略で true）なら開く */
@@ -125,8 +166,10 @@ export type StoreAction =
   /** 調整寸法（アプリ全体）を足す */
   | ({ type: 'addAdjust' } & AdjustDraft)
   | ({ type: 'updateAdjust'; adjustId: string } & AdjustDraft)
-  /** 調整寸法を消す（1つでも一括でも） */
+  /** 調整寸法を消す（1つでも一括でも。書きかけの行・空の行も消せる） */
   | { type: 'removeAdjusts'; adjustIds: string[] }
+  /** 調整寸法の表の操作（第1.7版） */
+  | AdjustTableAction
   /**
    * 保存データを丸ごと置き換える（ファイルから取り込んだあとの data を入れる。engine/transfer の importTransfer）。
    * 開いている仕事は変えない（新しいデータに無ければ閉じる）。updatedAt は付けない
@@ -143,8 +186,77 @@ export interface PasteSummary {
   renamed: PasteRenamed[]
 }
 
-/** 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id。paste は貼り付け（pasteCells）・オートフィル（fillCells）のときだけ */
-export type ReduceResult = { ok: true; state: StoreState; id?: string; paste?: PasteSummary } | { ok: false; message: string }
+/** 調整寸法の表の貼り付け・オートフィルの結果（第1.7版） */
+export interface AdjustPasteSummary {
+  pasted: number
+  skipped: AdjustPasteSkip[]
+  /** 表示名が重なるので名前に ②③… を付けて貼ったセル */
+  renamed: AdjustRenamed[]
+}
+
+/**
+ * 操作の結果。id は作ったもの（新しい仕事・部材・複製・調整寸法）の id。paste は貼り付け（pasteCells）・オートフィル（fillCells）のときだけ。
+ * adjustPaste は調整寸法の表の貼り付け・オートフィルのときだけ
+ */
+export type ReduceResult =
+  | { ok: true; state: StoreState; id?: string; paste?: PasteSummary; adjustPaste?: AdjustPasteSummary }
+  | { ok: false; message: string }
+
+/** 調整寸法の表の操作のあとの表とクリップ（adjustTableOutcome） */
+export type AdjustTableOutcome =
+  | { ok: true; adjusts: AdjustRow[]; adjustClip: AppData['adjustClip']; id?: string; adjustPaste?: AdjustPasteSummary }
+  | { ok: false; message: string }
+
+/**
+ * 調整寸法の表の操作を当てたあとの表とクリップ（保存データは変えない純粋関数。reduce もこれを使う）。
+ * 画面は、これで作った adjusts と今の data.adjusts を adjustChangeUsages に渡して、ほかの仕事で使っている調整寸法が変わるかを先に確かめる
+ */
+export function adjustTableOutcome(data: Pick<AppData, 'adjusts' | 'adjustClip'>, action: AdjustTableAction, newId: (prefix: string) => string): AdjustTableOutcome {
+  const rows = data.adjusts
+  switch (action.type) {
+    case 'setAdjustCell': {
+      const r = setAdjustCell(rows, action.pos, action.text, newId)
+      if (!r.ok) return r
+      return { ok: true, adjusts: r.adjusts, adjustClip: data.adjustClip, ...(r.id === undefined ? {} : { id: r.id }) }
+    }
+    case 'copyAdjustCells':
+    case 'cutAdjustCells': {
+      const sel = adjustSelectionOf(action)
+      const r = action.type === 'cutAdjustCells' ? cutAdjustCells(rows, sel) : copyAdjustCells(rows, sel)
+      if (!r.ok) return r
+      return { ok: true, adjusts: rows, adjustClip: r.clip }
+    }
+    case 'pasteAdjustCells': {
+      const clip = data.adjustClip
+      if (!clip) return { ok: false, message: 'コピーしたセルがありません' }
+      const r = pasteAdjustCells(rows, clip, adjustSelectionOf(action), newId)
+      if (!r.ok) return r
+      // 切り取りは1回貼ったらふつうのコピーに（2回目は元を消さない）
+      let nextClip = clip
+      if (clip.cut && r.pasted > 0) {
+        const { cut: _cut, ...copy } = clip
+        nextClip = copy
+      }
+      return { ok: true, adjusts: r.adjusts, adjustClip: nextClip, adjustPaste: { pasted: r.pasted, skipped: r.skipped, renamed: r.renamed } }
+    }
+    case 'fillAdjustCells': {
+      const r = fillAdjustCells(rows, action.from, action.to, newId)
+      if (!r.ok) return r
+      return { ok: true, adjusts: r.adjusts, adjustClip: data.adjustClip, adjustPaste: { pasted: r.pasted, skipped: r.skipped, renamed: r.renamed } }
+    }
+    case 'clearAdjustCells':
+      return { ok: true, adjusts: clearAdjustCells(rows, adjustSelectionOf(action)), adjustClip: data.adjustClip }
+    case 'deleteAdjustRows': {
+      const next = deleteAdjustRows(rows, adjustSelectionOf(action))
+      if (next === rows) return { ok: false, message: '削除する行を選んでください' }
+      return { ok: true, adjusts: next, adjustClip: data.adjustClip }
+    }
+    case 'insertAdjustRow': {
+      const id = newId('adjust')
+      return { ok: true, adjusts: insertAdjustRow(rows, action.index, id), adjustClip: data.adjustClip, id }
+    }
+  }
+}
 
 /** 読み込みの結果から最初の状態を作る */
 export function initialState(load: LoadResult): StoreState {
@@ -303,6 +415,25 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       return onAdjusts(state, updateAdjust(state.data.adjusts, action.adjustId, { name: action.name, value: action.value }))
     case 'removeAdjusts':
       return onAdjusts(state, removeAdjusts(state.data.adjusts, action.adjustIds))
+    case 'setAdjustCell':
+    case 'copyAdjustCells':
+    case 'cutAdjustCells':
+    case 'pasteAdjustCells':
+    case 'fillAdjustCells':
+    case 'clearAdjustCells':
+    case 'deleteAdjustRows':
+    case 'insertAdjustRow': {
+      const r = adjustTableOutcome(state.data, action, env.newId)
+      if (!r.ok) return fail(r.message)
+      const unchanged = r.adjusts === state.data.adjusts && r.adjustClip === state.data.adjustClip
+      const next = unchanged ? state : { ...state, data: { ...state.data, adjusts: r.adjusts, adjustClip: r.adjustClip } }
+      return {
+        ok: true,
+        state: next,
+        ...(r.id === undefined ? {} : { id: r.id }),
+        ...(r.adjustPaste === undefined ? {} : { adjustPaste: r.adjustPaste }),
+      }
+    }
     case 'replaceData': {
       const keep = state.currentJobId !== null && action.data.jobs.some((j) => j.id === state.currentJobId)
       return done({ ...state, data: action.data, currentJobId: keep ? state.currentJobId : null })

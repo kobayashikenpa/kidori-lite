@@ -2,6 +2,7 @@
 // ［木取り］のタブのときだけ、表の上に切り代（数字キーで変える。仕様書 16.4）。
 // ［仕上がり］は入力できる表（押して選ぶ・もう一度押して入力。仕様書 17.1）、［木取り］は同じ形の表を見るだけ。
 // 寸法の計算は engine（computeDimensions）、切り出しの進み具合は engine（partCutProgress）に任せる
+import { usableAdjusts } from '../../engine/adjusts'
 import { useMemo, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
 import { partCutProgress } from '../../engine/progress/partProgress'
@@ -22,7 +23,7 @@ export function PartsScreen() {
   const { job, data, dispatch } = useJobStore()
   const [tab, setTabState] = useState<PartsTab>(() => loadPartsTab(browserStorage()))
   const [error, setError] = useState<string | null>(null)
-  const adjusts = data.adjusts
+  const adjusts = usableAdjusts(data.adjusts)
   const dims = useMemo(() => (job ? computeDimensions(job, adjusts) : null), [job, adjusts])
   const progress = useMemo(() => (job ? partCutProgress(job) : []), [job])
   if (!job || !dims) return null

@@ -3,6 +3,7 @@
 // 追加は名前を［逃げ］［ほぞ］［自由入力］から選び、寸法を数字キーで入れて「追加」。
 // 名前・寸法の変更と削除は、使っている仕事があれば「◯件の仕事で使っています」と仕事と部材を示して確認する。
 // kidori の NigeEditor.tsx・SettingsList.tsx を参考に作り直したもの
+import { usableAdjusts } from '../../engine/adjusts'
 import { useState } from 'react'
 import { adjustName } from '../../engine/defaults'
 import { adjustUsages, adjustUsagesOf, type AdjustUsage } from '../../engine/formula/usages'
@@ -26,7 +27,7 @@ type Mode =
 
 export function AdjustList() {
   const { data, dispatch } = useJobStore()
-  const adjusts = data.adjusts
+  const adjusts = usableAdjusts(data.adjusts)
   const [mode, setMode] = useState<Mode>({ kind: 'list' })
   const [selected, setSelected] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)

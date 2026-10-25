@@ -1,5 +1,6 @@
 // 部材の画面の上にたたんで置く「調整寸法」（仕様書 4.1・16.5）：調整寸法の一覧と追加（アプリ全体で1つの一覧）。
 // 第1.2版で「設定」は調整寸法だけになったので、名前を「調整寸法」にした（板のサイズ〜切り方は木取りの画面へ）
+import { usableAdjusts } from '../../engine/adjusts'
 import { useId, useState } from 'react'
 import { adjustName } from '../../engine/defaults'
 import { useJobStore } from '../../store/useJobStore'
@@ -10,7 +11,7 @@ export function AdjustPanel() {
   const { data } = useJobStore()
   const [open, setOpen] = useState(false)
   const bodyId = useId()
-  const names = data.adjusts.map(adjustName)
+  const names = usableAdjusts(data.adjusts).map(adjustName)
 
   return (
     <div className={`card settings${open ? ' open' : ''}`}>

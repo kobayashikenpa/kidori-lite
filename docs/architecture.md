@@ -25,6 +25,7 @@ src/
       usages.ts          調整寸法を使っている部材を探す（仕事の中・全部の仕事から） ← kidori：usages.ts（厚み・id のつけ替えを外す）
       units.ts           式をカーソルで動く単位に分ける           ← kidori：units.ts
       display.ts         式の表示（{n:id} → 逃げ1 など）         ← kidori：display.ts
+    adjusts.ts           調整寸法の表の行（書きかけ）・式で使える調整寸法・変えるときの確認（第1.7版。12.1・12.3）
     dimensions/
       resolve.ts         依存関係（計算順・循環・存在しない部材）← kidori：dimensions/resolve.ts
       index.ts           computeDimensions(job, adjusts)：仕上がり・木取り寸法とエラー
@@ -155,8 +156,9 @@ export interface FrozenSheet {
 export interface AppData {
   version: 1
   jobs: Job[]
-  adjusts: Adjust[]             // 初めは メラミン1・シート0.5
+  adjusts: AdjustRow[]          // 初めは メラミン1・シート0.5。第1.7版から書きかけの行も持つ（12.1。第1.6版までは Adjust[]）
   cellClip: CellClip | null     // 最後にコピーしたセル（第1.2版。8.1。第1.1版までは clipboard: CopiedPart[] | null）
+  adjustClip: AdjustClip | null // 調整寸法の表で最後にコピーしたセル（第1.7版。12.1）
 }
 
 // ---------- 寸法の計算結果 ----------
@@ -536,3 +538,80 @@ export type CellSelection = CellRange | readonly CellPos[]  // 今までの関�
 - 固定した1枚（`frozenSheets`）は `packJob` と同じくそのまま数え、残りの部材だけで試す（kidori と同じ）
 - 仕事のデータは書き換えない。画面は切り代・端切り（設定）・部材・調整寸法・固定した1枚が変わったら計算し直す
 - kidori の画面（`SavingHints.tsx`）はお知らせを押しても値を変えない（知らせるだけ。「設定は変えていません」と添える）
+
+## 12. 第1.7版の変更（仕様書 21章）
+
+### 12.1 調整寸法の表の行と書きかけ（E-16。spec 21.1。`src/engine/types.ts`・`src/engine/adjusts.ts`）
+
+```ts
+// types.ts
+export interface AdjustRow { id: string; name: string; value: number | null } // 表の1行。名前は空も可、寸法は 0 より大きい数か空
+// AppData.adjusts: AdjustRow[]（第1.6版までは Adjust[]。Adjust は AdjustRow の「そろった」形なので、今までの保存データはそのまま読める）
+// AppData.adjustClip: AdjustClip | null（調整寸法の表のクリップ。部材の表の cellClip とは別）
+export type AdjustCol = 'name' | 'value'; export const ADJUST_COLS = ['name', 'value']
+export interface AdjustCellPos { row: number; col: AdjustCol }            // row は AppData.adjusts の位置（行の数以上は空の行）
+export interface AdjustClip { rows: number; cols: number; cells: string[][]; cut?: CellRange } // 範囲の left は 0＝名前・1＝寸法
+```
+
+- **書きかけの行**（名前だけ・寸法だけ）も `AppData.adjusts` に持つ。`Adjust`（名前と寸法がそろったもの）の型は変えない
+- **式で使えるのは名前があり寸法が 0 より大きい行だけ**：`usableAdjusts(rows): Adjust[]`（表の並び。同じ配列を渡せば同じ配列を返す＝画面の useMemo 用）。式・表示・計算・木取り・お知らせ（`computeDimensions`・`formulaText`・`formulaLabels`・`parse`・`findSavingHint` など）には、いつも `usableAdjusts(data.adjusts)` を渡す（型で `AdjustRow[]` は渡せない）
+- 書きかけの行を使っている式は、一覧に見つからないので「削除した調整寸法」と同じエラー（`unknownAdjust`）・表示（「（削除した調整寸法）」）。id は残るので、寸法を入れ直せば式は元に戻る
+- 名前も寸法も空の行は保存しない（`isBlankAdjustRow`）。消すのは クリア・貼り付けで空になったとき・保存データの読み込み（`readAdjustRows`）・画面が入力を終えたとき（`dropBlankAdjustRows`・store の `removeAdjusts`）
+- `adjusts.ts` のほかの関数：`isUsableAdjust`・`parseAdjustValue(text)`（空 → null、0 より大きい数（全角・小数）→ 数、それ以外 → undefined）・`adjustValueText(value)`・`adjustConflict(rows, row, exceptId?)`（表示名が同じになる、式で使える行）・`duplicateAdjustMessage`（「メラミン1」はもうあります）
+- **保存データ**：`shape.ts` の `isAdjustRow`・`readAdjustRows`（形が違う行・同じ id があれば読めない。空の行は外す）、`isAdjustClip`・`readAdjustClip`（無い・形が違えば null、cut だけ違えば外す）。`store/storage.ts` の `parseAppData` が使う
+- **ファイル**：共有（`jobFile`）・バックアップ（`backupFile`）には式で使える行だけを入れる（書きかけの行は入れない（暫定）。ファイルの形は第1.6版と同じなので前の版でも読める）。取り込み（`importTransfer`）は今の表の書きかけの行とは合わせない（式で使える行と表示名で合わせ、無ければ足す）。見本（`sampleJob`）も式で使える行からメラミン1 を探す
+- `store/jobs.ts` の `validateAdjust`・`addAdjust`・`updateAdjust`・`removeAdjusts` は `AdjustRow[]` を受ける（重なりは式で使える行とだけ比べる）。今までの store の `addAdjust`・`updateAdjust`・`removeAdjusts` の操作は残した
+
+### 12.2 調整寸法の表のセル操作（E-16。spec 21.1。`src/engine/clipboard/adjustCells.ts`）
+
+部材の表の `cells.ts` と同じ考え方・同じ形の結果。選んだセルは `AdjustSelection = CellRange | readonly AdjustCellPos[]`。
+
+| 関数 | 内容 |
+|---|---|
+| `adjustRowRange(top, rows = 1)`・`adjustColumnRange(rows, left, cols = 1)`・`adjustRangeCells(range)`・`adjustSelectionShape`・`adjustSelectionRange` | 行全体（left 0・cols 2）・列全体（行のある所まで）など |
+| `adjustCellText(rows, pos)` | 名前、または寸法の数字の文字（丸めない。空は ''） |
+| `copyAdjustCells(rows, sel)`・`cutAdjustCells(rows, sel)` | `{ ok: true, clip }`／`{ ok: false, message: 'コピーは1つのセルか、四角い範囲を選んでください' }`。切り取りは `clip.cut` に元の範囲 |
+| `pasteAdjustCells(rows, clip, sel, newId)`・`fillAdjustCells(rows, from, to, newId)` | `{ ok: true, adjusts, pasted, skipped: { cell, reason: 'notValue' \| 'duplicate', message }[], renamed: { cell, from, to }[] }`。1つも貼れなければ `adjusts` は同じ配列 |
+| `clearAdjustCells(rows, sel)` | 中身を空に（寸法を空にすると書きかけの行。id はそのまま）。名前も寸法も空になった行は消す |
+| `deleteAdjustRows(rows, sel)`・`selectedAdjustIds(rows, sel)` | 選んだセルのある行をまとめて消す（空の行だけなら同じ配列） |
+| `insertAdjustRow(rows, index, id)` | 行を上に挿入（空の行。表の下なら最後に） |
+| `setAdjustCell(rows, pos, text, newId)` | セルに入力。`{ ok: true, adjusts, id? }`／`{ ok: false, message }`（「寸法は 0 より大きい数を入れてください」「「メラミン1」はもうあります」）。表の下の空の行なら行を足す。空になっても行は消さない（入力の途中） |
+| `dropBlankAdjustRows(rows, keepId?)` | 空の行を外す（入力中の行は残す） |
+| `numberedAdjustName(name, value, rows)` | 番号を振った名前（下） |
+
+- **貼り付けの形**：部材の表と同じ（1つのセルは選んだセル全部、範囲は左上から同じ形。寸法の右にはみ出す列は貼らない。表の下の空の行は今の行のすぐ下に詰める）
+- **寸法の欄**：0 より大きい数（全角・小数も）だけ。空は寸法を空にする（書きかけ）。式・文字・0 は貼らない（`notValue`「寸法には 0 より大きい数だけ貼れます」）
+- **表示名が同じになる行は作らない**
+  - 名前を書く行（行のコピー・名前の列）：重なれば **名前の後ろに丸つき数字 ②③… を付ける**（例：メラミン1 をコピーして貼る → 名前「メラミン②」、表示名「メラミン②1」）（暫定）。部材のように「メラミン2」にすると表示名が「メラミン21」になり寸法と読み分けられないため。② から、表示名が重ならない一番小さい番号。名前の終わりが丸つき数字なら外してから振る（メラミン② → メラミン③）。名前の終わりの普通の数字は外さない（逃げ1 → 逃げ1②）。㊿ まで使って重なれば貼らない（`duplicate`）
+  - 今と同じ表示名を書く行は名前を変えない。重ならない名前はそのまま。同じものを2つ貼るときは上はそのまま・下に番号（部材の表は全部に振る。暫定）
+  - 寸法だけを書く行（名前は書かない）：重なればその寸法は貼らない（`duplicate`「「メラミン1」はもうあります」）。入れ替え（x1・x2 → x2・x1）は貼れる
+  - 書きかけになる行（名前だけ・寸法だけ）は表示名が無いので、重なりも番号も無い
+- **切り取り**：部材の表と同じく、元のセルを先に空にしてから重なりを比べ、貼れた位置の元は空のまま・貼れなかった位置は戻す・切り取ったあとに書き換えたセルは消さない。表はアプリに1つなので、仕事をまたいでも同じ表。**行全体（名前・寸法）を切り取って空の行へ両方を貼ったときは、元の行の id を引き継ぐ**（式がついてくる）（暫定）
+- **オートフィル**：部材の表と同じ（上下だけ・くり返し・元の行は書かない）。名前には貼り付けと同じく番号を振る
+
+### 12.3 変える・消すときの確認（E-16。spec 21.3。`src/engine/adjusts.ts`）
+
+- `changedAdjusts(before, after)`：前に式で使えた調整寸法のうち、消えた・書きかけになった・表示名（名前・寸法）が変わったもの
+- **`adjustChangeUsages(jobs, before, after, currentJobId)`** → `{ changed, usages, jobCount, otherJobCount }`
+  - `changed`：値・名前が変わる調整寸法のうち、**今の仕事以外で使っているもの**。空なら確認はいらない（この仕事でしか使っていない・どこでも使っていない）
+  - `usages`：changed を使っている部材（全部の仕事。今の仕事も入る。`adjustUsagesOf` と同じ形）。`jobCount` はその仕事の数（「◯件の仕事で使っています」）、`otherJobCount` は今の仕事を除いた数
+  - currentJobId が null なら全部の仕事を「ほか」とみなす
+- 画面の流れ：store の `adjustTableOutcome(data, action, newId)` で操作のあとの表を作る → `adjustChangeUsages(data.jobs, data.adjusts, outcome.adjusts, currentJobId)` → changed があれば確認 → `dispatch(action)`
+
+### 12.4 store（E-16。`src/store/reducer.ts`）
+
+- 選んだセルは `AdjustSelectionArg = { cells: AdjustCellPos[] } | { range: CellRange }`
+- 操作（`AdjustTableAction`）。どれも `AppData.adjusts`・`adjustClip` だけを変える（仕事の updatedAt は変えない）
+
+| 操作 | 結果 |
+|---|---|
+| `{ type: 'setAdjustCell', pos, text }` | `id`＝入れた行の id。断るときは `{ ok: false, message }` |
+| `{ type: 'copyAdjustCells' \| 'cutAdjustCells', range \| cells }` | `adjustClip` を置き換える |
+| `{ type: 'pasteAdjustCells', range \| cells }` | `adjustPaste: { pasted, skipped, renamed }`。切り取りなら1つでも貼れたら `adjustClip` から cut を外す。コピーが無ければ「コピーしたセルがありません」 |
+| `{ type: 'fillAdjustCells', from, to }` | `adjustPaste` |
+| `{ type: 'clearAdjustCells', range \| cells }` | |
+| `{ type: 'deleteAdjustRows', range \| cells }` | 空の行だけなら「削除する行を選んでください」 |
+| `{ type: 'insertAdjustRow', index }` | `id`＝入れた空の行の id（入力を終えて空のままなら画面が `removeAdjusts` で外す） |
+
+- `adjustTableOutcome(data, action, newId)`：上の操作を当てたあとの `{ adjusts, adjustClip, id?, adjustPaste? }`（純粋関数。reduce もこれを使う）。画面の確認（12.3）に使う
+- 画面（U-23 まで）：`PartsScreen`・`KidoriScreen`・`AdjustList`・`AdjustPanel` は `usableAdjusts(data.adjusts)` を使うように型の直しだけした

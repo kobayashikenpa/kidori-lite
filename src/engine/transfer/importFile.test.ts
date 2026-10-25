@@ -1,4 +1,5 @@
 // ファイルから取り込む：今の保存データに足す（仕様書 15.3・15.4。kidori の importShared・importBackup を参考に作り直したもの）
+import { usableAdjusts } from '../adjusts'
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../dimensions'
 import { freezeAt } from '../fixtures/progress'
@@ -28,7 +29,7 @@ function readFile(text: string): TransferFile {
 
 /** 受け取る人の保存データ（調整寸法の id は送る人と違う） */
 function receiver(adjusts: Adjust[] = [{ id: 'r-mel', name: 'メラミン', value: 1 }, { id: 'r-sheet', name: 'シート', value: 0.5 }]): AppData {
-  return { version: 1, jobs: [shelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null }
+  return { version: 1, jobs: [shelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null, adjustClip: null }
 }
 
 /** 寸法の値（名前・仕上がり・木取り・エラーの種類）。調整寸法の id によらず比べられる */
@@ -50,8 +51,8 @@ describe('仕事1つのファイルを取り込む', () => {
     expect(got.name).toBe('棚')
     expect(got.settings).toEqual(src.settings)
     expect(got.parts.map((p) => [p.name, p.quantity, p.rotatable])).toEqual(src.parts.map((p) => [p.name, p.quantity, p.rotatable]))
-    expect(dimsOf(got, r.data.adjusts)).toEqual(dimsOf(src, shelfAdjusts()))
-    expect(packJob(got, computeDimensions(got, r.data.adjusts)).sheetCount).toBe(packJob(src, computeDimensions(src, shelfAdjusts())).sheetCount)
+    expect(dimsOf(got, usableAdjusts(r.data.adjusts))).toEqual(dimsOf(src, shelfAdjusts()))
+    expect(packJob(got, computeDimensions(got, usableAdjusts(r.data.adjusts))).sheetCount).toBe(packJob(src, computeDimensions(src, shelfAdjusts())).sheetCount)
     expect(r.data.cellClip).toBeNull()
   })
 
@@ -82,7 +83,7 @@ describe('仕事1つのファイルを取り込む', () => {
     expect(added.id).not.toBe(MELAMINE_ID)
     expect(r.addedAdjusts).toEqual([added])
     expect(r.data.jobs[1].parts[3].expr.W).toBe(`天板.W - 20 - {n:${added.id}}`)
-    expect(dimsOf(r.data.jobs[1], r.data.adjusts)).toEqual(dimsOf(shelfJob(), shelfAdjusts()))
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(dimsOf(shelfJob(), shelfAdjusts()))
   })
 
   it('名前が同じでも寸法が違えば別の調整寸法として足す（メラミン1.2 と メラミン1）', () => {
@@ -104,7 +105,7 @@ describe('仕事1つのファイルを取り込む', () => {
     src.parts[2].expr.H = '700 - {n:gone}'
     const r = importTransfer(receiver(), readFile(buildJobFile(src, shelfAdjusts())), ids(), NOW)
     expect(r.data.jobs[1].parts[2].expr.H).toBe('700 - {n:gone}')
-    expect(dimsOf(r.data.jobs[1], r.data.adjusts)[2][3]).toEqual(['unknownAdjust'])
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))[2][3]).toEqual(['unknownAdjust'])
   })
 
   it('同じ名前の仕事があれば「棚のコピー」、それもあれば「棚のコピー2」', () => {
@@ -136,7 +137,7 @@ describe('バックアップを取り込む', () => {
     const used = freezeAt(shelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 2 })
     used.parts[1] = { ...used.parts[1], finishedDone: true }
     used.parts[2].expr.H = `700 - {n:${SHEET_ID}}`
-    return { version: 1, jobs: [used, shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null }
+    return { version: 1, jobs: [used, shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
   }
 
   it('全部の仕事がコピーとして足され、切り出しチェック・仕上がりの完了も戻る', () => {
@@ -152,8 +153,8 @@ describe('バックアップを取り込む', () => {
     expect(a.frozenSheets[0].completedAt).toBe(orig.frozenSheets[0].completedAt)
     // 進み具合・必要な枚数も同じ
     expect(partCutProgress(a).map((p) => [p.name, p.done, p.total])).toEqual(partCutProgress(orig).map((p) => [p.name, p.done, p.total]))
-    expect(packJob(a, computeDimensions(a, r.data.adjusts)).sheetCount).toBe(packJob(orig, computeDimensions(orig, src.adjusts)).sheetCount)
-    expect(dimsOf(a, r.data.adjusts)).toEqual(dimsOf(orig, src.adjusts))
+    expect(packJob(a, computeDimensions(a, usableAdjusts(r.data.adjusts))).sheetCount).toBe(packJob(orig, computeDimensions(orig, usableAdjusts(src.adjusts))).sheetCount)
+    expect(dimsOf(a, usableAdjusts(r.data.adjusts))).toEqual(dimsOf(orig, usableAdjusts(src.adjusts)))
     expect(r.message).toBe('2件の仕事を追加しました')
   })
 
@@ -197,7 +198,7 @@ describe('バックアップを取り込む', () => {
   })
 
   it('バックアップの中で同じ名前の仕事どうしも重ならない名前にする', () => {
-    const src: AppData = { version: 1, jobs: [shelfJob('a', '棚'), shelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null }
+    const src: AppData = { version: 1, jobs: [shelfJob('a', '棚'), shelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
     const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
     expect(r.data.jobs.map((j) => j.name)).toEqual(['自分の仕事', '棚', '棚のコピー'])
   })

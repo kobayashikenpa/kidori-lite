@@ -2,7 +2,7 @@
 // kidori の formula/usages.ts をもとに、材料の厚み・id のつけ替え・共有用の id 集めを外し、
 // 調整寸法がアプリ全体で1つの一覧になったので、全部の仕事から探す adjustUsages を足したもの
 import { partLabelAt } from '../parts'
-import { AXES, type AppData, type Axis, type Job } from '../types'
+import { AXES, type Axis, type Job } from '../types'
 import { isBraceText, parseBraceText, splitChunks } from './tokenize'
 
 /** 式に出てくる {n:…} の id（出てきた順・重なりもそのまま。読めない式の中でも探す） */
@@ -41,6 +41,9 @@ export function partsUsingAdjusts(job: Pick<Job, 'parts'>, adjustIds: readonly s
   return partsUsing(job, new Set(adjustIds))
 }
 
+/** 探す仕事の一覧（AppData でも、仕事の一覧だけでもよい） */
+type JobsOf = { readonly jobs: readonly Pick<Job, 'id' | 'name' | 'parts'>[] }
+
 /** 調整寸法を使っている所（どの仕事のどの部材の、どの軸か） */
 export interface AdjustUsage {
   jobId: string
@@ -56,7 +59,7 @@ export interface AdjustUsage {
  * 全部の仕事から、式でその調整寸法を使っている部材を探す（仕事の並び順・部材の並び順・部材ごとに1つ）。
  * 調整寸法の寸法の変更・削除の前の確認に使う。仕事の数は jobId の重なりを除いて数える
  */
-export function adjustUsages(data: Pick<AppData, 'jobs'>, adjustId: string): AdjustUsage[] {
+export function adjustUsages(data: JobsOf, adjustId: string): AdjustUsage[] {
   return adjustUsagesOf(data, [adjustId]).map((u) => ({
     jobId: u.jobId,
     jobName: u.jobName,
@@ -71,7 +74,7 @@ export function adjustUsages(data: Pick<AppData, 'jobs'>, adjustId: string): Adj
  * adjustIds には、その部材が使っている調整寸法を、引数の並び順で入れる
  */
 export function adjustUsagesOf(
-  data: Pick<AppData, 'jobs'>,
+  data: JobsOf,
   adjustIds: readonly string[],
 ): (AdjustUsage & { adjustIds: string[] })[] {
   const out: (AdjustUsage & { adjustIds: string[] })[] = []
