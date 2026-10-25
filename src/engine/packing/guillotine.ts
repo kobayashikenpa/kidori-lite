@@ -77,6 +77,9 @@ export interface GuillotineResult {
   unplaced: Piece[]
 }
 
+/** 回転してよい片を、すでにある帯に置くときに先に試す向き（'long'：帯の中の方向に長い向き、'short'：短い向き） */
+export type OrientFirst = 'long' | 'short'
+
 interface Cand {
   o: Orientation
   pw: number
@@ -111,6 +114,10 @@ interface WorkSheet {
  *
  * sameWidthFirst：帯の中は同じ幅の部材を優先する（初期値 true）。false は kidori 第2.4版までの並べ方。
  * どちらを使うかは chooseWay で決める（仕様書 7：同じ幅を優先して板が増えるときは、幅が収まる最初の帯に入れる並べ方）
+ *
+ * orientFirst：回転してよい片を、すでにある帯に置くとき（2・4）に先に試す向き（仕様書 23）。
+ * 'long'（初期値）は帯の中の方向に長い向き（今までの並べ方 A）、'short' は帯の中の方向に短い向き＝帯の長さを使わない向き（B）。
+ * 新しい帯を作るとき（3・5）と、並べる順（1）はどちらも 'long' と同じ。どちらを使うかは chooseLayout で決める
  */
 export function packGuillotine(
   pieces: readonly Piece[],
@@ -118,6 +125,7 @@ export function packGuillotine(
   kerf: number,
   mode: StripMode,
   sameWidthFirst = true,
+  orientFirst: OrientFirst = 'long',
 ): GuillotineResult {
   const frame = frameOf(mode, usable)
   const items = pieces.map((piece, idx) => {
@@ -126,7 +134,9 @@ export function packGuillotine(
     let main: Cand | null = null
     for (const c of cands) if (!main || c.qh > main.qh) main = c
     const tries = main ? [main, ...cands.filter((c) => c !== main)] : []
-    return { piece, idx, tries, key: main ?? { pw: 0, qh: 0 } }
+    // すでにある帯に置くときに試す順（'short' は帯の中の方向に短い向きを先に。同じ長さなら tries の順）
+    const inStrip = orientFirst === 'short' ? [...tries].sort((a, b) => round1(a.qh) - round1(b.qh)) : tries
+    return { piece, idx, tries, inStrip, key: main ?? { pw: 0, qh: 0 } }
   })
   items.sort((a, b) => b.key.pw - a.key.pw || b.key.qh - a.key.qh || a.idx - b.idx)
 
@@ -165,17 +175,17 @@ export function packGuillotine(
     return false
   }
 
-  for (const { piece, tries } of items) {
+  for (const { piece, tries, inStrip } of items) {
     if (tries.length === 0) {
       unplaced.push(piece)
       continue
     }
     if (sameWidthFirst) {
-      if (placeInStrips(piece, tries, true)) continue
+      if (placeInStrips(piece, inStrip, true)) continue
       if (sheets.some((sh) => openStrip(sh, piece, tries))) continue
-      if (placeInStrips(piece, tries, false)) continue
+      if (placeInStrips(piece, inStrip, false)) continue
     } else {
-      if (placeInStrips(piece, tries, false)) continue
+      if (placeInStrips(piece, inStrip, false)) continue
       if (sheets.some((sh) => openStrip(sh, piece, tries))) continue
     }
     const sh: WorkSheet = { strips: [], pEnd: 0 }
@@ -236,4 +246,38 @@ export function chooseWay<L extends WayLayout>(fixed: boolean | undefined, run: 
   const same = run(true)
   const old = run(false)
   return preferSameWidth(same, old) ? same : old
+}
+
+/** 並べ方の指定（同じ幅を優先するか・すでにある帯に先に試す向き）。指定しないものは比べて選ぶ */
+export interface WayChoice {
+  sameWidthFirst?: boolean
+  orientFirst?: OrientFirst
+}
+
+/**
+ * 今の並べ方 current より other のほうがよいか（仕様書 23）：入らない片が少ないほう → 必要な板が少ないほう。
+ * 同じなら false（今の並べ方のまま）
+ */
+export function betterThan(other: WayLayout, current: WayLayout): boolean {
+  if (other.unplaced.length !== current.unplaced.length) return other.unplaced.length < current.unplaced.length
+  return other.sheets.length < current.sheets.length
+}
+
+/**
+ * 並べ方（同じ幅を優先するか × すでにある帯に先に試す向き）を選ぶ（仕様書 7・23）。
+ * 向きごとに chooseWay で同じ幅の優先を選び、'short' が betterThan のときだけ 'short' を採る
+ * （同じなら 'long'＝今の並べ方。今より入らない片・板が増えることは無い）。
+ * 指定した項目はその値だけで計算する。rotatable が false（回転してよい片が無い）なら 'short' は計算しない（並びが同じになるため）
+ */
+export function chooseLayout<L extends WayLayout>(
+  fixed: WayChoice,
+  run: (sameWidthFirst: boolean, orientFirst: OrientFirst) => L,
+  rotatable = true,
+): L {
+  const byOrient = (o: OrientFirst) => chooseWay(fixed.sameWidthFirst, (same) => run(same, o))
+  if (fixed.orientFirst !== undefined) return byOrient(fixed.orientFirst)
+  const long = byOrient('long')
+  if (!rotatable) return long
+  const short = byOrient('short')
+  return betterThan(short, long) ? short : long
 }
