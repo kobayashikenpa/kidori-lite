@@ -537,3 +537,45 @@ export function useRevealRow(
     }
   }, [rowEls, padRef, selKey, padH])
 }
+
+/**
+ * 入力している間：表とキーの外を押したら入力を終える（end）。Escape でも終える。inside は外とみなさない所。
+ * ほかの表（.pt-edit）のセルを押したときは、押したことが決まってから（click のあと）終える。
+ * 指を置いたときに終えると、キーとその分の余白が消えて画面がずれ、押したことが別のセルに当たるため
+ */
+export function useOutsideEnd(active: boolean, inside: (t: Node) => boolean, end: () => void) {
+  const r = useRef({ inside, end })
+  useEffect(() => {
+    r.current = { inside, end }
+  })
+  useEffect(() => {
+    if (!active) return
+    let pending = false
+    const onDown = (e: PointerEvent) => {
+      pending = false
+      const t = e.target
+      if (!(t instanceof Node) || r.current.inside(t)) return
+      if (t instanceof Element && t.closest('.pt-edit')) {
+        pending = true
+        return
+      }
+      r.current.end()
+    }
+    const onClick = () => {
+      if (!pending) return
+      pending = false
+      r.current.end()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') r.current.end()
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('click', onClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('click', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [active])
+}

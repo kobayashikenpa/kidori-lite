@@ -40,7 +40,7 @@ import {
   type TableCell,
   type TableField,
 } from '../partsTable'
-import { rangeKey, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
+import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
 import { AdjustTable } from './AdjustTable'
 import { CellMenu } from './CellMenu'
 import { FormulaKeys, FormulaView } from './FormulaKeys'
@@ -281,11 +281,22 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   })
 
 
-  // 何も入っていない部材は表から外す（保存しない）。選んでいる部材は、入力の途中なので外さない
+  // 何も入っていない部材は表から外す（保存しない）。入力している部材と、選んでいる範囲の行の部材（行を上に挿入で足した空の行など）は
+  // 外さない（押して選んだり入力したりできるように）。範囲より上の行を外したときは、範囲もその分だけ上にずらす（同じ行を選んだまま）
   const selPartId = selS?.partId ?? null
+  const rangeTop = range?.top ?? -1
+  const rangeRows = range?.rows ?? 0
   useEffect(() => {
-    for (const p of parts) if (isBlankPart(p) && p.id !== selPartId) dispatch({ type: 'removePart', partId: p.id })
-  }, [parts, selPartId, dispatch])
+    const blank = parts
+      .map((p, i) => ({ p, i }))
+      .filter(({ p, i }) => isBlankPart(p) && p.id !== selPartId && !(i >= rangeTop && i < rangeTop + rangeRows))
+    if (blank.length === 0) return
+    for (const { p } of blank) dispatch({ type: 'removePart', partId: p.id })
+    const above = blank.filter(({ i }) => i < rangeTop).length
+    const r = rangeRef.current
+    const a = activeRef.current
+    if (r && above > 0) selectRange({ ...r, top: r.top - above }, a ? { row: a.row - above, col: a.col } : undefined)
+  }, [parts, selPartId, rangeTop, rangeRows, dispatch, rangeRef, activeRef, selectRange])
 
   const padOpen = sel !== null && sel.field !== 'name'
   const anySel = sel !== null
@@ -300,27 +311,16 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     formulaPickingRef.current = formulaPicking
   })
 
-  // 欄を選んでいる間：表とキーの外を押したら閉じる。ほかの数字キーとは同時に開かない
-  useEffect(() => {
-    if (!anySel) return
-    const onDown = (e: PointerEvent) => {
-      const t = e.target
-      if (!(t instanceof Node)) return
-      if (tableRef.current?.contains(t) || padRef.current?.contains(t)) return
-      // 「＝」で入力している間に調整寸法の表を押したら、入力は続ける（押した調整寸法を式に入れる。仕様書 21.2）
-      if (formulaPickingRef.current() && adjustWrapRef.current?.contains(t)) return
-      selectRef.current(null)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') selectRef.current(null)
-    }
-    document.addEventListener('pointerdown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('pointerdown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [anySel])
+  // 欄を選んでいる間：表とキーの外を押したら閉じる（ほかの表のセルは押したことが決まってから。useOutsideEnd）。
+  // 「＝」で入力している間に調整寸法の表を押したら、入力は続ける（押した調整寸法を式に入れる。仕様書 21.2）
+  useOutsideEnd(
+    anySel,
+    (t) =>
+      !!tableRef.current?.contains(t) ||
+      !!padRef.current?.contains(t) ||
+      (formulaPickingRef.current() && !!adjustWrapRef.current?.contains(t)),
+    () => selectRef.current(null),
+  )
   useEffect(() => {
     if (!padOpen) return
     return claimOpen('pad', () => selectRef.current(null))

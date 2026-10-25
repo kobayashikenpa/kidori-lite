@@ -28,7 +28,7 @@ import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, pa
 import { claimOpen } from '../exclusive'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
-import { rangeKey, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
+import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
 import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
 import { Help } from './Help'
@@ -343,38 +343,34 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
   }
   const close = () => leave(endInput, true)
 
-  // 名前も寸法も空の行は表から外す（保存しない）。入力している行は、入力の途中なので外さない
+  // 名前も寸法も空の行は表から外す（保存しない）。入力している行と、選んでいる範囲の行（行を上に挿入で足した空の行など）は外さない。
+  // 範囲より上の行を外したときは、範囲もその分だけ上にずらす（部材の表と同じ）
   const selRowId = selS?.rowId ?? null
+  const rangeTop = range?.top ?? -1
+  const rangeRows = range?.rows ?? 0
   useEffect(() => {
-    const blank = rows.filter((r) => isBlankAdjustRow(r) && r.id !== selRowId).map((r) => r.id)
-    if (blank.length > 0) {
-      const r = dispatch({ type: 'removeAdjusts', adjustIds: blank })
-      if (r.ok) dataRef.current = r.state.data
-    }
-  }, [rows, selRowId, dispatch])
+    const blank = rows
+      .map((r, i) => ({ r, i }))
+      .filter(({ r, i }) => isBlankAdjustRow(r) && r.id !== selRowId && !(i >= rangeTop && i < rangeTop + rangeRows))
+    if (blank.length === 0) return
+    const res = dispatch({ type: 'removeAdjusts', adjustIds: blank.map(({ r }) => r.id) })
+    if (!res.ok) return
+    dataRef.current = res.state.data
+    const above = blank.filter(({ i }) => i < rangeTop).length
+    const cur = rangeRef.current
+    const a = activeRef.current
+    if (cur && above > 0) selectRange({ ...cur, top: cur.top - above }, a ? { row: a.row - above, col: a.col } : undefined)
+  }, [rows, selRowId, rangeTop, rangeRows, dispatch, rangeRef, activeRef, selectRange])
 
   const padOpen = sel !== null && sel.col === 'value'
   const anySel = sel !== null
 
-  // 入力している間：表とキーの外を押したら入力を終える。ほかの数字キーとは同時に開かない
-  useEffect(() => {
-    if (!anySel) return
-    const onDown = (e: PointerEvent) => {
-      const t = e.target
-      if (!(t instanceof Node)) return
-      if (tableRef.current?.contains(t) || padRef.current?.contains(t)) return
-      leaveRef.current(endInput)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') leaveRef.current(endInput)
-    }
-    document.addEventListener('pointerdown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('pointerdown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [anySel])
+  // 入力している間：表とキーの外を押したら入力を終える（ほかの表のセルは押したことが決まってから。useOutsideEnd）
+  useOutsideEnd(
+    anySel,
+    (t) => !!tableRef.current?.contains(t) || !!padRef.current?.contains(t),
+    () => leaveRef.current(endInput),
+  )
   useEffect(() => {
     if (!padOpen) return
     return claimOpen('pad', () => leaveRef.current(endInput))
