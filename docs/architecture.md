@@ -625,3 +625,12 @@ export interface AdjustClip { rows: number; cols: number; cells: string[][]; cut
 - `FormulaKeys`：キーの上の調整寸法のボタンと「＋ 追加」の欄をなくした。`numeric`（数字だけのキー。`decimal` なら小数点も）で枚数・調整寸法の寸法のキーにする
 - なくしたもの：`AdjustPanel`・`AdjustList`・`settings.ts` の `ADJUST_PRESETS`・`groupUsages`
 - 部材の表の初めの行は5行（`TABLE_MIN_ROWS`）
+
+## 13. 第2.0版の変更（仕様書 24章）
+
+### 13.1 並べ替えと行の移動（U-25。`src/engine/order.ts`）
+
+- `sortParts(parts, dims, key, order)`：`key` は `'name' | 'W' | 'H' | 'qty'`、`order` は `'asc'`（小さい順・名前はあいうえお順）／`'desc'`（大きい順・名前は逆の順）。W・H は `dims`（`computeDimensions` の結果）の仕上がり寸法、名前は `Intl.Collator('ja')`（`localeCompare('ja')` と同じ）。空・エラー（式が空、その軸にエラー、名前が空、枚数が空）は向きによらず一番下。値が同じなら今の並び（安定）
+- `moveParts(parts, from, count, to)`：続いた行を、元の並びの `to` 行目の上（`to` が部材の数なら一番下）へ動かす。動かす行の中・すぐ上・すぐ下なら変わらない。`movedTop(length, from, count, to)` は動かしたあとの一番上の行。`sameOrder(a, b)` は同じ並びか
+- store：`jobs.ts` の `sortJobParts`・`moveJobParts`（並びが変わらなければ同じ仕事を返す＝updatedAt を付けない）。reducer に `{ type: 'sortParts', key, order }`（W・H は `usableAdjusts(data.adjusts)` で計算）と `{ type: 'moveParts', from, count, to }`
+- 画面：`PartsTable` の見出しは `HeadButton`（`useLongPress`。押すと列全体、長押しで並べ替えのシート）。番号を引く指の動きは `useGrid` の `moveRowsFrom`・`onMoveRows`（選んでいる行全体の番号だけ。その番号は CSS で `touch-action: none`）。動かす先の線は `GridOverlay` の `moveLine`。左上の丸い取っ手が番号に重なる所は、番号として扱う

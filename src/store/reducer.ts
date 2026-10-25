@@ -27,7 +27,10 @@ import {
   type AdjustRenamed,
   type AdjustSelection,
 } from '../engine/clipboard/adjustCells'
+import { usableAdjusts } from '../engine/adjusts'
 import { duplicatePart } from '../engine/clipboard/copy'
+import { computeDimensions } from '../engine/dimensions'
+import type { SortKey, SortOrder } from '../engine/order'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
 import type { AdjustCellPos, AdjustRow, AppData, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
 import {
@@ -37,12 +40,14 @@ import {
   insertPart,
   deleteJob,
   makeJob,
+  moveJobParts,
   newPart,
   removeAdjusts,
   removePart,
   renameJob,
   setAllRotatable,
   setSheet,
+  sortJobParts,
   updateAdjust,
   updatePart,
   updateSettings,
@@ -133,6 +138,13 @@ export type StoreAction =
   | ({ type: 'insertPart'; index: number; part: Partial<Omit<Part, 'id'>> } & OnJob)
   /** 全部の部材を回転してよい（true）／回転しない（false）にする */
   | ({ type: 'setAllRotatable'; rotatable: boolean } & OnJob)
+  /**
+   * 部材を並べ替えて保存する（第2.0版。仕様書 24.1）。W・H は仕上がり寸法（使える調整寸法で計算）、枚数、名前（あいうえお順）で比べる。
+   * order は asc＝小さい順（名前はあいうえお順）・desc＝大きい順（名前は逆の順）。空・エラーは一番下。並びが変わらなければ updatedAt は付けない
+   */
+  | ({ type: 'sortParts'; key: SortKey; order: SortOrder } & OnJob)
+  /** 続いた行（from から count 行）を、元の並びの to の位置（to 行目の上。部材の数なら一番下）へ動かす（第2.0版。仕様書 24.2） */
+  | ({ type: 'moveParts'; from: number; count: number; to: number } & OnJob)
   /** 部材の複製（元のすぐ後ろ。名前は「棚板のコピー」） */
   | ({ type: 'duplicatePart'; partId: string } & OnJob)
   /**
@@ -338,6 +350,12 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
     }
     case 'setAllRotatable':
       return onJob(state, action.jobId, env, (j) => setAllRotatable(j, action.rotatable))
+    case 'sortParts':
+      return onJob(state, action.jobId, env, (j) =>
+        sortJobParts(j, computeDimensions(j, usableAdjusts(state.data.adjusts)), action.key, action.order),
+      )
+    case 'moveParts':
+      return onJob(state, action.jobId, env, (j) => moveJobParts(j, action.from, action.count, action.to))
     case 'duplicatePart': {
       let id: string | undefined
       const r = onJob(state, action.jobId, env, (j) => {

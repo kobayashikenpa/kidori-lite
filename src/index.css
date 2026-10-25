@@ -1752,6 +1752,43 @@ h3 > .help {
   font-weight: 700;
   white-space: nowrap;
 }
+/* 番号を引いて行を動かす（仕様書 24.2）：選んでいる行の番号は、なぞってもスクロールせずに引ける。動かす先に太い線 */
+.pt-no.grab {
+  touch-action: none;
+  cursor: grab;
+}
+.pt.moving,
+.pt.moving .pt-no {
+  cursor: grabbing;
+}
+.pt.moving .pt-row .pt-no.hl {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.pt-moveline {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  height: 4px;
+  margin-top: -2px;
+  pointer-events: none;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.pt-moveline-label {
+  position: absolute;
+  left: 4px;
+  top: -11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+}
 /* 長押しで、文字の選択・拡大鏡・画像の保存のメニュー（iPhone）を出さない。名前の入力欄の中は除く */
 .pt.pt-edit {
   -webkit-user-select: none;

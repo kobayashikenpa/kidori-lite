@@ -5,7 +5,8 @@ import { adjustConflict, duplicateAdjustMessage } from '../engine/adjusts'
 import { createJob, normalizeSheet } from '../engine/defaults'
 import { renamePart } from '../engine/formula/rename'
 import { validatePartName } from '../engine/formula/tokenize'
-import { BOARD_SIZES, type AdjustRow, type CutMode, type Job, type Part, type Settings, type Sheet } from '../engine/types'
+import { moveParts, sameOrder, sortParts, type SortKey, type SortOrder } from '../engine/order'
+import { BOARD_SIZES, type AdjustRow, type CutMode, type DimensionResult, type Job, type Part, type Settings, type Sheet } from '../engine/types'
 
 /** 仕事への操作の結果。失敗したときは画面にそのまま出せる日本語の理由 */
 export type OpResult = { ok: true; job: Job } | { ok: false; message: string }
@@ -182,6 +183,24 @@ export function removePart(job: Job, partId: string): OpResult {
 export function setAllRotatable(job: Job, rotatable: boolean): OpResult {
   if (job.parts.every((p) => p.rotatable === rotatable)) return ok(job)
   return ok({ ...job, parts: job.parts.map((p) => (p.rotatable === rotatable ? p : { ...p, rotatable })) })
+}
+
+/**
+ * 部材を並べ替える（第2.0版。仕様書 24.1。engine の sortParts）。dims は computeDimensions(job, adjusts) の結果。
+ * 並びが変わらなければ同じ仕事を返す（updatedAt を付けない）
+ */
+export function sortJobParts(job: Job, dims: DimensionResult, key: SortKey, order: SortOrder): OpResult {
+  const parts = sortParts(job.parts, dims, key, order)
+  return ok(sameOrder(parts, job.parts) ? job : { ...job, parts })
+}
+
+/**
+ * 続いた行（from から count 行）を、元の並びの to の位置（to 行目の上）へ動かす（第2.0版。仕様書 24.2。engine の moveParts）。
+ * 並びが変わらなければ同じ仕事を返す
+ */
+export function moveJobParts(job: Job, from: number, count: number, to: number): OpResult {
+  const parts = moveParts(job.parts, from, count, to)
+  return ok(sameOrder(parts, job.parts) ? job : { ...job, parts })
 }
 
 // ---------- 調整寸法（アプリ全体で1つの一覧） ----------

@@ -359,3 +359,40 @@ describe('取り込んだデータに置き換える', () => {
     expect(s.currentJobId).toBeNull()
   })
 })
+
+describe('並べ替えと行の移動（第2.0版。仕様書 24）', () => {
+  const order = (s: StoreState) => currentJob(s)?.parts.map((p) => p.id)
+
+  it('W の大きい順・小さい順で保存し、updatedAt を付ける（W は仕上がり寸法）', () => {
+    let s = run(start(), { type: 'sortParts', key: 'W', order: 'asc' }, env(T1)).state
+    expect(order(s)).toEqual(['part-tanaita', 'part-zentai', 'part-tenita', 'part-gawaita'])
+    expect(currentJob(s)?.updatedAt).toBe(T1.toISOString())
+    s = run(s, { type: 'sortParts', key: 'H', order: 'desc' }).state
+    expect(order(s)).toEqual(['part-zentai', 'part-tenita', 'part-tanaita', 'part-gawaita'])
+  })
+
+  it('並びが変わらなければ updatedAt は付けない', () => {
+    const s0 = start()
+    const s = run(s0, { type: 'sortParts', key: 'qty', order: 'asc' }, env(T1)).state
+    expect(s).toBe(s0)
+  })
+
+  it('並べ替えても寸法は変わらない（式の参照は名前なので）', () => {
+    const s0 = start()
+    const s = run(s0, { type: 'sortParts', key: 'name', order: 'desc' }).state
+    const before = computeDimensions(currentJob(s0)!, usableAdjusts(s0.data.adjusts))
+    const after = computeDimensions(currentJob(s)!, usableAdjusts(s.data.adjusts))
+    for (const d of before.parts) expect(after.parts.find((x) => x.partId === d.partId)?.finished).toEqual(d.finished)
+  })
+
+  it('行を動かす：続いた2行を一番上へ。updatedAt を付ける', () => {
+    const s = run(start(), { type: 'moveParts', from: 2, count: 2, to: 0 }, env(T1)).state
+    expect(order(s)).toEqual(['part-gawaita', 'part-tanaita', 'part-zentai', 'part-tenita'])
+    expect(currentJob(s)?.updatedAt).toBe(T1.toISOString())
+  })
+
+  it('動かす先が同じ所なら何も変えない', () => {
+    const s0 = start()
+    expect(run(s0, { type: 'moveParts', from: 1, count: 1, to: 2 }).state).toBe(s0)
+  })
+})
