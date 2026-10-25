@@ -22,32 +22,32 @@ import {
 } from './partsTable'
 
 describe('部材の表の行（仕様書 15.1）', () => {
-  it('10行に満たないときは10行、そうでなければ部材の数 ＋ 空の行1つ', () => {
-    expect(tableRowCount(0)).toBe(10)
-    expect(tableRowCount(4)).toBe(10)
-    expect(tableRowCount(9)).toBe(10)
-    expect(tableRowCount(10)).toBe(11)
+  it('5行に満たないときは5行、そうでなければ部材の数 ＋ 空の行1つ（仕様書 21.4）', () => {
+    expect(tableRowCount(0)).toBe(5)
+    expect(tableRowCount(3)).toBe(5)
+    expect(tableRowCount(4)).toBe(5)
+    expect(tableRowCount(5)).toBe(6)
     expect(tableRowCount(25)).toBe(26)
   })
 
   it('「＋ 5行足す」で空の行が5行増え、いちばん下の行に入れるとまた1行増える（仕様書 16.6）', () => {
     const min = addRowsMin(0)
-    expect(min).toBe(15)
-    expect(tableRowCount(0, min)).toBe(15)
-    expect(tableRowCount(14, min)).toBe(15)
-    expect(tableRowCount(15, min)).toBe(16)
+    expect(min).toBe(10)
+    expect(tableRowCount(0, min)).toBe(10)
+    expect(tableRowCount(9, min)).toBe(10)
+    expect(tableRowCount(10, min)).toBe(11)
     // 部材が多いときも、今の行の数から5行増える
     expect(addRowsMin(25)).toBe(31)
     expect(tableRowCount(25, addRowsMin(25))).toBe(31)
-    // 2回押すと10行
-    expect(tableRowCount(0, addRowsMin(0, addRowsMin(0)))).toBe(20)
+    // 2回押すと 5 ＋ 10行
+    expect(tableRowCount(0, addRowsMin(0, addRowsMin(0)))).toBe(15)
   })
 
   it('足した行は仕事ごとに覚える（保存しない）', () => {
+    expect(sessionTableMinRows('job-x')).toBe(5)
+    setSessionTableMinRows('job-x', 10)
     expect(sessionTableMinRows('job-x')).toBe(10)
-    setSessionTableMinRows('job-x', 15)
-    expect(sessionTableMinRows('job-x')).toBe(15)
-    expect(sessionTableMinRows('job-y')).toBe(10)
+    expect(sessionTableMinRows('job-y')).toBe(5)
   })
 
   it('何も入っていない部材（名前・W・H・枚数が空）だけが空とみなされる', () => {

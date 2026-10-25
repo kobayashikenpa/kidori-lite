@@ -1,6 +1,7 @@
 // ファイルから取り込む：読んだファイルを今の保存データに足す（仕様書 15.3・15.4）。純粋関数（元のデータは書き換えない）。
 // kidori の importShared・importBackup・rekeyJob（store/jobs.ts）を参考に、材料・フラッシュ・重ね切りの組を外し、
 // 調整寸法をアプリ全体の一覧に合わせる（表示名が同じならそれを使い、無ければ足す）ようにしたもの
+import { usableAdjusts } from '../adjusts'
 import { adjustNameKey } from '../defaults'
 import { remapAdjustIds } from '../formula/usages'
 import type { Adjust, AppData, FrozenSheet, Job, Part } from '../types'
@@ -115,7 +116,8 @@ export function importTransfer(
   newId: (prefix: string) => string,
   now: Date,
 ): ImportResult {
-  const { map, added } = mergeAdjusts(data.adjusts, file.adjusts, newId)
+  // 今の表の書きかけの行とは合わせない（式で使える行だけ見る。第1.7版）
+  const { map, added } = mergeAdjusts(usableAdjusts(data.adjusts), file.adjusts, newId)
   const names = data.jobs.map((j) => j.name)
   const incoming = file.kind === 'job' ? [file.job] : file.jobs
   const keepProgress = file.kind === 'backup'

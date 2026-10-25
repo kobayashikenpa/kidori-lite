@@ -22,7 +22,7 @@ const ids = () => {
   let n = 0
   return (p: string) => `${p}-${++n}`
 }
-const sample = (): AppData => ({ version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null })
+const sample = (): AppData => ({ version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null })
 
 describe('キー', () => {
   it('すべて kidori-lite. で始まる', () => {
@@ -80,7 +80,7 @@ describe('保存と読み込み', () => {
     expect(r.status).toBe('ok')
     // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）
     const { clipboard: _old, ...rest } = JSON.parse(v1) as Record<string, unknown>
-    expect(r.data).toEqual({ ...rest, cellClip: null })
+    expect(r.data).toEqual({ ...rest, cellClip: null, adjustClip: null })
     expect('clipboard' in r.data).toBe(false)
   })
 
@@ -120,7 +120,7 @@ describe('保存と読み込み', () => {
       st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: bad }))
       const r = loadSaved(st, ids(), NOW)
       expect(r.status).toBe('ok')
-      expect(r.data).toEqual({ ...data, cellClip: null })
+      expect(r.data).toEqual({ ...data, cellClip: null, adjustClip: null })
     }
   })
 
@@ -194,7 +194,7 @@ describe('保存と読み込み', () => {
 describe('壊れた保存データ', () => {
   it.each([
     ['JSON でない', '{こわれた'],
-    ['形が違う', JSON.stringify({ version: 1, jobs: 'x', adjusts: [], cellClip: null })],
+    ['形が違う', JSON.stringify({ version: 1, jobs: 'x', adjusts: [], cellClip: null, adjustClip: null })],
     ['版が違う', JSON.stringify({ ...sample(), version: 2 })],
     ['部材の枚数がおかしい', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: -1 }] }] })],
     ['部材の枚数が文字', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: '1' }] }] })],

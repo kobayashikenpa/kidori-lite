@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { defaultSettings } from '../engine/defaults'
 import { shelfAdjusts, shelfJob, MELAMINE_ID } from '../engine/fixtures/shelf'
-import type { Job } from '../engine/types'
+import type { AdjustRow, Job } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -188,7 +188,7 @@ describe('部材', () => {
 
 describe('調整寸法', () => {
   it('足す・変える・消す', () => {
-    let list = shelfAdjusts()
+    let list: AdjustRow[] = shelfAdjusts()
     const r1 = addAdjust(list, { name: ' 逃げ ', value: 1 }, 'a-nige')
     if (!r1.ok) throw new Error(r1.message)
     list = r1.adjusts

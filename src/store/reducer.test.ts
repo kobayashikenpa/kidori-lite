@@ -1,3 +1,4 @@
+import { usableAdjusts } from '../engine/adjusts'
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../engine/dimensions'
 import { MELAMINE_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
@@ -20,7 +21,7 @@ function env(now = T0): Env {
 function start(): StoreState {
   return initialState({
     status: 'ok',
-    data: { version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null },
+    data: { version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null },
     currentJobId: 'job-shelf',
     canSave: true,
   })
@@ -80,9 +81,9 @@ describe('仕事の操作', () => {
     expect(r.id).toBe(sample.id)
     expect(sample.name).toBe('見本 棚')
     // メラミン1 はもうあるので、調整寸法は変わらない
-    expect(r.state.data.adjusts).toEqual(shelfAdjusts())
+    expect(usableAdjusts(r.state.data.adjusts)).toEqual(shelfAdjusts())
     expect(sample.parts[2].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
-    const p = packJob(sample, computeDimensions(sample, r.state.data.adjusts))
+    const p = packJob(sample, computeDimensions(sample, usableAdjusts(r.state.data.adjusts)))
     expect(p.sheets).toHaveLength(2)
     expect(Math.round(p.yieldRate * 1000) / 10).toBe(57.2)
   })
@@ -94,14 +95,14 @@ describe('仕事の操作', () => {
     expect(mel).toBeDefined()
     const sample = r.state.data.jobs[1]
     expect(sample.parts[2].expr.W).toBe(`天板.W - 20 - {n:${mel?.id}}`)
-    expect(computeDimensions(sample, r.state.data.adjusts).errors).toEqual([])
+    expect(computeDimensions(sample, usableAdjusts(r.state.data.adjusts)).errors).toEqual([])
   })
 
   it('何回押しても1つずつ足す', () => {
     const s = run(start(), { type: 'addSample' }).state
     const r = run(s, { type: 'addSample' }, { newId: (p) => `${p}-x${Math.random()}`, now: T0 })
     expect(r.state.data.jobs.map((j) => j.name)).toEqual(['棚', '見本 棚', '見本 棚'])
-    expect(r.state.data.adjusts).toHaveLength(2)
+    expect(usableAdjusts(r.state.data.adjusts)).toHaveLength(2)
   })
 })
 
@@ -276,7 +277,7 @@ describe('切り出しチェック', () => {
   it('1つ目のチェックでその1枚を固定する', () => {
     const s = start()
     const job = currentJob(s)!
-    const res = packJob(job, computeDimensions(job, s.data.adjusts))
+    const res = packJob(job, computeDimensions(job, usableAdjusts(s.data.adjusts)))
     const layout = res.sheets[0]
     const r = run(s, { type: 'setPartCheck', target: { kind: 'computed', mode: res.mode, layout }, partId: 'part-gawaita', done: true }, env(T1))
     const after = currentJob(r.state)!
@@ -306,15 +307,15 @@ describe('調整寸法（アプリ全体）', () => {
   it('寸法を変えると、使っている式の表示と値がついてくる', () => {
     const s = run(start(), { type: 'updateAdjust', adjustId: MELAMINE_ID, name: 'メラミン', value: 2 }).state
     const job = currentJob(s)!
-    expect(formulaText(job.parts[3].expr.W, s.data.adjusts)).toBe('天板.W − 20 − メラミン2')
-    const tana = computeDimensions(job, s.data.adjusts).parts[3]
+    expect(formulaText(job.parts[3].expr.W, usableAdjusts(s.data.adjusts))).toBe('天板.W − 20 − メラミン2')
+    const tana = computeDimensions(job, usableAdjusts(s.data.adjusts)).parts[3]
     expect(tana.finished?.W).toBe(378)
     expect(adjustUsages(s.data, MELAMINE_ID).map((u) => u.partName)).toEqual(['棚板'])
   })
 
   it('使っている調整寸法を消すと、その式はエラーになる', () => {
     const s = run(start(), { type: 'removeAdjusts', adjustIds: [MELAMINE_ID] }).state
-    const tana = computeDimensions(currentJob(s)!, s.data.adjusts).parts[3]
+    const tana = computeDimensions(currentJob(s)!, usableAdjusts(s.data.adjusts)).parts[3]
     expect(tana.finished).toBeNull()
     expect(tana.errors.some((e) => e.kind === 'unknownAdjust')).toBe(true)
   })
@@ -324,7 +325,7 @@ describe('読み込みの知らせ', () => {
   it('閉じられる', () => {
     const s = initialState({
       status: 'error',
-      data: { version: 1, jobs: [], adjusts: [], cellClip: null },
+      data: { version: 1, jobs: [], adjusts: [], cellClip: null, adjustClip: null },
       currentJobId: null,
       message: '保存データを読めませんでした',
       canSave: false,
@@ -337,7 +338,7 @@ describe('読み込みの知らせ', () => {
 describe('取り込んだデータに置き換える', () => {
   it('共有のファイルを取り込むと、仕事がコピーとして足され、開いている仕事・今の仕事は変わらない', () => {
     const s0 = start()
-    const read = readTransferFile(buildJobFile(currentJob(s0)!, s0.data.adjusts))
+    const read = readTransferFile(buildJobFile(currentJob(s0)!, usableAdjusts(s0.data.adjusts)))
     if (!read.ok) throw new Error(read.message)
     const imported = importTransfer(s0.data, read.file, env().newId, T1)
     const s = run(s0, { type: 'replaceData', data: imported.data }).state
@@ -345,16 +346,16 @@ describe('取り込んだデータに置き換える', () => {
     expect(s.currentJobId).toBe('job-shelf')
     expect(s.data.jobs[0]).toBe(s0.data.jobs[0])
     // メラミン1 は同じ表示名なので増えない
-    expect(s.data.adjusts).toHaveLength(s0.data.adjusts.length)
+    expect(usableAdjusts(s.data.adjusts)).toHaveLength(s0.data.adjusts.length)
     const copy = s.data.jobs[1]
     expect(copy.name).toBe(`${s0.data.jobs[0].name}のコピー`)
-    expect(computeDimensions(copy, s.data.adjusts).parts.map((p) => p.finished)).toEqual(
-      computeDimensions(s0.data.jobs[0], s0.data.adjusts).parts.map((p) => p.finished),
+    expect(computeDimensions(copy, usableAdjusts(s.data.adjusts)).parts.map((p) => p.finished)).toEqual(
+      computeDimensions(s0.data.jobs[0], usableAdjusts(s0.data.adjusts)).parts.map((p) => p.finished),
     )
   })
 
   it('開いている仕事が新しいデータに無ければ閉じる', () => {
-    const s = run(start(), { type: 'replaceData', data: { version: 1, jobs: [], adjusts: [], cellClip: null } }).state
+    const s = run(start(), { type: 'replaceData', data: { version: 1, jobs: [], adjusts: [], cellClip: null, adjustClip: null } }).state
     expect(s.currentJobId).toBeNull()
   })
 })

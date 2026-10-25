@@ -1,16 +1,17 @@
 // 仕事・部材・設定・調整寸法の操作（純粋関数）。元のデータは書き換えず、新しいデータを返す。
 // kidori の store/jobs.ts を参考に作り直したもの（材料・フラッシュ・重ね切り・手持ちは無い）。
 // updatedAt は reducer の側で付ける
-import { adjustName, adjustNameKey, createJob, normalizeSheet } from '../engine/defaults'
+import { adjustConflict, duplicateAdjustMessage } from '../engine/adjusts'
+import { createJob, normalizeSheet } from '../engine/defaults'
 import { renamePart } from '../engine/formula/rename'
 import { validatePartName } from '../engine/formula/tokenize'
-import { BOARD_SIZES, type Adjust, type CutMode, type Job, type Part, type Settings, type Sheet } from '../engine/types'
+import { BOARD_SIZES, type AdjustRow, type CutMode, type Job, type Part, type Settings, type Sheet } from '../engine/types'
 
 /** 仕事への操作の結果。失敗したときは画面にそのまま出せる日本語の理由 */
 export type OpResult = { ok: true; job: Job } | { ok: false; message: string }
 
 /** 調整寸法の一覧への操作の結果 */
-export type AdjustsResult = { ok: true; adjusts: Adjust[] } | { ok: false; message: string }
+export type AdjustsResult = { ok: true; adjusts: AdjustRow[] } | { ok: false; message: string }
 
 const ok = (job: Job): OpResult => ({ ok: true, job })
 const fail = (message: string): { ok: false; message: string } => ({ ok: false, message })
@@ -192,18 +193,18 @@ export interface AdjustDraft {
 }
 
 /** 足せる・変えられる調整寸法か。よければ null、だめなら理由。exceptId は変える調整寸法自身（重なりの判定から外す） */
-export function validateAdjust(adjusts: readonly Adjust[], draft: AdjustDraft, exceptId?: string): string | null {
+export function validateAdjust(adjusts: readonly AdjustRow[], draft: AdjustDraft, exceptId?: string): string | null {
   const name = draft.name.trim()
   if (!name) return '名前を入れてください'
   if (!(Number.isFinite(draft.value) && draft.value > 0)) return '寸法は 0 より大きい数を入れてください'
-  const key = adjustNameKey({ name, value: draft.value })
-  const same = adjusts.find((a) => a.id !== exceptId && adjustNameKey(a) === key)
-  if (same) return `「${adjustName(same)}」はもうあります`
+  // 書きかけの行（第1.7版）とは重ならない
+  const same = adjustConflict(adjusts, { name, value: draft.value }, exceptId)
+  if (same) return duplicateAdjustMessage(same)
   return null
 }
 
 /** 調整寸法を一覧の最後に足す。名前が空・寸法が 0 以下・表示名が重なるものは断る */
-export function addAdjust(adjusts: readonly Adjust[], draft: AdjustDraft, id: string): AdjustsResult {
+export function addAdjust(adjusts: readonly AdjustRow[], draft: AdjustDraft, id: string): AdjustsResult {
   const err = validateAdjust(adjusts, draft)
   if (err) return fail(err)
   if (adjusts.some((a) => a.id === id)) return fail('同じ id の調整寸法があります')
@@ -214,7 +215,7 @@ export function addAdjust(adjusts: readonly Adjust[], draft: AdjustDraft, id: st
  * 調整寸法の名前・寸法を変える。式は id（{n:id}）で参照しているので、使っている式の表示と値もついてくる。
  * 使っている仕事の確認は画面で先に行う（formula/usages.ts の adjustUsages）
  */
-export function updateAdjust(adjusts: readonly Adjust[], adjustId: string, draft: AdjustDraft): AdjustsResult {
+export function updateAdjust(adjusts: readonly AdjustRow[], adjustId: string, draft: AdjustDraft): AdjustsResult {
   if (!adjusts.some((a) => a.id === adjustId)) return fail('調整寸法が見つかりません')
   const err = validateAdjust(adjusts, draft, adjustId)
   if (err) return fail(err)
@@ -228,7 +229,7 @@ export function updateAdjust(adjusts: readonly Adjust[], adjustId: string, draft
  * 調整寸法を消す（1つでもいくつでも）。使っている式はそのまま残り、式のエラー（削除した調整寸法）になる。
  * 使っている仕事と部材の確認は画面で先に行う（adjustUsagesOf）
  */
-export function removeAdjusts(adjusts: readonly Adjust[], adjustIds: readonly string[]): AdjustsResult {
+export function removeAdjusts(adjusts: readonly AdjustRow[], adjustIds: readonly string[]): AdjustsResult {
   const ids = new Set(adjustIds)
   if (!adjusts.some((a) => ids.has(a.id))) return fail('調整寸法が見つかりません')
   return { ok: true, adjusts: adjusts.filter((a) => !ids.has(a.id)) }

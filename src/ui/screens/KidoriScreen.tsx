@@ -5,6 +5,7 @@
 // チェックの付け外しは store の setPartCheck（engine の setPartCheck）。
 // pieceId は1枚の中でだけ重ならないので、1枚をまたぐキーは1枚の id（固定した1枚の id、計算した1枚は「c」＋何枚目か）と組にする
 // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算し直す（useMemo）
+import { usableAdjusts } from '../../engine/adjusts'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
 import { packJob } from '../../engine/packing'
@@ -54,7 +55,7 @@ const DRIFT_REASON: Record<FrozenSheetView['drift'][number]['reason'], string> =
 
 export function KidoriScreen() {
   const { job, data, dispatch } = useJobStore()
-  const adjusts = data.adjusts
+  const adjusts = usableAdjusts(data.adjusts)
   // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する（仕事は、部材・設定・固定した1枚・名前を変えたときだけ新しくなる。
   // 名前はこの画面では変えないので、仕事と調整寸法を見ていれば足りる）
   const calc = useMemo(() => {

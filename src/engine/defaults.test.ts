@@ -1,3 +1,4 @@
+import { usableAdjusts } from './adjusts'
 import { describe, expect, it } from 'vitest'
 import {
   adjustName,
@@ -126,7 +127,7 @@ describe('defaultAppData（初めて開いたときの保存データ）', () =>
     const d = defaultAppData(newId)
     expect(d.version).toBe(1)
     expect(d.jobs).toEqual([])
-    expect(d.adjusts.map(adjustName)).toEqual(['メラミン1', 'シート0.5'])
+    expect(usableAdjusts(d.adjusts).map(adjustName)).toEqual(['メラミン1', 'シート0.5'])
     expect(d.cellClip).toBeNull()
   })
 })
