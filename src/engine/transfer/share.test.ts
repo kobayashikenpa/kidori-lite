@@ -1,5 +1,6 @@
 // 仕事1つのファイル（仕様書 15.3。kidori の store/transfer/share.test.ts を参考に、材料・フラッシュ・重ね切り・手持ちを外して作り直したもの）
 import { describe, expect, it } from 'vitest'
+import { withHistory } from '../fixtures/history'
 import { freezeAt } from '../fixtures/progress'
 import { MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { buildJobFile, jobFile, jobFileName } from './share'
@@ -41,6 +42,14 @@ describe('jobFile・buildJobFile', () => {
       job.parts.map((p) => [p.id, p.name, p.expr, p.quantity, p.rotatable]),
     )
     expect(f.job.name).toBe('棚')
+  })
+
+  it('履歴は入れない（空の並び。第2.1版。仕様書 25.1）。元の仕事の履歴は残る', () => {
+    const job = withHistory(withHistory(usedShelf(), 'h-1', '初めの案'), 'h-2', '扉なし')
+    const f = jobFile(job, shelfAdjusts())
+    expect(f.job.history).toEqual([])
+    expect(buildJobFile(job, shelfAdjusts())).not.toContain('初めの案')
+    expect(job.history).toHaveLength(2)
   })
 
   it('元の仕事は変えない', () => {

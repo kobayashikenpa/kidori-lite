@@ -1,6 +1,8 @@
 // 木取りの画面（仕様書 8・16.3）：上に板（［3×6］［4×8］［自由入力］。それぞれの枚数・歩留まり）・刃厚・端切り・切り代の表示・切り方（BoardSettings）、
 // その下に必要な板の枚数・全体の歩留まり（大きく）、板を減らせるときのお知らせ（SavingHint。後回しで計算）、
 // 板に収まらない部材・計算から外した部材の知らせ、板1枚ごとの配置図・歩留まり・端材の一覧・切り出しチェック、部材ごとの進み具合。切る順番は出さない。
+// 第2.1版（仕様書 25章）：板ごとの見出しに「最終縦カット 右から ◯mm」（横切り優先は最終横カット。engine の finalCutFromRight）、
+// 切り出しチェックの行に配置図と同じ色の印（12色）、結果の下に仕事ごとの履歴とメモ（HistoryPanel）。
 // 計算はすべて engine（computeDimensions → packJob・compareStandardSizes・frozenSheetViews・sheetPartChecklist・partCutProgress）、
 // チェックの付け外しは store の setPartCheck（engine の setPartCheck）。
 // pieceId は1枚の中でだけ重ならないので、1枚をまたぐキーは1枚の id（固定した1枚の id、計算した1枚は「c」＋何枚目か）と組にする
@@ -15,15 +17,16 @@ import type { SheetTarget } from '../../engine/progress/checks'
 import { frozenSheetViews, type FrozenSheetView } from '../../engine/progress/frozen'
 import { partCutProgress } from '../../engine/progress/partProgress'
 import { sheetPartChecklist, type SheetPartRow } from '../../engine/progress/sheetChecklist'
-import type { SheetLayout } from '../../engine/types'
+import type { Job, SheetLayout } from '../../engine/types'
 import { useJobStore } from '../../store/useJobStore'
 import { BoardSettings } from '../components/BoardSettings'
+import { HistoryPanel } from '../components/HistoryPanel'
 import { Help } from '../components/Help'
 import { SavingHint } from '../components/SavingHint'
 import { SheetChecklist } from '../components/SheetChecklist'
 import { SheetDiagram } from '../components/SheetDiagram'
 import { fmt } from '../format'
-import { pct, scrapLabel } from '../kidoriView'
+import { finalCutLabel, pct, scrapLabel } from '../kidoriView'
 import { cutModeLabel, sheetLabel } from '../settings'
 
 /** 画面に出す1枚（固定した1枚、または計算した1枚） */
@@ -56,19 +59,27 @@ const DRIFT_REASON: Record<FrozenSheetView['drift'][number]['reason'], string> =
 export function KidoriScreen() {
   const { job, data, dispatch } = useJobStore()
   const adjusts = usableAdjusts(data.adjusts)
-  // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する（仕事は、部材・設定・固定した1枚・名前を変えたときだけ新しくなる。
-  // 名前はこの画面では変えないので、仕事と調整寸法を見ていれば足りる）
+  // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する。
+  // 履歴に残す・メモを直す・削除でも仕事は新しくなるので、計算に使わない 履歴・更新日時 を外したものを条件にする（SavingHint と同じ）
+  const { id, name, createdAt, parts, settings, frozenSheets } = job ?? {}
+  const calcJob = useMemo<Job | null>(
+    () =>
+      id && name !== undefined && createdAt && parts && settings && frozenSheets
+        ? { id, name, createdAt, updatedAt: createdAt, parts, settings, frozenSheets, history: [] }
+        : null,
+    [id, name, createdAt, parts, settings, frozenSheets],
+  )
   const calc = useMemo(() => {
-    if (!job) return null
-    const dims = computeDimensions(job, adjusts)
+    if (!calcJob) return null
+    const dims = computeDimensions(calcJob, adjusts)
     return {
       dims,
-      result: packJob(job, dims),
-      compare: compareStandardSizes(job, dims),
-      views: frozenSheetViews(job, dims),
-      progress: partCutProgress(job),
+      result: packJob(calcJob, dims),
+      compare: compareStandardSizes(calcJob, dims),
+      views: frozenSheetViews(calcJob, dims),
+      progress: partCutProgress(calcJob),
     }
-  }, [job, adjusts])
+  }, [calcJob, adjusts])
   const [openFinished, setOpenFinished] = useState(false)
   // チェックで失敗したときの知らせ（その1枚の中に出す）
   const [checkError, setCheckError] = useState<{ key: string; message: string } | null>(null)
@@ -154,7 +165,8 @@ export function KidoriScreen() {
           部材の木取り寸法（仕上がり寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方・切り代は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブでも変えられ、同じ値です）。
           部材は右（端切りをした側）の上から詰め、端材は左下に残ります。
           部材を切ったら、配置図の下の切り出しチェックを押します。1つ目のチェックで、その1枚の並べ方を固定します（部材や設定を変えても、その1枚は変わりません）。
-          全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。
+          全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。チェックの行の色の印は、配置図の部材の色と同じです。
+          板ごとの「最終縦カット 右から ◯mm」は、元の板の右端（端切りを含む）から、いちばん左の帯の左の端までの寸法です。左に余りが無いときは出ません。横切り優先のときは「最終横カット」で、図の右から測ります。
         </Help>
       </h2>
 
@@ -263,6 +275,8 @@ export function KidoriScreen() {
           {openFinished && <div className="stack kd-finished">{finished.map(card)}</div>}
         </>
       )}
+
+      <HistoryPanel job={job} dispatch={dispatch} />
     </section>
   )
 }
@@ -281,6 +295,7 @@ function SheetCard({ entry, count, colorOf, labelOf, error, onToggle }: SheetCar
   const landscape = layout.orientation === 'landscape'
   const complete = entry.view?.complete === true
   const drift = entry.view?.drift ?? []
+  const finalCut = finalCutLabel(layout)
   return (
     <article className={`card kd-sheet${complete ? ' finished' : ''}`} aria-label={`${no}枚目`}>
       {drift.length > 0 && (
@@ -296,6 +311,7 @@ function SheetCard({ entry, count, colorOf, labelOf, error, onToggle }: SheetCar
           {entry.view && !complete && <span className="chip kd-fixed">固定</span>}
         </span>
         <span className="kd-sheet-yield num">歩留まり {pct(layout.yieldRate)}</span>
+        {finalCut && <span className="kd-final-cut num">{finalCut}</span>}
       </header>
       <p className="band-note num">
         {entry.board}（{fmt(layout.boardWidth)}×{fmt(layout.boardLength)}）・{cutModeLabel(entry.mode)}・部材 {layout.placements.length}枚
@@ -337,6 +353,7 @@ function SheetCard({ entry, count, colorOf, labelOf, error, onToggle }: SheetCar
         rows={entry.rows}
         checked={entry.checked}
         rowKey={(r) => `${entry.key}:${r.partId}`}
+        colorOf={colorOf}
         onToggle={onToggle}
       />
       {error && (

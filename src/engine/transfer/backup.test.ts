@@ -1,5 +1,6 @@
 // バックアップのファイル（仕様書 15.4。kidori の store/transfer/backup.test.ts を参考に作り直したもの）
 import { describe, expect, it } from 'vitest'
+import { withHistory } from '../fixtures/history'
 import { freezeAt } from '../fixtures/progress'
 import { shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { backupFile, backupFileName, buildBackupFile } from './backup'
@@ -20,6 +21,12 @@ describe('backupFile・buildBackupFile', () => {
     const f = backupFile({ jobs: [used, shelfJob('job-b', '棚B')], adjusts })
     expect(f.jobs).toEqual([used, shelfJob('job-b', '棚B')])
     expect(f.adjusts).toEqual(adjusts)
+  })
+
+  it('履歴も入れる（第2.1版。仕様書 25.1）', () => {
+    const job = withHistory(shelfJob('job-a', '棚A'), 'h-1', '初めの案')
+    const f = JSON.parse(buildBackupFile({ jobs: [job], adjusts: shelfAdjusts() }))
+    expect(f.jobs[0].history).toEqual(job.history)
   })
 
   it('仕事が無くても作れる', () => {

@@ -6,11 +6,11 @@ import { findSavingHint } from '../../engine/hints/saving'
 import type { Adjust, Job } from '../../engine/types'
 
 export function SavingHint({ job, adjusts }: { job: Job; adjusts: readonly Adjust[] }) {
-  // 計算に使うのは 部材・設定・固定した1枚・調整寸法 だけ。更新日時・名前は計算に使わないので、計算し直しの理由にしない
+  // 計算に使うのは 部材・設定・固定した1枚・調整寸法 だけ。更新日時・名前・履歴は計算に使わないので、計算し直しの理由にしない
   const { id, createdAt, parts, settings, frozenSheets } = job
   const input = useMemo(
     () => ({
-      job: { id, name: '', createdAt, updatedAt: createdAt, parts, settings, frozenSheets } satisfies Job,
+      job: { id, name: '', createdAt, updatedAt: createdAt, parts, settings, frozenSheets, history: [] } satisfies Job,
       adjusts,
     }),
     [id, createdAt, parts, settings, frozenSheets, adjusts],

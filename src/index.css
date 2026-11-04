@@ -1128,6 +1128,31 @@ h3 > .help {
 .kd-sheet .band-note {
   margin: 0;
 }
+/* 最終縦カット（横カット）の位置（仕様書 25.3）。見出しの行の中で1行に置く。木取り寸法と同じ橙 */
+.kd-final-cut {
+  flex-basis: 100%;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cut);
+}
+.kd-sheet.finished .kd-final-cut {
+  color: inherit;
+}
+
+/* ---------- 仕事ごとの履歴とメモ（仕様書 25.1） ---------- */
+.hist {
+  margin-top: 8px;
+}
+.hist-add {
+  margin-bottom: 10px;
+}
+.hist-memo.none {
+  color: var(--muted);
+  font-weight: 400;
+}
+.hist-none {
+  margin: 0;
+}
 .kd-scraps {
   display: flex;
   align-items: baseline;
@@ -1190,12 +1215,19 @@ h3 > .help {
   --dg-scrap: #fbf8f1;
   --dg-hatch: rgba(120, 85, 40, 0.35);
   --dg-scrap-text: #6b5a3c;
-  --pc0: #bcd9ee;
+  --pc0: #a9cdf0;
   --pc1: #f6cfa8;
   --pc2: #c6e3c0;
-  --pc3: #e3c8ea;
+  --pc3: #e2c4ec;
   --pc4: #f3e1a0;
-  --pc5: #c9d3f2;
+  --pc5: #cdd0f7;
+  /* 第2.1版（仕様書 25.2）：12色に増やした。隣どうしで色みを大きく変え、どれも濃い字（--dg-text）が読める明るさ */
+  --pc6: #f4c2c2;
+  --pc7: #ade0d6;
+  --pc8: #dde9a6;
+  --pc9: #f5b5d0;
+  --pc10: #93d9e6;
+  --pc11: #dcc0a4;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -1213,6 +1245,12 @@ h3 > .help {
     --pc3: #573a63;
     --pc4: #5e5220;
     --pc5: #34406b;
+    --pc6: #6b2f3a;
+    --pc7: #1f5a54;
+    --pc8: #4a5a1e;
+    --pc9: #652d58;
+    --pc10: #156a7a;
+    --pc11: #5a4636;
   }
 }
 .diagram {
@@ -1241,6 +1279,25 @@ h3 > .help {
 .dg-piece.pc3 { fill: var(--pc3); }
 .dg-piece.pc4 { fill: var(--pc4); }
 .dg-piece.pc5 { fill: var(--pc5); }
+.dg-piece.pc6 { fill: var(--pc6); }
+.dg-piece.pc7 { fill: var(--pc7); }
+.dg-piece.pc8 { fill: var(--pc8); }
+.dg-piece.pc9 { fill: var(--pc9); }
+.dg-piece.pc10 { fill: var(--pc10); }
+.dg-piece.pc11 { fill: var(--pc11); }
+/* 切り出しチェックの行の色の印（配置図と同じ色。凡例を兼ねる。仕様書 25.2） */
+.cl-swatch.pc0 { background: var(--pc0); }
+.cl-swatch.pc1 { background: var(--pc1); }
+.cl-swatch.pc2 { background: var(--pc2); }
+.cl-swatch.pc3 { background: var(--pc3); }
+.cl-swatch.pc4 { background: var(--pc4); }
+.cl-swatch.pc5 { background: var(--pc5); }
+.cl-swatch.pc6 { background: var(--pc6); }
+.cl-swatch.pc7 { background: var(--pc7); }
+.cl-swatch.pc8 { background: var(--pc8); }
+.cl-swatch.pc9 { background: var(--pc9); }
+.cl-swatch.pc10 { background: var(--pc10); }
+.cl-swatch.pc11 { background: var(--pc11); }
 .dg-piece.done {
   fill: var(--dg-done);
 }
@@ -1381,6 +1438,16 @@ h3 > .help {
 .cl-row .check-box {
   margin-right: 0;
   border-color: var(--cut);
+}
+.cl-swatch {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--dg-line);
+  border-radius: 3px;
+}
+.cl-swatch.done {
+  background: var(--dg-done);
 }
 .cl-name {
   flex: 1;
