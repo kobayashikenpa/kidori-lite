@@ -129,7 +129,7 @@ describe('finalCutFromRight：固定した1枚', () => {
     expect(finalCutFromRight(changed.frozenSheets[0].layout)).toBe(786)
   })
 
-  it('保存して読み戻した写し（JSON）でも出す。配置図の向き（orientation）が無い前の写しでも、端切りと使える範囲から出す', () => {
+  it('保存して読み戻した写し（JSON）でも出す。値は配置図の向き（orientation）を使わず、端切りと使える範囲から求める', () => {
     const job = freezeAt(withMode('horizontal'), 0)
     const saved = JSON.parse(JSON.stringify(job.frozenSheets[0].layout)) as Partial<SheetLayout>
     delete saved.orientation

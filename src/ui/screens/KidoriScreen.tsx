@@ -17,7 +17,7 @@ import type { SheetTarget } from '../../engine/progress/checks'
 import { frozenSheetViews, type FrozenSheetView } from '../../engine/progress/frozen'
 import { partCutProgress } from '../../engine/progress/partProgress'
 import { sheetPartChecklist, type SheetPartRow } from '../../engine/progress/sheetChecklist'
-import type { SheetLayout } from '../../engine/types'
+import type { Job, SheetLayout } from '../../engine/types'
 import { useJobStore } from '../../store/useJobStore'
 import { BoardSettings } from '../components/BoardSettings'
 import { HistoryPanel } from '../components/HistoryPanel'
@@ -59,19 +59,27 @@ const DRIFT_REASON: Record<FrozenSheetView['drift'][number]['reason'], string> =
 export function KidoriScreen() {
   const { job, data, dispatch } = useJobStore()
   const adjusts = usableAdjusts(data.adjusts)
-  // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する（仕事は、部材・設定・固定した1枚・名前を変えたときだけ新しくなる。
-  // 名前はこの画面では変えないので、仕事と調整寸法を見ていれば足りる）
+  // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する。
+  // 履歴に残す・メモを直す・削除でも仕事は新しくなるので、計算に使わない 履歴・更新日時 を外したものを条件にする（SavingHint と同じ）
+  const { id, name, createdAt, parts, settings, frozenSheets } = job ?? {}
+  const calcJob = useMemo<Job | null>(
+    () =>
+      id && name !== undefined && createdAt && parts && settings && frozenSheets
+        ? { id, name, createdAt, updatedAt: createdAt, parts, settings, frozenSheets, history: [] }
+        : null,
+    [id, name, createdAt, parts, settings, frozenSheets],
+  )
   const calc = useMemo(() => {
-    if (!job) return null
-    const dims = computeDimensions(job, adjusts)
+    if (!calcJob) return null
+    const dims = computeDimensions(calcJob, adjusts)
     return {
       dims,
-      result: packJob(job, dims),
-      compare: compareStandardSizes(job, dims),
-      views: frozenSheetViews(job, dims),
-      progress: partCutProgress(job),
+      result: packJob(calcJob, dims),
+      compare: compareStandardSizes(calcJob, dims),
+      views: frozenSheetViews(calcJob, dims),
+      progress: partCutProgress(calcJob),
     }
-  }, [job, adjusts])
+  }, [calcJob, adjusts])
   const [openFinished, setOpenFinished] = useState(false)
   // チェックで失敗したときの知らせ（その1枚の中に出す）
   const [checkError, setCheckError] = useState<{ key: string; message: string } | null>(null)

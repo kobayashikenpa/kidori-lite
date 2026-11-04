@@ -18,7 +18,6 @@ import { sheetOrientation, trimRects, usableRect, type BoardSize } from './sheet
 import { combineYield, sheetYield } from './yield'
 
 export { MIN_SCRAP } from './scraps'
-export { finalCutFromRight } from './finalCut'
 
 /**
  * 並べ方の指定。sameWidthFirst を指定しなければ、同じ幅を優先する並べ方ともう1つの並べ方の両方を計算して、
