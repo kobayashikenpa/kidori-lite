@@ -49,7 +49,6 @@ export function createJob(args: { id: string; name: string; now: string; setting
     settings,
     parts: [],
     frozenSheets: [],
-    history: [],
     createdAt: args.now,
     updatedAt: args.now,
   }

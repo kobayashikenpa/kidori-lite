@@ -6,7 +6,7 @@ import { AXES, type AdjustRow, type Job } from '../types'
 import { TRANSFER_APP, TRANSFER_VERSION, type JobFile } from './envelope'
 
 /**
- * 送る中身：切り出しチェック（固定した1枚）・仕上がりの完了・履歴（第2.1版。仕様書 25.1）を外した仕事と、その仕事の式で使っている調整寸法だけ
+ * 送る中身：切り出しチェック（固定した1枚）と仕上がりの完了を外した仕事と、その仕事の式で使っている調整寸法だけ
  * （adjusts＝アプリ全体の調整寸法の表の並び。削除した調整寸法・書きかけの行は入らない（第1.7版））。元の仕事は変えない
  */
 export function jobFile(job: Job, adjusts: readonly AdjustRow[]): JobFile {
@@ -20,7 +20,6 @@ export function jobFile(job: Job, adjusts: readonly AdjustRow[]): JobFile {
       settings: { ...job.settings, sheet: { ...job.settings.sheet } },
       parts: job.parts.map((p) => ({ ...p, expr: { W: p.expr.W, H: p.expr.H }, finishedDone: false })),
       frozenSheets: [],
-      history: [],
     },
     adjusts: usableAdjusts(adjusts).filter((a) => used.has(a.id)).map((a) => ({ ...a })),
   }

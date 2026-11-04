@@ -1,6 +1,5 @@
 // ファイルから取り込む：読み込みと確認のまとめ（仕様書 15.3・15.4。kidori の store/transfer/read.test.ts を参考に作り直したもの）
 import { describe, expect, it } from 'vitest'
-import { withHistory } from '../fixtures/history'
 import { shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { buildBackupFile } from './backup'
 import { MAX_TRANSFER_SIZE, READ_FAILED } from './envelope'
@@ -42,26 +41,6 @@ describe('readTransferFile：読めるファイル', () => {
     h.settings.cutMode = 'horizontal'
     const backup = readTransferFile(buildBackupFile({ jobs: [auto(shelfJob('a', '本棚')), h], adjusts: shelfAdjusts() }))
     expect(backup.ok && backup.kind === 'backup' && backup.file.jobs.map((j) => j.settings.cutMode)).toEqual(['vertical', 'horizontal'])
-  })
-
-  it('第2.0版までの送るファイル・バックアップ（仕事に履歴が無い）も読め、履歴は空になる（第2.1版）', () => {
-    const noHistory = (text: string) => {
-      const d = JSON.parse(text)
-      for (const j of d.kind === 'job' ? [d.job] : d.jobs) delete j.history
-      return JSON.stringify(d)
-    }
-    const one = readTransferFile(noHistory(buildJobFile(shelfJob(), shelfAdjusts())))
-    expect(one.ok && one.kind === 'job' && one.file.job.history).toEqual([])
-    const old = noHistory(buildBackupFile({ jobs: [withHistory(shelfJob('a', '本棚'), 'h-1'), shelfJob('b', '食器棚')], adjusts: shelfAdjusts() }))
-    expect(old).not.toContain('"history"')
-    const backup = readTransferFile(old)
-    expect(backup.ok && backup.kind === 'backup' && backup.file.jobs.map((j) => j.history)).toEqual([[], []])
-  })
-
-  it('履歴の入ったバックアップを読める', () => {
-    const job = withHistory(shelfJob('a', '本棚'), 'h-1', '初めの案')
-    const r = readTransferFile(buildBackupFile({ jobs: [job], adjusts: shelfAdjusts() }))
-    expect(r.ok && r.kind === 'backup' && r.file.jobs[0].history).toEqual(job.history)
   })
 
   it('先頭に BOM があっても読める', () => {

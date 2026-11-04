@@ -6,19 +6,22 @@
 import { useId } from 'react'
 import type { Rect, SheetLayout } from '../../engine/types'
 import { fmt } from '../format'
-import { pieceColorClass, scrapLabel } from '../kidoriView'
+import { scrapLabel } from '../kidoriView'
 
 interface Props {
   layout: SheetLayout
   /** 通し番号（固定した1枚と計算した1枚を合わせて振り直したもの。layout.index は使わない） */
   no: number
-  /** 部材ごとの色の番号（部材の表の何行目か。12色をくり返す。kidoriView の pieceColorClass） */
+  /** 部材ごとの色の番号（0〜5） */
   colorOf: (partId: string) => number
   /** チェックした片の pieceId（グレーにして「済」の印を付ける） */
   checked?: readonly string[]
   /** 部材の今の表示名（無い部材・渡さないときは片に写した名前を使う） */
   labelOf?: (partId: string) => string | undefined
 }
+
+/** 部材の色の数（index.css の --pc0〜--pc5） */
+const PIECE_COLORS = 6
 
 interface Label {
   lines: string[]
@@ -127,7 +130,7 @@ export function SheetDiagram({ layout, no, colorOf, checked = [], labelOf }: Pro
         return (
           <rect
             key={p.pieceId}
-            className={done.has(p.pieceId) ? 'dg-piece done' : `dg-piece ${pieceColorClass(colorOf(p.partId))}`}
+            className={done.has(p.pieceId) ? 'dg-piece done' : `dg-piece pc${colorOf(p.partId) % PIECE_COLORS}`}
             x={r.x}
             y={r.y}
             width={r.w}
