@@ -29,6 +29,8 @@ import {
 } from '../engine/clipboard/adjustCells'
 import { usableAdjusts } from '../engine/adjusts'
 import { duplicatePart } from '../engine/clipboard/copy'
+import { addHistory, historyEntry, removeHistory, restoreHistory, setHistoryMemo } from '../engine/history'
+import { packJob } from '../engine/packing'
 import { computeDimensions } from '../engine/dimensions'
 import type { SortKey, SortOrder } from '../engine/order'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
@@ -175,6 +177,17 @@ export type StoreAction =
   | ({ type: 'setPartCheck'; target: SheetTarget; partId: string; done: boolean } & OnJob)
   /** 切り出しチェック（片1つ） */
   | ({ type: 'setPieceCheck'; target: SheetTarget; pieceId: string; done: boolean } & OnJob)
+  /**
+   * 履歴に残す（第2.1版。仕様書 25.1）：今の設定・部材（式のまま）と、そのときの必要な枚数・歩留まり（使える調整寸法で packJob。画面と同じ）、
+   * メモ・日時を、その仕事の履歴の先頭に足す。21件目で一番古いものを消す。結果の id は残した履歴の id
+   */
+  | ({ type: 'addHistory'; memo: string } & OnJob)
+  /** この内容に戻す：設定と部材を履歴の内容に置き換え（部材の id は新しく振る）、切り出しチェックと固定した1枚を外す。履歴は消さない */
+  | ({ type: 'restoreHistory'; historyId: string } & OnJob)
+  /** 履歴のメモを直す（前後の空白は外す。空も可）。同じメモなら何もしない */
+  | ({ type: 'setHistoryMemo'; historyId: string; memo: string } & OnJob)
+  /** 履歴を1件消す */
+  | ({ type: 'removeHistory'; historyId: string } & OnJob)
   /** 調整寸法（アプリ全体）を足す */
   | ({ type: 'addAdjust' } & AdjustDraft)
   | ({ type: 'updateAdjust'; adjustId: string } & AdjustDraft)
@@ -425,6 +438,22 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       return onJob(state, action.jobId, env, (j) =>
         setPieceCheck(j, action.target, action.pieceId, action.done, env.now, env.newId('frozen')),
       )
+    case 'addHistory': {
+      const id = env.newId('history')
+      return onJob(
+        state,
+        action.jobId,
+        env,
+        (j) => addHistory(j, historyEntry(j, packJob(j, computeDimensions(j, usableAdjusts(state.data.adjusts))), { id, memo: action.memo, now: env.now })),
+        id,
+      )
+    }
+    case 'restoreHistory':
+      return onJob(state, action.jobId, env, (j) => restoreHistory(j, action.historyId, env.newId))
+    case 'setHistoryMemo':
+      return onJob(state, action.jobId, env, (j) => setHistoryMemo(j, action.historyId, action.memo))
+    case 'removeHistory':
+      return onJob(state, action.jobId, env, (j) => removeHistory(j, action.historyId))
     case 'addAdjust': {
       const id = env.newId('adjust')
       return onAdjusts(state, addAdjust(state.data.adjusts, { name: action.name, value: action.value }, id), id)

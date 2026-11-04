@@ -642,3 +642,15 @@ export interface AdjustClip { rows: number; cols: number; cells: string[][]; cut
 - `finalCutFromRight(layout)`：板1枚の配置（`SheetLayout`。固定した1枚の `frozen.layout` もそのまま渡せる）から、元の板の右端から いちばん左の帯の左の端 までの距離（mm。端切りを含む）。左に余りが無い（いちばん左の部材の左の端が使える範囲の左の端）・部材が無いときは `null`
 - 使うのは `placements`・`usable`・`trims` だけ（`SheetLayout` の形は変えない）。帯より細い部材は帯の右に寄せて置くので、部材の左の端の最小＝いちばん左の帯の左の端。元の板の右端は使える範囲と端切りの右の端の大きいほう。保存データの形の確かめ（`isFrozenSheet`）がこの3つを保証しているので、前に保存した固定の1枚でも出せる
 - 縦切り優先・横切り優先とも、その置き方の図の右から測る（画面は `layout.orientation`＝`'landscape'` なら「最終横カット」と出す）。値は切る順番（`cuts`）の最後の「帯を切る」（kind `strip`）の位置を図の右端から測った値と同じ
+
+### 14.2 仕事ごとの履歴（E-19。spec 25.1。`src/engine/history.ts`・`src/engine/types.ts`）
+
+- 型：`Job.history: HistoryEntry[]`（新しい順・最大 `HISTORY_LIMIT`＝20）。`HistoryEntry` は `id`・`savedAt`（ISO）・`memo`・`settings`（板のサイズは `settings.sheet`）・`parts: HistoryPart[]`（名前・W・H の式・枚数・回転・仕上がりのチェック。id は持たない）・`sheetCount`・`yieldRate`。調整寸法は入れない
+- 関数（どれも元の仕事を書き換えず、`{ ok: true; job } | { ok: false; message }` を返す）
+  - `historyEntry(job, result, { id, memo, now })`：今の設定と部材の写しと、`result`（画面と同じ `packJob(job, computeDimensions(job, usableAdjusts(adjusts)))`）の必要な枚数・歩留まりで1件を作る。メモの前後の空白は外す
+  - `addHistory(job, entry)`：先頭に足し、20件を超えた古いものを消す。同じ id があれば断る
+  - `restoreHistory(job, historyId, newId)`：設定と部材を履歴の写しに置き換え、`frozenSheets` を空にする。部材の id は `newId('part')` で新しく振る。履歴・名前・作った日は変えない
+  - `setHistoryMemo(job, historyId, memo)`（同じメモなら同じ仕事を返す）・`removeHistory(job, historyId)`・`copyHistory(history)`（深い写し）
+- store：reducer に `addHistory`（`memo`。結果の `id` は残した履歴の id。id は `newId('history')`）・`restoreHistory`（`historyId`）・`setHistoryMemo`（`historyId`・`memo`）・`removeHistory`（`historyId`）。どれも `jobId` を省くと開いている仕事。変わったら仕事の `updatedAt` を付ける。`copyJob` は履歴も写す
+- 保存の形：キー（`kidori-lite.data.v1`）と `version: 1` は変えない。`readJob`（`shape.ts`）が、`history` の無い仕事（第2.0版までの保存データ・バックアップ・送るファイル）を空の履歴にして読む。`history` があって形が違う（並びでない・部材の形が違う・同じ id が2つ）ときは、今までの決まりどおり読めないとする
+- ファイル：送るファイル（`jobFile`）は `history: []`。取り込むときも共有の履歴は外す。バックアップ（`backupFile`）は仕事のまま入れ、取り込むと履歴も戻す（履歴の部材の式の `{n:id}` も今の調整寸法の id につけ替える。履歴の id はそのまま）

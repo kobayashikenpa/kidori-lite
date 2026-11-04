@@ -4,7 +4,7 @@
 import { usableAdjusts } from '../adjusts'
 import { adjustNameKey } from '../defaults'
 import { remapAdjustIds } from '../formula/usages'
-import type { Adjust, AppData, FrozenSheet, Job, Part } from '../types'
+import type { Adjust, AppData, FrozenSheet, HistoryEntry, Job, Part } from '../types'
 import type { TransferFile } from './envelope'
 
 export interface ImportResult {
@@ -56,7 +56,9 @@ function uniqueJobName(name: string, taken: readonly string[]): string {
 
 /**
  * 仕事の id を新しくした写し（深いコピー）。部材の id、式の {n:id}（adjustMap）、
- * keepProgress なら固定した1枚の id・片の partId／pieceId・checked もつけ替える。keepProgress でなければ固定した1枚と仕上がりの完了を外す
+ * keepProgress なら固定した1枚の id・片の partId／pieceId・checked もつけ替える。keepProgress でなければ固定した1枚と仕上がりの完了を外す。
+ * 履歴（第2.1版）は keepProgress（バックアップ）なら写し、履歴の部材の式の {n:id} もつけ替える（履歴の id は仕事の中だけで重ならなければよいのでそのまま）。
+ * keepProgress でなければ外す（送るファイルには入れない）
  */
 function rekeyJob(
   job: Job,
@@ -94,12 +96,20 @@ function rekeyJob(
         return copy
       })
     : []
+  const history: HistoryEntry[] = keepProgress
+    ? job.history.map((h) => ({
+        ...h,
+        settings: { ...h.settings, sheet: { ...h.settings.sheet } },
+        parts: h.parts.map((p) => ({ ...p, expr: { W: remapAdjustIds(p.expr.W, adjustMap), H: remapAdjustIds(p.expr.H, adjustMap) } })),
+      }))
+    : []
   return {
     ...job,
     id: newId('job'),
     settings: { ...job.settings, sheet: { ...job.settings.sheet } },
     parts,
     frozenSheets,
+    history,
   }
 }
 
@@ -108,7 +118,8 @@ function rekeyJob(
  * - 仕事・部材・固定した1枚の id は振り直し、コピーとして後ろに足す（今ある仕事は変えない）。名前が重なれば「◯◯のコピー」
  * - 調整寸法は表示名が同じものが今の一覧にあればそれを使い、無ければ新しい id で足して、式の {n:id} をつけ替える
  * - 共有（kind: job）：切り出しチェック・仕上がりの完了は無し。作った日・変えた日は now
- * - バックアップ（kind: backup）：切り出しチェック・仕上がりの完了も戻す。作った日・変えた日はファイルのまま
+ * - バックアップ（kind: backup）：切り出しチェック・仕上がりの完了・履歴も戻す。作った日・変えた日はファイルのまま
+ * - 履歴の無い前のファイル（第2.0版まで）は、読むときに空の履歴になっている（readTransferFile → readJob）
  */
 export function importTransfer(
   data: AppData,
