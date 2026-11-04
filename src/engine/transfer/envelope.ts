@@ -11,7 +11,7 @@ export const MAX_TRANSFER_SIZE = 20 * 1024 * 1024
 /** 読めないときの文言（仕様書 15.3） */
 export const READ_FAILED = '読み込めませんでした'
 
-/** 仕事1つのファイル（この仕事を送る）。切り出しチェック・仕上がりの完了・履歴は外してある（履歴は空の並び） */
+/** 仕事1つのファイル（この仕事を送る）。切り出しチェックと仕上がりの完了は外してある */
 export interface JobFile {
   app: typeof TRANSFER_APP
   kind: 'job'
@@ -21,7 +21,7 @@ export interface JobFile {
   adjusts: Adjust[]
 }
 
-/** バックアップのファイル（全部の仕事と調整寸法の一覧。チェック・履歴も含めてそのまま。第2.0版までのファイルは履歴が無い） */
+/** バックアップのファイル（全部の仕事と調整寸法の一覧。チェックも含めてそのまま） */
 export interface BackupFile {
   app: typeof TRANSFER_APP
   kind: 'backup'

@@ -78,53 +78,10 @@ describe('保存と読み込み', () => {
     st.setItem(DATA_KEY, v1)
     const r = loadSaved(st, ids(), NOW)
     expect(r.status).toBe('ok')
-    // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）。履歴は空（第2.1版）
-    const { clipboard: _old, ...rest } = JSON.parse(v1) as { jobs: Record<string, unknown>[] } & Record<string, unknown>
-    expect(r.data).toEqual({ ...rest, jobs: rest.jobs.map((j) => ({ ...j, history: [] })), cellClip: null, adjustClip: null })
+    // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）
+    const { clipboard: _old, ...rest } = JSON.parse(v1) as Record<string, unknown>
+    expect(r.data).toEqual({ ...rest, cellClip: null, adjustClip: null })
     expect('clipboard' in r.data).toBe(false)
-  })
-
-  it('第2.0版までの保存データ（仕事に履歴が無い）は、空の履歴にして読む。ほかの中身は変わらない（第2.1版）', () => {
-    const data = sample()
-    const old = JSON.parse(JSON.stringify(data)) as { jobs: Record<string, unknown>[] }
-    for (const j of old.jobs) delete j.history
-    const st = new MemoryStorage()
-    st.setItem(DATA_KEY, JSON.stringify(old))
-    const r = loadSaved(st, ids(), NOW)
-    expect(r.status).toBe('ok')
-    expect(r.data).toEqual(data)
-    expect(r.data.jobs[0].history).toEqual([])
-    // 読んだだけでは元のデータを書き換えない
-    expect(st.getItem(DATA_KEY)).toBe(JSON.stringify(old))
-  })
-
-  it('履歴（第2.1版）を保存して読み戻せる', () => {
-    const data = sample()
-    data.jobs[0].history = [
-      {
-        id: 'h-2',
-        savedAt: '2026-11-04T10:00:00.000Z',
-        memo: '',
-        settings: { ...data.jobs[0].settings, sheet: { sizeKind: 'custom', width: 600, length: 1800 }, cutMode: 'horizontal' },
-        parts: [{ name: '', expr: { W: '300', H: '400' }, quantity: null, rotatable: true, finishedDone: true }],
-        sheetCount: 0,
-        yieldRate: 0,
-      },
-      {
-        id: 'h-1',
-        savedAt: '2026-11-04T09:00:00.000Z',
-        memo: '初めの案',
-        settings: data.jobs[0].settings,
-        parts: data.jobs[0].parts.map(({ id: _id, ...p }) => p),
-        sheetCount: 2,
-        yieldRate: 0.572,
-      },
-    ]
-    const st = new MemoryStorage()
-    saveSaved(st, data, null)
-    const r = loadSaved(st, ids(), NOW)
-    expect(r.status).toBe('ok')
-    expect(r.data).toEqual(data)
   })
 
   it('第1.3版までの切り方「おまかせ」（auto）は縦切り優先にして読む（仕様書 18.2）', () => {
@@ -243,9 +200,6 @@ describe('壊れた保存データ', () => {
     ['部材の枚数が文字', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: '1' }] }] })],
     ['部材の枚数が無い', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), parts: [{ ...shelfJob().parts[0], quantity: undefined }] }] })],
     ['調整寸法が 0', JSON.stringify({ ...sample(), adjusts: [{ id: 'a', name: '逃げ', value: 0 }] })],
-    ['履歴が並びでない', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), history: 'x' }] })],
-    ['履歴の部材の枚数がおかしい', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), history: [{ id: 'h', savedAt: 't', memo: '', settings: shelfJob().settings, parts: [{ name: 'a', expr: { W: '1', H: '1' }, quantity: -1, rotatable: false, finishedDone: false }], sheetCount: 1, yieldRate: 0.5 }] }] })],
-    ['履歴の id が重なる', JSON.stringify({ ...sample(), jobs: [{ ...shelfJob(), history: [1, 2].map(() => ({ id: 'h', savedAt: 't', memo: '', settings: shelfJob().settings, parts: [], sheetCount: 0, yieldRate: 0 })) }] })],
   ])('%s：空の一覧で始め「保存データを読めませんでした」。元のデータは書き換えず、控えに残す', (_label, raw) => {
     const st = new MemoryStorage()
     st.setItem(DATA_KEY, raw)

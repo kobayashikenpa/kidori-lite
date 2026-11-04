@@ -1,6 +1,6 @@
 // 保存データ・共有とバックアップのファイルの中身の形の確かめ（store/storage.ts から移した。第1.1版 E-11）。
 // 手で書き換えたデータや途中までのデータで画面が真っ白にならないよう、形が違えば「読めない」とする
-import { ADJUST_COLS, CELL_COLS, type Adjust, type AdjustClip, type AdjustRow, type CellClip, type CellCut, type CellRange, type FrozenSheet, type HistoryEntry, type HistoryPart, type Job, type Part, type Settings, type Sheet } from './types'
+import { ADJUST_COLS, CELL_COLS, type Adjust, type AdjustClip, type AdjustRow, type CellClip, type CellCut, type CellRange, type FrozenSheet, type Job, type Part, type Settings, type Sheet } from './types'
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -97,32 +97,6 @@ function isFrozenSheet(v: unknown): v is FrozenSheet {
   return isRecord(l) && Array.isArray(l.placements) && Array.isArray(l.trims) && Array.isArray(l.cuts) && Array.isArray(l.scraps) && isRecord(l.usable)
 }
 
-/** 履歴の部材（第2.1版）：部材から id を除いた形 */
-function isHistoryPart(v: unknown): v is HistoryPart {
-  return isRecord(v) && isPart({ ...v, id: '' })
-}
-
-/** 履歴の1件（第2.1版。仕様書 25.1） */
-export function isHistoryEntry(v: unknown): v is HistoryEntry {
-  return (
-    isRecord(v) &&
-    isString(v.id) &&
-    isString(v.savedAt) &&
-    isString(v.memo) &&
-    isSettings(v.settings) &&
-    Array.isArray(v.parts) &&
-    v.parts.every(isHistoryPart) &&
-    Number.isInteger(v.sheetCount) &&
-    (v.sheetCount as number) >= 0 &&
-    isNonNegative(v.yieldRate)
-  )
-}
-
-/** 履歴の並び：どれも履歴の形で、同じ id が無い */
-function isHistory(v: unknown): v is HistoryEntry[] {
-  return Array.isArray(v) && v.every(isHistoryEntry) && new Set(v.map((h) => h.id)).size === v.length
-}
-
 export function isJob(v: unknown): v is Job {
   return (
     isRecord(v) &&
@@ -133,7 +107,6 @@ export function isJob(v: unknown): v is Job {
     v.parts.every(isPart) &&
     Array.isArray(v.frozenSheets) &&
     v.frozenSheets.every(isFrozenSheet) &&
-    isHistory(v.history) &&
     isString(v.createdAt) &&
     isString(v.updatedAt)
   )
@@ -141,15 +114,14 @@ export function isJob(v: unknown): v is Job {
 
 /**
  * 保存データ・取り込むファイルの仕事を読む（第1.4版）。形が違えば null。
- * - 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
- * - 第2.0版までの仕事（履歴 history が無い）は、空の履歴にして読む（第2.1版。仕様書 25.1）。履歴があって形が違えば読めない
+ * 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
  */
 export function readJob(v: unknown): Job | null {
-  if (!isRecord(v)) return null
-  let job: Record<string, unknown> = v
-  if (isRecord(v.settings) && v.settings.cutMode === 'auto') job = { ...job, settings: { ...v.settings, cutMode: 'vertical' } }
-  if (job.history === undefined) job = { ...job, history: [] }
-  return isJob(job) ? job : null
+  if (isRecord(v) && isRecord(v.settings) && v.settings.cutMode === 'auto') {
+    const job = { ...v, settings: { ...v.settings, cutMode: 'vertical' } }
+    return isJob(job) ? job : null
+  }
+  return isJob(v) ? v : null
 }
 
 /** 仕事の並びを読む（readJob）。1つでも読めなければ null */

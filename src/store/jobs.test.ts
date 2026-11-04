@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { defaultSettings } from '../engine/defaults'
-import { withHistory } from '../engine/fixtures/history'
-import { freezeAt } from '../engine/fixtures/progress'
 import { shelfAdjusts, shelfJob, MELAMINE_ID } from '../engine/fixtures/shelf'
 import type { AdjustRow, Job } from '../engine/types'
 import {
@@ -70,19 +68,6 @@ describe('仕事', () => {
     expect(c.parts.map((p) => p.id)).toEqual(['part-1', 'part-2', 'part-3', 'part-4'])
     expect(c.frozenSheets).toEqual([])
     expect(c.createdAt).toBe(NOW.toISOString())
-  })
-
-  it('コピーは履歴もコピーする（第2.1版。仕様書 25.1）。深い写しなので、コピーの履歴を変えても元は変わらない', () => {
-    const src = withHistory(withHistory(freezeAt(shelfJob(), 0, { partId: 'part-gawaita', n: 1 }), 'h-1', '初めの案'), 'h-2', '扉なし')
-    const c = copyJob(src, NOW, 'job-copy', counter())
-    expect(c.history).toEqual(src.history)
-    expect(c.history).not.toBe(src.history)
-    c.history[0].parts[0].expr.W = '1'
-    c.history[0].settings.sheet.width = 1
-    expect(src.history[0].parts[0].expr.W).toBe('400')
-    expect(src.history[0].settings.sheet.width).toBe(1220)
-    // 切った記録は今までどおり写さない
-    expect(c.frozenSheets).toEqual([])
   })
 
   it('削除。開いていた仕事なら開いていない状態にする', () => {

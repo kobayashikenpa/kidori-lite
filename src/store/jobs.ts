@@ -3,7 +3,6 @@
 // updatedAt は reducer の側で付ける
 import { adjustConflict, duplicateAdjustMessage } from '../engine/adjusts'
 import { createJob, normalizeSheet } from '../engine/defaults'
-import { copyHistory } from '../engine/history'
 import { renamePart } from '../engine/formula/rename'
 import { validatePartName } from '../engine/formula/tokenize'
 import { moveParts, sameOrder, sortParts, type SortKey, type SortOrder } from '../engine/order'
@@ -53,7 +52,6 @@ export function copyJobName(name: string): string {
 /**
  * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式のまま写し、id は新しくする。
  * 切った記録（固定した1枚）と仕上がりの完了のチェックは写さない（暫定。kidori と同じく切った記録は写さない）。
- * 履歴はそのまま写す（第2.1版。仕様書 25.1。履歴の中の仕上がりのチェックも写しのまま）。
  * 元の仕事は書き換えない
  */
 export function copyJob(job: Job, now: Date, id: string, makeId: (prefix: string) => string): Job {
@@ -66,7 +64,7 @@ export function copyJob(job: Job, now: Date, id: string, makeId: (prefix: string
     rotatable: p.rotatable,
     finishedDone: false,
   }))
-  return { ...base, parts, history: copyHistory(job.history) }
+  return { ...base, parts }
 }
 
 /** 仕事を一覧から消す。開いていた仕事を消したときは、何も開いていない状態にする */

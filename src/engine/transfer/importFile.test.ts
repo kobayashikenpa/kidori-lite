@@ -2,7 +2,6 @@
 import { usableAdjusts } from '../adjusts'
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../dimensions'
-import { withHistory } from '../fixtures/history'
 import { freezeAt } from '../fixtures/progress'
 import { MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { packJob } from '../packing'
@@ -127,14 +126,6 @@ describe('仕事1つのファイルを取り込む', () => {
     expect(got.parts.some((p) => p.finishedDone)).toBe(false)
   })
 
-  it('履歴は入らない（ファイルに入っていても外す。第2.1版）', () => {
-    const src = withHistory(shelfJob(), 'h-1', '初めの案')
-    const file = readFile(buildJobFile(src, shelfAdjusts()))
-    if (file.kind !== 'job') throw new Error('job でない')
-    const r = importTransfer(receiver(), { ...file, job: { ...file.job, history: src.history } }, ids(), NOW)
-    expect(r.data.jobs[1].history).toEqual([])
-  })
-
   it('知らせの文：「棚」を取り込みました', () => {
     expect(importTransfer(receiver(), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW).message).toBe('「棚」を取り込みました')
   })
@@ -193,23 +184,6 @@ describe('バックアップを取り込む', () => {
     expect(r.data.jobs[1].parts[2].expr.H).toBe(`700 - {n:${sheetId}}`)
     expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - {n:r-mel}')
     expect(r.data.jobs[2].parts[3].expr.W).toBe('天板.W - 20 - {n:r-mel}')
-  })
-
-  it('履歴も戻る（第2.1版）。履歴の部材の式の調整寸法 {n:id} も、今の一覧の id につけ替える', () => {
-    const src = sender()
-    src.jobs[0] = withHistory(withHistory(src.jobs[0], 'h-1', '初めの案'), 'h-2', '扉なし')
-    const r = importTransfer(receiver([{ id: 'r-mel', name: 'メラミン', value: 1 }]), readFile(buildBackupFile(src)), ids(), NOW)
-    const a = r.data.jobs[1]
-    expect(a.history.map((h) => [h.id, h.memo, h.savedAt, h.sheetCount, h.yieldRate])).toEqual(
-      src.jobs[0].history.map((h) => [h.id, h.memo, h.savedAt, h.sheetCount, h.yieldRate]),
-    )
-    expect(a.history[0].settings).toEqual(src.jobs[0].history[0].settings)
-    const sheetId = r.data.adjusts[1].id
-    expect(a.history[0].parts[3].expr.W).toBe('天板.W - 20 - {n:r-mel}')
-    expect(a.history[0].parts[2].expr.H).toBe(`700 - {n:${sheetId}}`)
-    expect(r.data.jobs[2].history).toEqual([])
-    // 元のデータは変えない
-    expect(src.jobs[0].history[0].parts[3].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
   })
 
   it('同じバックアップを2回取り込んでも上書きせず、名前を変えて足す', () => {

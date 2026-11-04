@@ -94,47 +94,9 @@ export interface Job {
   parts: Part[]
   /** 固定した1枚（固定した順） */
   frozenSheets: FrozenSheet[]
-  /**
-   * 履歴（第2.1版。仕様書 25.1）。新しい順・最大 20件（engine/history の HISTORY_LIMIT）。
-   * 第2.0版までの保存データ・バックアップ・送るファイルには無いので、読むときに空にする（shape.ts の readJob）
-   */
-  history: HistoryEntry[]
   /** ISO 文字列 */
   createdAt: string
   updatedAt: string
-}
-
-/**
- * 履歴に残す部材（第2.1版。仕様書 25.1）：名前・W・H の式（式のまま）・枚数・回転・仕上がりのチェック。
- * id は持たない（戻すときに新しい id を振る。engine/history の restoreHistory）
- */
-export interface HistoryPart {
-  name: string
-  expr: Record<Axis, string>
-  quantity: number | null
-  rotatable: boolean
-  finishedDone: boolean
-}
-
-/**
- * 履歴の1件（第2.1版。仕様書 25.1）。「履歴に残す」を押したときの設定と部材の写しと、そのときの結果。
- * 調整寸法は入れない（アプリ全体で1つの一覧なので、戻したときは今の調整寸法で計算する）
- */
-export interface HistoryEntry {
-  /** 仕事の中で重複しない */
-  id: string
-  /** 残した日時（ISO） */
-  savedAt: string
-  /** メモ（空でもよい。画面では空なら「メモなし」） */
-  memo: string
-  /** 設定（板のサイズ・刃厚・端切り・切り代・切り方）の写し。板のサイズは settings.sheet */
-  settings: Settings
-  /** 部材の写し（表の並び） */
-  parts: HistoryPart[]
-  /** そのときの必要な板の枚数（packJob の sheetCount。固定した1枚を含む） */
-  sheetCount: number
-  /** そのときの全体の歩留まり 0〜1（packJob の yieldRate） */
-  yieldRate: number
 }
 
 /** 保存する全体 */

@@ -100,7 +100,7 @@ describe('adjustNameKey（表示名が重なるかの判定）', () => {
 })
 
 describe('createJob（新しい仕事）', () => {
-  it('名前・時刻は引数のまま。初期の設定・部材なし・固定した1枚なし・履歴なし', () => {
+  it('名前・時刻は引数のまま。初期の設定・部材なし・固定した1枚なし', () => {
     const job = createJob({ id: 'job-1', name: '仕事 10/20', now: '2026-10-20T09:00:00.000Z' })
     expect(job).toEqual({
       id: 'job-1',
@@ -108,7 +108,6 @@ describe('createJob（新しい仕事）', () => {
       settings: defaultSettings(),
       parts: [],
       frozenSheets: [],
-      history: [],
       createdAt: '2026-10-20T09:00:00.000Z',
       updatedAt: '2026-10-20T09:00:00.000Z',
     })
