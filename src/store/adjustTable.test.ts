@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { adjustChangeUsages, usableAdjusts } from '../engine/adjusts'
 import { computeDimensions } from '../engine/dimensions'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
+import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob } from '../engine/fixtures/shelf'
 import { formulaText } from '../engine/formula/display'
 import { backupFile } from '../engine/transfer/backup'
 import { importTransfer } from '../engine/transfer/importFile'
@@ -23,7 +23,7 @@ function env(): Env {
 const draftRows = (): AdjustRow[] => [...shelfAdjusts(), { id: 'adjust-hozo', name: 'ほぞ', value: null }, { id: 'adjust-v', name: '', value: 12 }]
 
 function data(adjusts: AdjustRow[] = shelfAdjusts()): AppData {
-  return { version: 1, jobs: [shelfJob(), shelfJob('job-b', '別の棚')], adjusts, cellClip: null, adjustClip: null }
+  return { version: 1, jobs: [legacyShelfJob(), legacyShelfJob('job-b', '別の棚')], adjusts, cellClip: null, adjustClip: null }
 }
 
 function start(adjusts?: AdjustRow[]): StoreState {
@@ -38,7 +38,7 @@ function run(state: StoreState, action: StoreAction, e: Env = env()) {
 
 describe('保存データ', () => {
   it('第1.6版までの保存データ（adjustClip なし・調整寸法は全部そろった形）をそのまま読める', () => {
-    const old = JSON.parse(JSON.stringify({ version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null }))
+    const old = JSON.parse(JSON.stringify({ version: 1, jobs: [legacyShelfJob()], adjusts: shelfAdjusts(), cellClip: null }))
     const d = parseAppData(old)
     expect(d?.adjusts).toEqual(shelfAdjusts())
     expect(d?.adjustClip).toBeNull()
@@ -67,7 +67,7 @@ describe('保存データ', () => {
 
 describe('ファイル（共有・バックアップ・取り込み）', () => {
   it('共有・バックアップには書きかけの行を入れない（前の版でも読める形）', () => {
-    const job = shelfJob()
+    const job = legacyShelfJob()
     job.parts[2].expr.H = '700 - {n:adjust-hozo}'
     expect(jobFile(job, draftRows()).adjusts.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(backupFile(data(draftRows())).adjusts.map((a) => a.id)).toEqual([MELAMINE_ID, SHEET_ID])
@@ -75,7 +75,7 @@ describe('ファイル（共有・バックアップ・取り込み）', () => {
 
   it('取り込みは、今の表の書きかけの行とは合わせない（同じ名前でも新しく足す）', () => {
     const rows: AdjustRow[] = [{ id: 'mine', name: 'メラミン', value: null }, shelfAdjusts()[1]]
-    const file = jobFile(shelfJob(), shelfAdjusts())
+    const file = jobFile(legacyShelfJob(), shelfAdjusts())
     const r = importTransfer(data(rows), file, env().newId, T0)
     expect(r.addedAdjusts.map((a) => [a.name, a.value])).toEqual([['メラミン', 1]])
     expect(r.data.adjusts).toHaveLength(3)

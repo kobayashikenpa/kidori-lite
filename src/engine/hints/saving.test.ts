@@ -175,14 +175,17 @@ describe('findSavingHint（板を減らせるときのお知らせ）', () => {
 })
 
 describe('仕様書 6章（19.1 の見本）の棚とお知らせ', () => {
-  /** 19.1 の見本（全体なし）：天板 400×1800 ×1、側板 天板.W×700 ×2、棚板 (天板.W − 20 − メラミン1)×(天板.H − 20 × 2) ×3。4×8 */
+  /**
+   * 19.1 の見本（全体なし）：天板 400×1800 ×1、側板 天板.W×700 ×2、棚板 (天板.W − 20)×(天板.H − 20 × 2) ×3・棚板 W の調整 −メラミン1（25.4）。4×8。
+   * お知らせは調整後 ＋ 切り代 の木取り寸法で計算する（第2.1版）
+   */
   function sampleJob(settings: Partial<Settings> = {}): Job {
     const job = createJob({ id: 'job-sample', name: '見本 棚', now: '2026-10-23T00:00:00.000Z' })
     job.settings = { ...job.settings, ...settings }
     job.parts = [
       part('天板', '400', '1800', 1),
       part('側板', '天板.W', '700', 2),
-      part('棚板', `天板.W - 20 - {n:${MELAMINE_ID}}`, '天板.H - 20 × 2', 3),
+      { ...part('棚板', '天板.W - 20', '天板.H - 20 × 2', 3), adjust: { W: `-{n:${MELAMINE_ID}}`, H: '' } },
     ]
     return job
   }

@@ -19,9 +19,9 @@ describe('部材の一覧の W・H の欄（仕様書 5.2・6章の例）', () =
     expect(cellOf('全体', 'W', 'finished')).toEqual({ kind: 'number', value: 400 })
     expect(cellOf('側板', 'H', 'cut')).toEqual({ kind: 'number', value: 710 })
   })
-  it('式なら 式 ｜ 計算した寸法。棚板 W＝天板.W − 20 − メラミン1 ｜ 379（木取り 389）', () => {
-    expect(cellOf('棚板', 'W', 'finished')).toEqual({ kind: 'formula', formula: '天板.W − 20 − メラミン1', value: 379 })
-    expect(cellOf('棚板', 'W', 'cut')).toEqual({ kind: 'formula', formula: '天板.W − 20 − メラミン1', value: 389 })
+  it('式なら 式 ｜ 計算した寸法。棚板 W＝天板.W − 20 ｜ 380（調整 −メラミン1 のあと 木取り 389。第2.1版）', () => {
+    expect(cellOf('棚板', 'W', 'finished')).toEqual({ kind: 'formula', formula: '天板.W − 20', value: 380 })
+    expect(cellOf('棚板', 'W', 'cut')).toEqual({ kind: 'formula', formula: '天板.W − 20', value: 389 })
     expect(cellOf('棚板', 'H', 'finished')).toEqual({ kind: 'formula', formula: '天板.H − 20 × 2', value: 1760 })
   })
   it('式がエラーなら理由（engine の message）を持つ', () => {
@@ -33,6 +33,13 @@ describe('部材の一覧の W・H の欄（仕様書 5.2・6章の例）', () =
       expect(c.formula).toBe('奥板.W')
       expect(c.messages.join('')).toContain('奥板')
     }
+  })
+  it('調整の欄のエラーは［仕上がり］のタブに出さず、［木取り］のタブには出す（第2.1版）', () => {
+    const edit = (j: ReturnType<typeof shelfJob>) => {
+      j.parts[2].adjust.W = '−'
+    }
+    expect(cellOf('側板', 'W', 'finished', edit)).toEqual({ kind: 'formula', formula: '全体.W', value: 400 })
+    expect(cellOf('側板', 'W', 'cut', edit)).toMatchObject({ kind: 'error' })
   })
   it('空の式もエラー', () => {
     const c = cellOf('側板', 'H', 'finished', (j) => {

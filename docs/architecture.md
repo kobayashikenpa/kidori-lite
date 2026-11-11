@@ -660,3 +660,32 @@ export interface Part {
   - 中では `parse(expr, adjusts, { kind: 'adjust' })`（`formula/parse.ts` に `ParseOptions`・`FormulaKind` を足した）。`kind: 'adjust'` の違い：先頭の「+」を読む（足す）／部材の寸法はエラー `REF_IN_ADJUST_MESSAGE`「調整には部材の寸法は使えません」（kind は `syntax`。位置 start・end つき）／終わりが記号のときの案内は「後ろに数値か調整寸法を入れてください」
   - 先頭の「−」は今の式と同じく符号（`−{n:メラミン}×2` ＝ −2）。全角の記号・× ÷ − は今の式と同じく読む。「＝」は付けない形だが、付いていれば今の式と同じく読み飛ばす
   - 一覧に無い id（削除した調整寸法・書きかけの行）は `unknownAdjust`「削除した調整寸法を使っています」。「−」だけ・「＋」だけ・終わりが記号は `incomplete`（入れている途中）
+
+### 14.2 寸法の計算に調整後を足す・見本（E-19。spec 25.1・25.2・25.4・25.5）
+
+```ts
+// types.ts
+export type DimensionField = 'finished' | 'adjust'   // エラーの欄：［仕上がり］の式か、［調整］の調整の式か
+export interface DimensionError { partId; axis; field: DimensionField; kind; message; refs?; incomplete?; from? }
+export interface PartDimensions {
+  partId; name; quantity
+  finished: Record<Axis, number> | null        // 仕上がり（式の計算結果）
+  adjusted: Record<Axis, number> | null        // 調整後（仕上がり ＋ 調整）。第2.1版
+  cut: Record<Axis, number> | null             // 木取り（調整後 ＋ 切り代）。第2.1版から調整後に足す
+  finishedByAxis: Partial<Record<Axis, number>>
+  adjustByAxis: Partial<Record<Axis, number>>   // 調整の値（足し引きする値。空は 0）。調整の式が計算できた軸だけ
+  adjustedByAxis: Partial<Record<Axis, number>> // 調整後。仕上がりと調整の両方が計算でき、0 より大きい軸だけ
+  cutByAxis: Partial<Record<Axis, number>>
+  errors: DimensionError[]                      // 仕上がりの欄と調整の欄のエラー（軸ごとに 仕上がり → 調整 の順）
+}
+```
+
+- `computeDimensions(job, adjusts)`：仕上がり → 調整後（`evaluateAdjustExpr(part.adjust[axis], adjusts)` を足す）→ 木取り（＋ `settings.allowance`）
+  - 式の参照（`天板.W`）は今までどおり仕上がり寸法（`resolve.ts` は変えていない）。調整のエラーはほかの部材に伝わらない
+  - 調整の欄のエラー（`field: 'adjust'`）：調整の式が読めない（syntax。「−」だけなら incomplete）・部材の寸法を使っている（syntax「調整には部材の寸法は使えません」）・削除した調整寸法（unknownAdjust）・0 で割る（divideByZero）・調整後が 0 以下（nonPositive「調整後の寸法が 0 以下になります（−5）」。小数第1位に丸めて比べる）
+  - 仕上がりがエラーの軸は、調整後・木取りを出さない。このとき調整の欄のエラーは **足さない**（調整の式そのものがおかしいときだけ足す）。画面の［調整］のタブは、その軸のエラー（仕上がりのものも）を出せばよい
+  - 仕上がりの欄のエラーは `field: 'finished'`（`resolve.ts` のエラー・参照先から伝わったエラーも）
+- **画面の出し分け**：［仕上がり］のタブは `field === 'finished'` のエラーだけ、［調整］［木取り］のタブはその軸のエラー全部。`ui/partCells.ts` の `dimCell` は［仕上がり］のタブのとき `field === 'finished'` だけを見るように直した（最小限の直し。調整のエラーで［仕上がり］の欄が赤くならないように）
+- 木取りの計算（`packing/`）・お知らせ（`hints/saving.ts`）・比べ（`packing/sizes.ts`）・固定した1枚の drift（`progress/frozen.ts`）は `cut`／`cutByAxis` を使っているので、そのまま調整後の木取り寸法についてくる（テストで確かめた）。並べ替え（`order.ts`）は今までどおり `finishedByAxis`（仕上がり）で比べる
+- テストの見本 `fixtures/shelf.ts` の `shelfJob()`：棚板 W を仕上がり `天板.W - 20`・調整 `-{n:adjust-melamine}` にした（仕上がり 380・調整後 379・木取り 389）。第2.0版までの形（仕上がりの式にメラミン1）は `legacyShelfJob()`（古いデータの読み込み・置き換えのテスト用）
+- 見本（`store/sample.ts` の `sampleJob`）：棚板 W は仕上がり `天板.W - 20`・調整 `-{n:メラミン1 の id}`（25.4）。4×8 2枚・57.2% は今と同じ

@@ -64,7 +64,7 @@ describe('仕事', () => {
     expect(c.settings).not.toBe(withSheet.settings)
     expect(c.settings.sheet).not.toBe(withSheet.settings.sheet)
     expect(c.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板'])
-    expect(c.parts[3].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
+    expect(c.parts[3].expr.W).toBe('天板.W - 20')
     expect(c.parts.map((p) => p.id)).toEqual(['part-1', 'part-2', 'part-3', 'part-4'])
     expect(c.frozenSheets).toEqual([])
     expect(c.createdAt).toBe(NOW.toISOString())
@@ -183,7 +183,7 @@ describe('部材', () => {
 
   it('名前を変えると、使っている式もつけ替わる', () => {
     const job = okJob(updatePart(shelfJob(), 'part-tenita', { name: '天板A' }))
-    expect(job.parts[3].expr).toEqual({ W: `天板A.W - 20 - {n:${MELAMINE_ID}}`, H: '天板A.H - 20 × 2' })
+    expect(job.parts[3].expr).toEqual({ W: '天板A.W - 20', H: '天板A.H - 20 × 2' })
   })
 
   it('名前と式を同時に変えても、新しい式の参照もつけ替わる', () => {

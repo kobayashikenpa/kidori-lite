@@ -209,9 +209,17 @@ export type DimensionErrorKind =
   | 'nonPositive' // 計算結果が 0 以下
   | 'divideByZero' // 0 で割った
 
+/**
+ * エラーの欄（第2.1版）：finished＝［仕上がり］の W・H の式、adjust＝［調整］の W・H の調整の式。
+ * 画面の［仕上がり］のタブは finished のエラーだけ、［調整］［木取り］のタブは両方を出す
+ */
+export type DimensionField = 'finished' | 'adjust'
+
 export interface DimensionError {
   partId: string
   axis: Axis
+  /** どの欄のエラーか（第2.1版）。仕上がりがエラーのときは調整後もエラーだが、調整の欄のエラーは足さない（調整の式そのものがおかしいときだけ adjust） */
+  field: DimensionField
   kind: DimensionErrorKind
   /** 画面にそのまま出せる日本語 */
   message: string
@@ -237,11 +245,17 @@ export interface PartDimensions {
   quantity: number | null
   /** 仕上がり寸法（式の計算結果）。エラーがあれば null */
   finished: Record<Axis, number> | null
-  /** 木取り寸法（仕上がり ＋ 切り代。W・H それぞれに1回）。エラーがあれば null */
+  /** 調整後の寸法（仕上がり ＋ 調整。第2.1版。仕様書 25.1）。仕上がり・調整のどちらかにエラーがあれば null */
+  adjusted: Record<Axis, number> | null
+  /** 木取り寸法（調整後 ＋ 切り代。W・H それぞれに1回。第2.1版から調整後に足す）。エラーがあれば null */
   cut: Record<Axis, number> | null
   /** 軸ごとの仕上がり寸法（計算できた軸だけ）。片方の軸だけエラーのとき、式の隣に出す値（仕様書 5.2）に使う */
   finishedByAxis: Partial<Record<Axis, number>>
-  /** 軸ごとの木取り寸法（計算できた軸だけ） */
+  /** 軸ごとの調整の値（足し引きする値。調整が空なら 0。調整の式が計算できた軸だけ。第2.1版） */
+  adjustByAxis: Partial<Record<Axis, number>>
+  /** 軸ごとの調整後の寸法（仕上がりと調整の両方が計算でき、0 より大きい軸だけ。第2.1版） */
+  adjustedByAxis: Partial<Record<Axis, number>>
+  /** 軸ごとの木取り寸法（調整後 ＋ 切り代。計算できた軸だけ） */
   cutByAxis: Partial<Record<Axis, number>>
   errors: DimensionError[]
 }

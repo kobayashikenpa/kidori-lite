@@ -3,7 +3,7 @@ import { usableAdjusts } from '../adjusts'
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../dimensions'
 import { freezeAt } from '../fixtures/progress'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
+import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob } from '../fixtures/shelf'
 import { packJob } from '../packing'
 import { partCutProgress } from '../progress/partProgress'
 import type { Adjust, AppData, Job } from '../types'
@@ -29,7 +29,7 @@ function readFile(text: string): TransferFile {
 
 /** 受け取る人の保存データ（調整寸法の id は送る人と違う） */
 function receiver(adjusts: Adjust[] = [{ id: 'r-mel', name: 'メラミン', value: 1 }, { id: 'r-sheet', name: 'シート', value: 0.5 }]): AppData {
-  return { version: 1, jobs: [shelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null, adjustClip: null }
+  return { version: 1, jobs: [legacyShelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null, adjustClip: null }
 }
 
 /** 寸法の値（名前・仕上がり・木取り・エラーの種類）。調整寸法の id によらず比べられる */
@@ -38,7 +38,7 @@ const dimsOf = (job: Job, adjusts: readonly Adjust[]) =>
 
 describe('仕事1つのファイルを取り込む', () => {
   it('送って取り込むと、部材・設定・式の値が同じ仕事がコピーとして足される（今ある仕事は変えない）', () => {
-    const src = shelfJob()
+    const src = legacyShelfJob()
     src.settings = { ...src.settings, kerf: 4, allowance: 5, cutMode: 'horizontal' }
     const data = receiver()
     const before = JSON.parse(JSON.stringify(data))
@@ -57,7 +57,7 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('仕事と部材の id は新しくする。作った日・変えた日は取り込んだ時刻', () => {
-    const src = shelfJob()
+    const src = legacyShelfJob()
     const r = importTransfer(receiver(), readFile(buildJobFile(src, shelfAdjusts())), ids(), NOW)
     const got = r.data.jobs[1]
     expect(got.id).not.toBe(src.id)
@@ -67,14 +67,14 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('メラミン1 が両方にあれば増えない（受け取る人のメラミン1 を使う）', () => {
-    const r = importTransfer(receiver(), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW)
+    const r = importTransfer(receiver(), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW)
     expect(r.data.adjusts.map((a) => a.id)).toEqual(['r-mel', 'r-sheet'])
     expect(r.addedAdjusts).toEqual([])
     expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - {n:r-mel}')
   })
 
   it('メラミン1 が無ければ新しい id で足し、式の {n:id} をつけ替える', () => {
-    const r = importTransfer(receiver([{ id: 'r-hozo', name: 'ほぞ', value: 15 }]), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW)
+    const r = importTransfer(receiver([{ id: 'r-hozo', name: 'ほぞ', value: 15 }]), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW)
     expect(r.data.adjusts.map((a) => [a.name, a.value])).toEqual([
       ['ほぞ', 15],
       ['メラミン', 1],
@@ -83,11 +83,11 @@ describe('仕事1つのファイルを取り込む', () => {
     expect(added.id).not.toBe(MELAMINE_ID)
     expect(r.addedAdjusts).toEqual([added])
     expect(r.data.jobs[1].parts[3].expr.W).toBe(`天板.W - 20 - {n:${added.id}}`)
-    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(dimsOf(shelfJob(), shelfAdjusts()))
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(dimsOf(legacyShelfJob(), shelfAdjusts()))
   })
 
   it('名前が同じでも寸法が違えば別の調整寸法として足す（メラミン1.2 と メラミン1）', () => {
-    const r = importTransfer(receiver([{ id: 'r-mel', name: 'メラミン', value: 1.2 }]), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW)
+    const r = importTransfer(receiver([{ id: 'r-mel', name: 'メラミン', value: 1.2 }]), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW)
     expect(r.data.adjusts.map((a) => [a.name, a.value])).toEqual([
       ['メラミン', 1.2],
       ['メラミン', 1],
@@ -101,7 +101,7 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('削除した調整寸法（ファイルに無い id）を使っている式はそのまま（取り込んだあともエラー）', () => {
-    const src = shelfJob()
+    const src = legacyShelfJob()
     src.parts[2].expr.H = '700 - {n:gone}'
     const r = importTransfer(receiver(), readFile(buildJobFile(src, shelfAdjusts())), ids(), NOW)
     expect(r.data.jobs[1].parts[2].expr.H).toBe('700 - {n:gone}')
@@ -109,8 +109,8 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('同じ名前の仕事があれば「棚のコピー」、それもあれば「棚のコピー2」', () => {
-    const text = buildJobFile(shelfJob(), shelfAdjusts())
-    let data: AppData = { ...receiver(), jobs: [shelfJob('x', '棚')] }
+    const text = buildJobFile(legacyShelfJob(), shelfAdjusts())
+    let data: AppData = { ...receiver(), jobs: [legacyShelfJob('x', '棚')] }
     data = importTransfer(data, readFile(text), ids(), NOW).data
     expect(data.jobs.map((j) => j.name)).toEqual(['棚', '棚のコピー'])
     data = importTransfer(data, readFile(text), ids(), NOW).data
@@ -118,7 +118,7 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('切り出しチェックと仕上がりの完了は入らない（ファイルに入っていても外す）', () => {
-    const used = freezeAt(shelfJob(), 0, { partId: 'part-gawaita', n: 1 })
+    const used = freezeAt(legacyShelfJob(), 0, { partId: 'part-gawaita', n: 1 })
     used.parts[1] = { ...used.parts[1], finishedDone: true }
     const file: TransferFile = { app: 'kidori-lite', kind: 'job', version: 1, job: used, adjusts: shelfAdjusts() }
     const got = importTransfer(receiver(), file, ids(), NOW).data.jobs[1]
@@ -127,17 +127,17 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('知らせの文：「棚」を取り込みました', () => {
-    expect(importTransfer(receiver(), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW).message).toBe('「棚」を取り込みました')
+    expect(importTransfer(receiver(), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW).message).toBe('「棚」を取り込みました')
   })
 })
 
 describe('バックアップを取り込む', () => {
   /** 送る人の保存データ：使いかけの棚（チェックあり・完了あり）と、まだの棚 */
   function sender(): AppData {
-    const used = freezeAt(shelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 2 })
+    const used = freezeAt(legacyShelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 2 })
     used.parts[1] = { ...used.parts[1], finishedDone: true }
     used.parts[2].expr.H = `700 - {n:${SHEET_ID}}`
-    return { version: 1, jobs: [used, shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    return { version: 1, jobs: [used, legacyShelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
   }
 
   it('全部の仕事がコピーとして足され、切り出しチェック・仕上がりの完了も戻る', () => {
@@ -198,7 +198,7 @@ describe('バックアップを取り込む', () => {
   })
 
   it('バックアップの中で同じ名前の仕事どうしも重ならない名前にする', () => {
-    const src: AppData = { version: 1, jobs: [shelfJob('a', '棚'), shelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    const src: AppData = { version: 1, jobs: [legacyShelfJob('a', '棚'), legacyShelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
     const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
     expect(r.data.jobs.map((j) => j.name)).toEqual(['自分の仕事', '棚', '棚のコピー'])
   })
@@ -206,7 +206,7 @@ describe('バックアップを取り込む', () => {
 
 /** 部材1つ（W に調整寸法 {n:s-x} を使う）の仕事 */
 function oneAdjustJob(): Job {
-  const job = shelfJob()
+  const job = legacyShelfJob()
   job.parts = [{ id: 'p1', name: '板', expr: { W: '100 + {n:s-x}', H: '200' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false }]
   return job
 }

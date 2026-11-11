@@ -95,7 +95,7 @@ describe('部材の表の W・H の欄（見本 6章）', () => {
 
   it('数値はその数値、式は計算した寸法（仕上がり）', () => {
     expect(cell('全体', 'W')).toEqual({ kind: 'number', value: 400 })
-    expect(cell('棚板', 'W')).toMatchObject({ kind: 'formula', value: 379 })
+    expect(cell('棚板', 'W')).toMatchObject({ kind: 'formula', value: 380 })
     expect(cell('棚板', 'H')).toMatchObject({ kind: 'formula', value: 1760 })
   })
 
@@ -143,6 +143,7 @@ describe('入力中のセルのエラー（仕様書 18.5）', () => {
   const err = (kind: DimensionError['kind'], extra: Partial<DimensionError> = {}): DimensionError => ({
     partId: 'p',
     axis: 'W',
+    field: 'finished',
     kind,
     message: kind,
     ...extra,

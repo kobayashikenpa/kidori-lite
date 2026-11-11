@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { createJob } from '../defaults'
 import { computeDimensions } from '../dimensions'
-import { MELAMINE_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
+import { shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import type { Job, Part } from '../types'
 import { duplicateName, duplicatePart } from './copy'
 
@@ -55,7 +55,7 @@ describe('duplicatePart（部材の複製）', () => {
     expect(r.job.parts[4]).toEqual({
       id: 'part-new1',
       name: '棚板のコピー',
-      expr: { W: `天板.W - 20 - {n:${MELAMINE_ID}}`, H: '天板.H - 20 × 2' },
+      expr: { W: '天板.W - 20', H: '天板.H - 20 × 2' },
       adjust: { W: '', H: '' },
       quantity: 3,
       rotatable: true,

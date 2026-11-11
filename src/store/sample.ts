@@ -1,5 +1,5 @@
 // 見本の仕事（仕様書 16.7・19.1：6章の棚から「全体」を除いた 天板・側板・棚板）を作る。kidori の store/sample.ts を参考にしたもの。
-// 設定は初期値。棚板の式で使う調整寸法「メラミン1」は、今の一覧から表示名で探し、無ければ足す
+// 設定は初期値。棚板 W の調整で使う調整寸法「メラミン1」は、今の一覧から表示名で探し、無ければ足す
 import { adjustNameKey } from '../engine/defaults'
 import { isUsableAdjust } from '../engine/adjusts'
 import type { AdjustRow, Job, Part } from '../engine/types'
@@ -28,10 +28,11 @@ export function sampleJob(
     list = [...list, melamine]
   }
   const job = makeJob(SAMPLE_NAME, now, newId('job'))
-  const part = (name: string, W: string, H: string, quantity: number): Part => ({
+  const part = (name: string, W: string, H: string, quantity: number, adjustW = ''): Part => ({
     id: newId('part'),
     name,
-    expr: { W, H }, adjust: { W: '', H: '' },
+    expr: { W, H },
+    adjust: { W: adjustW, H: '' },
     quantity,
     rotatable: false,
     finishedDone: false,
@@ -39,7 +40,8 @@ export function sampleJob(
   job.parts = [
     part('天板', '400', '1800', 1),
     part('側板', '天板.W', '700', 2),
-    part('棚板', `天板.W - 20 - {n:${melamine.id}}`, '天板.H - 20 × 2', 3),
+    // 棚板 W は 仕上がり 天板.W − 20・調整 −メラミン1（第2.1版。仕様書 25.4。調整後の寸法は今までの見本と同じ 379）
+    part('棚板', '天板.W - 20', '天板.H - 20 × 2', 3, `-{n:${melamine.id}}`),
   ]
   return { job, adjusts: list }
 }
