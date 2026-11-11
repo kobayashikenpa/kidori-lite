@@ -141,7 +141,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     cursorRef.current = c
     setCursorS(c)
   }
-  // 入力中にセルを押して寸法を入れられなかった理由（キーの上の行に出す）
+  // 入力中にセルを押して寸法を入れられなかった理由（式の欄のすぐ下に出す）
   const [refMsg, setRefMsg] = useState<string | null>(null)
   // 名前の欄の書きかけ（確定するまで保存しない。名前の変更は式の参照のつけ替えを伴うため）
   const [nameDraft, setNameDraft] = useState('')

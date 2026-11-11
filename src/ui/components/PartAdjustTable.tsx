@@ -75,7 +75,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     cursorRef.current = c
     setCursorS(c)
   }
-  // 調整寸法の行を押して入れられなかった理由（キーの上の行に出す）
+  // 調整寸法の行を押して入れられなかった理由（式の欄のすぐ下に出す）
   const [refMsg, setRefMsg] = useState<string | null>(null)
 
   const jobRef = useRef(job)
