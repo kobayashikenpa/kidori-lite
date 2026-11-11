@@ -114,6 +114,13 @@ describe('部材', () => {
     expect(removePart(job, 'p1').ok).toBe(false)
   })
 
+  it('新しい部材の調整は空（調整なし。第2.1版）', () => {
+    expect(newPart('p1').adjust).toEqual({ W: '', H: '' })
+    expect(newPart('p1', { name: '天板' }).adjust).toEqual({ W: '', H: '' })
+    // 呼ぶたびに別のオブジェクト
+    expect(newPart('p1').adjust).not.toBe(newPart('p2').adjust)
+  })
+
   it('同じ名前（全角・半角の違いを含む）は足せない・変えられない', () => {
     let job = makeJob('x', NOW, 'job')
     job = okJob(addPart(job, newPart('p1', { name: '棚板1' })))

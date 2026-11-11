@@ -634,3 +634,29 @@ export interface AdjustClip { rows: number; cols: number; cells: string[][]; cut
 - `moveParts(parts, from, count, to)`：続いた行を、元の並びの `to` 行目の上（`to` が部材の数なら一番下）へ動かす。動かす行の中・すぐ上・すぐ下なら変わらない。`movedTop(length, from, count, to)` は動かしたあとの一番上の行。`sameOrder(a, b)` は同じ並びか
 - store：`jobs.ts` の `sortJobParts`・`moveJobParts`（並びが変わらなければ同じ仕事を返す＝updatedAt を付けない）。reducer に `{ type: 'sortParts', key, order }`（W・H は `usableAdjusts(data.adjusts)` で計算）と `{ type: 'moveParts', from, count, to }`
 - 画面：`PartsTable` の見出しは `HeadButton`（`useLongPress`。押すと列全体、長押しで並べ替えのシート）。番号を引く指の動きは `useGrid` の `moveRowsFrom`・`onMoveRows`（選んでいる行全体の番号だけ。その番号は CSS で `touch-action: none`）。動かす先の線は `GridOverlay` の `moveLine`。左上の丸い取っ手が番号に重なる所は、番号として扱う
+
+## 14. 第2.1版の変更（仕様書 25章）
+
+### 14.1 部材の調整の型・読み込み・調整の式（E-18。spec 25.1・25.2）
+
+```ts
+// types.ts
+export interface Part {
+  id: string
+  name: string
+  expr: Record<Axis, string>    // 仕上がり寸法の入力（数値または式）
+  adjust: Record<Axis, string>  // 調整の式（第2.1版）。仕上がりに足し引きする値。空の文字は「調整なし（0）」
+  quantity: number | null
+  rotatable: boolean
+  finishedDone: boolean
+}
+```
+
+- フィールド名は **`adjust`**（W・H それぞれの文字）。式で `part.expr.W`（仕上がり）と `part.adjust.W`（調整）を並べて読めるように。アプリ全体の調整寸法の一覧 `AppData.adjusts`（`AdjustRow[]`）とは別物
+- **読み込み**（`shape.ts`）：`isPart` は `adjust`（`{ W: string, H: string }`）を要る。第2.0版までの部材（`adjust` が無い）は `readJob` で `{ W: '', H: '' }` を足してから確かめる（保存データ `parseAppData`・共有とバックアップのファイル `readTransferFile` の両方が `readJob`／`readJobs` を通る）。`adjust` があって形が違う部材は読めない（仕事ごと読めない＝今までと同じ考え方）
+- `store/jobs.ts` の `newPart` は調整を空で作る。表の空の行に貼って作る部材（`clipboard/cells.ts`）も空
+- **調整の式**（`formula/adjustExpr.ts`）：
+  - `parseAdjustExpr(expr, adjusts?)` → `ParseResult`（空・空白だけは 0）。`evaluateAdjustExpr(expr, adjusts)` → `EvalResult`（足し引きする値。`adjusts` は `usableAdjusts(data.adjusts)`）。`isBlankAdjustExpr(expr)`
+  - 中では `parse(expr, adjusts, { kind: 'adjust' })`（`formula/parse.ts` に `ParseOptions`・`FormulaKind` を足した）。`kind: 'adjust'` の違い：先頭の「+」を読む（足す）／部材の寸法はエラー `REF_IN_ADJUST_MESSAGE`「調整には部材の寸法は使えません」（kind は `syntax`。位置 start・end つき）／終わりが記号のときの案内は「後ろに数値か調整寸法を入れてください」
+  - 先頭の「−」は今の式と同じく符号（`−{n:メラミン}×2` ＝ −2）。全角の記号・× ÷ − は今の式と同じく読む。「＝」は付けない形だが、付いていれば今の式と同じく読み飛ばす
+  - 一覧に無い id（削除した調整寸法・書きかけの行）は `unknownAdjust`「削除した調整寸法を使っています」。「−」だけ・「＋」だけ・終わりが記号は `incomplete`（入れている途中）

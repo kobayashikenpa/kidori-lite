@@ -17,7 +17,7 @@ function emptyJob(): Job {
 }
 
 function part(id: string, name: string, W = '100', H = '200', quantity = 1): Part {
-  return { id, name, expr: { W, H }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
 }
 
 describe('duplicateName（複製の名前）', () => {
@@ -56,6 +56,7 @@ describe('duplicatePart（部材の複製）', () => {
       id: 'part-new1',
       name: '棚板のコピー',
       expr: { W: `天板.W - 20 - {n:${MELAMINE_ID}}`, H: '天板.H - 20 × 2' },
+      adjust: { W: '', H: '' },
       quantity: 3,
       rotatable: true,
       finishedDone: false,

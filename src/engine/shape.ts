@@ -34,12 +34,14 @@ function isExpr(v: unknown): v is Part['expr'] {
   return isRecord(v) && isString(v.W) && isString(v.H)
 }
 
+/** 部材（第2.1版から調整 adjust も要る。調整の無い古い部材は readJob で調整を足してから確かめる） */
 export function isPart(v: unknown): v is Part {
   return (
     isRecord(v) &&
     isString(v.id) &&
     isString(v.name) &&
     isExpr(v.expr) &&
+    isExpr(v.adjust) &&
     // 枚数は 0 以上の整数か、空（null。第1.1版）
     (v.quantity === null || (Number.isInteger(v.quantity) && (v.quantity as number) >= 0)) &&
     typeof v.rotatable === 'boolean' &&
@@ -114,14 +116,18 @@ export function isJob(v: unknown): v is Job {
 
 /**
  * 保存データ・取り込むファイルの仕事を読む（第1.4版）。形が違えば null。
- * 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
+ * - 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
+ * - 第2.0版までの部材（調整 adjust が無い）は、調整なし（W・H とも空）にして読む（第2.1版。仕様書 25.5）。
+ *   調整があって形が違う（文字でない・軸が無い）部材は読めない
  */
 export function readJob(v: unknown): Job | null {
-  if (isRecord(v) && isRecord(v.settings) && v.settings.cutMode === 'auto') {
-    const job = { ...v, settings: { ...v.settings, cutMode: 'vertical' } }
-    return isJob(job) ? job : null
+  if (!isRecord(v)) return null
+  let job: Record<string, unknown> = v
+  if (isRecord(v.settings) && v.settings.cutMode === 'auto') job = { ...job, settings: { ...v.settings, cutMode: 'vertical' } }
+  if (Array.isArray(v.parts) && v.parts.some((p) => isRecord(p) && p.adjust === undefined)) {
+    job = { ...job, parts: v.parts.map((p: unknown) => (isRecord(p) && p.adjust === undefined ? { ...p, adjust: { W: '', H: '' } } : p)) }
   }
-  return isJob(v) ? v : null
+  return isJob(job) ? job : null
 }
 
 /** 仕事の並びを読む（readJob）。1つでも読めなければ null */

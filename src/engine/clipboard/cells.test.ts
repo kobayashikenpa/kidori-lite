@@ -25,7 +25,7 @@ function ids(): (prefix: string) => string {
 const c = (row: number, col: CellCol): CellPos => ({ row, col })
 
 function part(id: string, name: string, W = '100', H = '200', quantity: number | null = 1): Part {
-  return { id, name, expr: { W, H }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
 }
 
 function jobOf(...parts: Part[]): Job {

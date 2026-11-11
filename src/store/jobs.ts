@@ -60,6 +60,7 @@ export function copyJob(job: Job, now: Date, id: string, makeId: (prefix: string
     id: makeId('part'),
     name: p.name,
     expr: { W: p.expr.W, H: p.expr.H },
+    adjust: { W: '', H: '' },
     quantity: p.quantity,
     rotatable: p.rotatable,
     finishedDone: false,
@@ -117,9 +118,9 @@ export function setSheet(job: Job, sheet: Sheet): OpResult {
 
 // ---------- 部材 ----------
 
-/** 新しい部材の下書き（枚数 1・回転しない） */
+/** 新しい部材の下書き（枚数 1・回転しない・調整なし） */
 export function newPart(id: string, p: Partial<Omit<Part, 'id'>> = {}): Part {
-  return { id, name: '', expr: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false, ...p }
+  return { id, name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false, ...p }
 }
 
 function validatePartFields(part: Part): string | null {

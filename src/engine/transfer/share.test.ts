@@ -52,11 +52,12 @@ describe('jobFile・buildJobFile', () => {
 
   it('名前が空・枚数が空の部材もそのまま入る', () => {
     const job = shelfJob()
-    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, quantity: null, rotatable: true, finishedDone: true })
+    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, quantity: null, rotatable: true, finishedDone: true })
     expect(jobFile(job, shelfAdjusts()).job.parts[4]).toEqual({
       id: 'p5',
       name: '',
       expr: { W: '300', H: '400' },
+      adjust: { W: '', H: '' },
       quantity: null,
       rotatable: true,
       finishedDone: false,

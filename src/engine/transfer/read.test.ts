@@ -28,9 +28,23 @@ describe('readTransferFile：読めるファイル', () => {
 
   it('名前が空・枚数が空の部材があっても読める', () => {
     const job = shelfJob()
-    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, quantity: null, rotatable: false, finishedDone: false })
+    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false })
     const r = readTransferFile(buildJobFile(job, shelfAdjusts()))
     expect(r.ok && r.kind === 'job' && r.summary.partCount).toBe(5)
+  })
+
+  it('部材の調整の無い第2.0版までのファイル（共有・バックアップ）は、調整なしとして読む（第2.1版。仕様書 25.5）', () => {
+    const strip = (text: string) => {
+      const v = JSON.parse(text) as { job?: { parts: Record<string, unknown>[] }; jobs?: { parts: Record<string, unknown>[] }[] }
+      for (const j of v.job ? [v.job] : (v.jobs ?? [])) for (const p of j.parts) delete p.adjust
+      return JSON.stringify(v)
+    }
+    const one = readTransferFile(strip(buildJobFile(shelfJob(), shelfAdjusts())))
+    if (!one.ok || one.kind !== 'job') throw new Error('読めない')
+    expect(one.file.job.parts.map((p) => p.adjust)).toEqual(one.file.job.parts.map(() => ({ W: '', H: '' })))
+    const backup = readTransferFile(strip(buildBackupFile({ jobs: [shelfJob('a', '本棚')], adjusts: shelfAdjusts() })))
+    if (!backup.ok || backup.kind !== 'backup') throw new Error('読めない')
+    expect(backup.file.jobs[0].parts.every((p) => p.adjust.W === '' && p.adjust.H === '')).toBe(true)
   })
 
   it('第1.3版までの切り方「おまかせ」（auto）の仕事・バックアップは、縦切り優先にして読む（仕様書 18.2）', () => {

@@ -11,7 +11,7 @@ function expand(job: Job, frozen?: ReadonlyMap<string, number>) {
 }
 
 function addPart(job: Job, p: Partial<Part> & Pick<Part, 'id' | 'name'>) {
-  job.parts.push({ expr: { W: '100', H: '100' }, quantity: 1, rotatable: false, finishedDone: false, ...p })
+  job.parts.push({ expr: { W: '100', H: '100' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false, ...p })
 }
 
 /** 4×8 */
@@ -44,7 +44,7 @@ describe('expandPieces（部材 → 片の並び）', () => {
 
   it('小数の寸法の表記は小数第1位まで', () => {
     const job = shelfJob()
-    job.parts = [{ ...job.parts[0], expr: { W: '100 / 3', H: '200.25' }, quantity: 1 }]
+    job.parts = [{ ...job.parts[0], expr: { W: '100 / 3', H: '200.25' }, adjust: { W: '', H: '' }, quantity: 1 }]
     expect(expand(job).runs[0].sizeLabel).toBe('43.3×210.3')
   })
 
@@ -52,7 +52,7 @@ describe('expandPieces（部材 → 片の並び）', () => {
     const job = shelfJob()
     addPart(job, { id: 'err', name: 'エラー', expr: { W: '無い.W', H: '100' } })
     addPart(job, { id: 'cyc', name: '循環', expr: { W: '循環.W', H: '100' } })
-    addPart(job, { id: 'zero', name: '枚数0のエラー', expr: { W: '無い.W', H: '100' }, quantity: 0 })
+    addPart(job, { id: 'zero', name: '枚数0のエラー', expr: { W: '無い.W', H: '100' }, adjust: { W: '', H: '' }, quantity: 0 })
     const r = expand(job)
     expect(r.skipped).toEqual([
       { partId: 'err', name: 'エラー', reason: 'dimensionError' },
@@ -77,7 +77,7 @@ describe('expandPieces（部材 → 片の並び）', () => {
 
   it('全部固定した部材は、寸法のエラーがあっても除いた一覧に出さない', () => {
     const job = shelfJob()
-    addPart(job, { id: 'err', name: 'エラー', expr: { W: '無い.W', H: '100' }, quantity: 2 })
+    addPart(job, { id: 'err', name: 'エラー', expr: { W: '無い.W', H: '100' }, adjust: { W: '', H: '' }, quantity: 2 })
     expect(expand(job, new Map([['err', 2]])).skipped).toEqual([])
   })
 
@@ -150,7 +150,7 @@ describe('piecesOf（片にする・板に収まらない部材）', () => {
 
   it('板より大きい部材は「板に収まらない部材」（tooLarge。部材ごとに1つ）。ほかの片はそのまま', () => {
     const job = shelfJob()
-    addPart(job, { id: 'big', name: '大きい板', expr: { W: '1300', H: '2000' }, quantity: 3 })
+    addPart(job, { id: 'big', name: '大きい板', expr: { W: '1300', H: '2000' }, adjust: { W: '', H: '' }, quantity: 3 })
     const r = pieces(job)
     expect(r.unplaced).toEqual([{ partId: 'big', name: '大きい板', reason: 'tooLarge' }])
     expect(r.pieces).toHaveLength(6)

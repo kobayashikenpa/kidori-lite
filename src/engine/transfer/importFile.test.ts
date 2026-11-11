@@ -207,6 +207,6 @@ describe('バックアップを取り込む', () => {
 /** 部材1つ（W に調整寸法 {n:s-x} を使う）の仕事 */
 function oneAdjustJob(): Job {
   const job = shelfJob()
-  job.parts = [{ id: 'p1', name: '板', expr: { W: '100 + {n:s-x}', H: '200' }, quantity: 1, rotatable: false, finishedDone: false }]
+  job.parts = [{ id: 'p1', name: '板', expr: { W: '100 + {n:s-x}', H: '200' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false }]
   return job
 }

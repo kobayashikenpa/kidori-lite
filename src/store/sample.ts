@@ -31,7 +31,7 @@ export function sampleJob(
   const part = (name: string, W: string, H: string, quantity: number): Part => ({
     id: newId('part'),
     name,
-    expr: { W, H },
+    expr: { W, H }, adjust: { W: '', H: '' },
     quantity,
     rotatable: false,
     finishedDone: false,

@@ -10,6 +10,7 @@ function mkPart(name: string, expr: Partial<Record<Axis, string>>, extra: Partia
     id: `id-${name}`,
     name,
     expr: { W: '100', H: '100', ...expr },
+    adjust: { W: '', H: '' },
     quantity: 1,
     rotatable: false,
     finishedDone: false,

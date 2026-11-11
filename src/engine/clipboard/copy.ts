@@ -43,6 +43,7 @@ export function duplicatePart(job: Job, partId: string, newId: (prefix: string) 
     id: newId('part'),
     name: duplicateName(job, src.name),
     expr: { W: src.expr.W, H: src.expr.H },
+    adjust: { W: '', H: '' },
     quantity: src.quantity,
     rotatable: src.rotatable,
     finishedDone: false,

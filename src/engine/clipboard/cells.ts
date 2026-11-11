@@ -232,7 +232,7 @@ function applyTargets(job: Job, targets: Target[], newId: (prefix: string) => st
   const indexOfRow = new Map(newRows.map((r, k) => [r, count + k]))
   const parts: Part[] = job.parts.map((p) => ({ ...p, expr: { ...p.expr } }))
   for (let k = 0; k < newRows.length; k++) {
-    parts.push({ id: newId('part'), name: '', expr: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false })
+    parts.push({ id: newId('part'), name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false })
   }
   const writes: Write[] = targets.map((t) => ({
     cell: { row: t.row, col: CELL_COLS[t.col] },

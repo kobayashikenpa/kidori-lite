@@ -79,8 +79,10 @@ describe('保存と読み込み', () => {
     const r = loadSaved(st, ids(), NOW)
     expect(r.status).toBe('ok')
     // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）
-    const { clipboard: _old, ...rest } = JSON.parse(v1) as Record<string, unknown>
-    expect(r.data).toEqual({ ...rest, cellClip: null, adjustClip: null })
+    const { clipboard: _old, ...rest } = JSON.parse(v1) as { jobs: { parts: object[] }[] } & Record<string, unknown>
+    // 部材の調整（第2.1版）は無いので、調整なし（W・H とも空）として読む
+    const jobs = rest.jobs.map((j) => ({ ...j, parts: j.parts.map((p) => ({ ...p, adjust: { W: '', H: '' } })) }))
+    expect(r.data).toEqual({ ...rest, jobs, cellClip: null, adjustClip: null })
     expect('clipboard' in r.data).toBe(false)
   })
 
@@ -156,14 +158,33 @@ describe('保存と読み込み', () => {
   it('名前が空・枚数が空（null）の部材も保存して読み戻せる（第1.1版）', () => {
     const data = sample()
     data.jobs[0].parts.push(
-      { id: 'p5', name: '', expr: { W: '300', H: '400' }, quantity: null, rotatable: false, finishedDone: false },
-      { id: 'p6', name: '', expr: { W: '300', H: '400' }, quantity: 1, rotatable: false, finishedDone: false },
+      { id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false },
+      { id: 'p6', name: '', expr: { W: '300', H: '400' }, adjust: { W: '-2', H: '' }, quantity: 1, rotatable: false, finishedDone: false },
     )
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     const r = loadSaved(st, ids(), NOW)
     expect(r.status).toBe('ok')
     expect(r.data).toEqual(data)
+  })
+
+  it('部材の調整の無い第2.0版の保存データは、調整なし（W・H とも空）として読む（第2.1版。仕様書 25.5）', () => {
+    const old = JSON.parse(JSON.stringify(sample())) as { jobs: { parts: Record<string, unknown>[] }[] }
+    for (const p of old.jobs[0].parts) delete p.adjust
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(old))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data.jobs[0].parts.every((p) => p.adjust.W === '' && p.adjust.H === '')).toBe(true)
+    expect(r.data.jobs[0].parts.map((p) => p.expr)).toEqual(sample().jobs[0].parts.map((p) => p.expr))
+  })
+
+  it('部材の調整を保存して読み戻せる（第2.1版）', () => {
+    const data = sample()
+    data.jobs[0].parts[3] = { ...data.jobs[0].parts[3], adjust: { W: '−{n:adjust-melamine}×2', H: '-1' } }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
   })
 
   it('開いていた仕事が無ければ開いていない状態', () => {
