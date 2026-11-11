@@ -6,7 +6,8 @@
 // 名前はその場でスマホのキーボード。W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（式も使える。枚数は数字だけ）。
 // 入力はキーを押すたびに保存する。空の行に入れたときに部材を作り、何も入っていない部材は表から外す（保存しない）。
 // 寸法の計算は engine（computeDimensions の結果を受け取る）。式の文字の編集は formulaEdit.ts
-// 「＝」で始めた入力中は、ほかの部材の W・H のセルを押すと、その寸法（天板.W）をカーソルの位置に入れる（仕様書 20.2。エクセルと同じ）。
+// W・H の入力中に、ほかの部材の W・H のセルを押したとき：欄が空かカーソルのすぐ前が ＋ − × ÷ ( なら、その寸法（天板.W）をカーソルの位置に入れる。
+// そうでなければ入力を終えて押したセルを選ぶ（第2.1版 仕様書 25.7。「＝」のキーは無い。判定は formulaEdit の canInsertRef）。
 // 第2.1版：調整寸法の表は［調整］のタブへ移した（仕様書 25.3）。［仕上がり］の式では調整寸法を使わない（仕様書 25.4）。
 // 選ぶ・取っ手・長押しの指の動きは useGrid（調整寸法の表と同じ仕組み）
 // 第2.0版（仕様書 24）：見出しを長押しすると並べ替えのメニュー（大きい順・小さい順／あいうえお順・逆の順。並べ替えは engine の sortParts）。
@@ -23,7 +24,7 @@ import { currentJob, type ReduceResult, type StoreAction } from '../../store/red
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
-import { insertAt, opensAsFormula, refCellsOf, refColorsOf, type Edit } from '../formulaEdit'
+import { canInsertRef, insertAt, refCellsOf, refColorsOf, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
 import {
@@ -127,16 +128,14 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   const [selS, setSelS] = useState<Sel | null>(null)
   const sel = cellOf(selS, parts)
   const selKey = sel ? `${sel.row}:${sel.field}` : ''
-  // W・H の式のカーソル（単位の番号）
-  const [cursor, setCursor] = useState(0)
-  // 「＝」で始めた入力か（仕様書 20.2。「＝」は式の文字に入れず、ここで持つ）
-  const [equals, setEqualsS] = useState(false)
-  const equalsRef = useRef(false)
-  const setEquals = (on: boolean) => {
-    equalsRef.current = on
-    setEqualsS(on)
+  // W・H の式のカーソル（単位の番号）。同じ操作の中で続けて使えるよう手元にも持つ
+  const [cursor, setCursorS] = useState(0)
+  const cursorRef = useRef(0)
+  const setCursor = (c: number) => {
+    cursorRef.current = c
+    setCursorS(c)
   }
-  // 「＝」で始めた入力中にセルを押して入れられなかった理由（キーの上の行に出す）
+  // 入力中にセルを押して寸法を入れられなかった理由（キーの上の行に出す）
   const [refMsg, setRefMsg] = useState<string | null>(null)
   // 名前の欄の書きかけ（確定するまで保存しない。名前の変更は式の参照のつけ替えを伴うため）
   const [nameDraft, setNameDraft] = useState('')
@@ -262,13 +261,9 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     }
     // アプリのキーを出すときは、スマホのキーボードをしまう
     closeKeyboard()
-    if (cell.field === 'qty') {
-      setEquals(false)
-      return
-    }
-    // 部材の寸法・調整寸法を使っている式は「＝」で始まった形で開く（仕様書 20.2）
+    if (cell.field === 'qty') return
+    // カーソルは式の終わり。第1.6版までの「＝」で始めた式は「＝」を外した形で開く（入れ直すと「＝」の無い形で保存する）
     const raw = part?.expr[cell.field] ?? ''
-    setEquals(opensAsFormula(raw))
     setCursor(formulaUnits(splitLeadingEquals(raw).rest).length)
   }
   const selectRef = useRef(selectCell)
@@ -321,10 +316,14 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   const padOpen = sel !== null && sel.field !== 'name'
   const anySel = sel !== null
 
-  /** 「＝」で始めた W・H の入力中か（このときは長押しのメニューを出さない。セルを押すのは寸法を入れる操作なので） */
+  /**
+   * W・H の入力中で、ほかの部材の W・H のセルを押すと寸法が入るときか（欄が空か、カーソルのすぐ前が記号。仕様書 25.7）。
+   * このときは長押しのメニューを出さない（セルを押すのは寸法を入れる操作なので）
+   */
   const formulaPicking = () => {
     const c = curCell()
-    return equalsRef.current && c !== null && (c.field === 'W' || c.field === 'H')
+    if (c === null || (c.field !== 'W' && c.field !== 'H')) return false
+    return canInsertRef(jobRef.current.parts[c.row]?.expr[c.field] ?? '', cursorRef.current)
   }
 
   // 欄を選んでいる間：表とキーの外を押したら閉じる（ほかの表のセルは押したことが決まってから。useOutsideEnd）
@@ -405,21 +404,23 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   }
 
   /**
-   * 「＝」で始めた入力中に、ほかのセルを押したとき（仕様書 20.2）：W・H なら その寸法（部材名.W）をカーソルの位置に入れる。
-   * 入力しているセルはそのまま。名前の無い部材は入れずに知らせる。名前・枚数のセルは何もしない
+   * W・H の入力中に、ほかの部材の W・H のセルを押したとき（仕様書 25.7）：寸法を入れたら true（入力しているセルはそのまま）。
+   * 欄が空かカーソルのすぐ前が記号でなければ、部材の無い空の行なら false（呼ぶ側が入力を終えて押したセルを選ぶ）。
+   * 名前の無い部材は入れずに知らせる（入力は続ける。true）
    */
-  const putRef = (editing: TableCell, row: number, field: TableField) => {
-    if (field !== 'W' && field !== 'H') return
-    if (editing.field !== 'W' && editing.field !== 'H') return
+  const putRef = (editing: TableCell, row: number, field: TableField): boolean => {
+    if (field !== 'W' && field !== 'H') return false
+    if (editing.field !== 'W' && editing.field !== 'H') return false
     const ps = jobRef.current.parts
     const target = ps[row]
-    if (!target || !hasName(target)) {
+    const raw = ps[editing.row]?.expr[editing.field] ?? ''
+    if (!target || !canInsertRef(raw, cursorRef.current)) return false
+    if (!hasName(target)) {
       setRefMsg('名前の無い部材は式で使えません。先に名前を入れてください')
-      return
+      return true
     }
-    const axis = editing.field
-    const value = splitLeadingEquals(ps[editing.row]?.expr[axis] ?? '').rest
-    editExpr(editing.row, axis, insertAt(value, cursor, `${target.name}.${field}`))
+    editExpr(editing.row, editing.field, insertAt(splitLeadingEquals(raw).rest, cursorRef.current, `${target.name}.${field}`))
+    return true
   }
 
   /** セルを押したとき：1回目は選ぶ、選んでいるセルをもう一度押すと入力（仕様書 17.1） */
@@ -428,12 +429,9 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     const editing = curCell()
     if (editing) {
       if (editing.row === row && editing.field === field) return
-      // 「＝」で始めた W・H の入力中は、押したセルの寸法を式に入れる（入力は続ける）
-      if (equalsRef.current && (editing.field === 'W' || editing.field === 'H')) {
-        putRef(editing, row, field)
-        return
-      }
-      // 入力中にほかのセルを押したら、入力を終えて そのセルを選ぶ
+      // W・H の入力中に、欄が空か記号の後でほかの部材の W・H を押したら、その寸法を式に入れる（入力は続ける）
+      if (putRef(editing, row, field)) return
+      // それ以外は、入力を終えて そのセルを選ぶ
       selectCell(null)
       selectRange(singleRange(p))
       return
@@ -545,7 +543,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   const rowMsg = sel?.field === 'name' ? (nameMsg ?? liveNameError) : null
 
   const padAxis: Axis | null = sel && (sel.field === 'W' || sel.field === 'H') ? sel.field : null
-  // 入力中の式に入っている部材（色の枠の番号。鍵はそろえた部材名）。入力していないときは空
+  // 入力中の式に入っている部材（色の枠の番号。鍵はそろえた部材名）。入力していないときは空。「＝」で始まる古い式は「＝」を外した形
   const editingExpr = padAxis && selPart ? splitLeadingEquals(selPart.expr[padAxis]).rest : ''
   const refColors = refColorsOf(editingExpr)
   const refCells = refCellsOf(editingExpr)
@@ -846,11 +844,6 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
                   value={editingExpr}
                   cursor={cursor}
                   onEdit={(e) => editExpr(sel.row, padAxis, e)}
-                  equals={equals}
-                  onEquals={(on) => {
-                    setRefMsg(null)
-                    setEquals(on)
-                  }}
                   refColors={refColors}
                   refMsg={refMsg}
                   finished={selPart ? dimsOf(selPart.id)?.finishedByAxis[padAxis] : undefined}
@@ -896,8 +889,6 @@ interface ExprKeysProps {
   value: string
   cursor: number
   onEdit: (e: Edit) => void
-  equals: boolean
-  onEquals: (on: boolean) => void
   refColors: ReadonlyMap<string, number>
   /** セルを押して寸法を入れられなかった理由 */
   refMsg: string | null
@@ -915,8 +906,6 @@ function ExprKeys({
   value,
   cursor,
   onEdit,
-  equals,
-  onEquals,
   refColors,
   refMsg,
   finished,
@@ -935,20 +924,12 @@ function ExprKeys({
           <b>{axis}</b>
         </span>
         <span className="pt-show-expr">
-          {empty && !equals ? (
-            <span className="pt-show-hint">数字か、＝ で式を入れる</span>
+          {empty ? (
+            <span className="pt-show-hint">数字か式を入れる（部材の W・H を押すと入ります）</span>
           ) : (
-            // 式を押すと、押した所にカーソルが移る（仕様書 18.7）。「＝」で始めた入力は「＝」を付けて出す（仕様書 20.2）
-            <FormulaView
-              value={value}
-              adjusts={adjusts}
-              caret={cursor}
-              equals={equals}
-              refColors={refColors}
-              onCaret={(c) => onEdit({ text: value, cursor: c })}
-            />
+            // 式を押すと、押した所にカーソルが移る（仕様書 18.7）
+            <FormulaView value={value} adjusts={adjusts} caret={cursor} refColors={refColors} onCaret={(c) => onEdit({ text: value, cursor: c })} />
           )}
-          {equals && empty && <span className="pt-show-hint pick">部材の W・H を押すと入ります</span>}
         </span>
         {shownErrors.length > 0 ? (
           <span className="pt-show-err">{shownErrors.join('。')}</span>
@@ -960,8 +941,6 @@ function ExprKeys({
         value={value}
         cursor={cursor}
         onEdit={onEdit}
-        equals={equals}
-        onEquals={onEquals}
         ariaLabel={`${axis} の式のボタン`}
         onNext={onNext}
         onClose={onClose}

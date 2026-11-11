@@ -853,8 +853,18 @@ h3 > .help {
   flex-direction: column;
   gap: 6px;
 }
+/* 式のキー：5列（20 等分の 4 ずつ）。一番上の段の ＋ − × ÷ は4つを同じ幅で（5 ずつ。第2.1版で「＝」をなくした） */
 .pad-keys.expr-keys {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(20, minmax(0, 1fr));
+}
+.expr-keys .pad-key {
+  grid-column: span 4;
+}
+.expr-keys .pad-key.span2 {
+  grid-column: span 8;
+}
+.expr-keys .pad-key.top {
+  grid-column: span 5;
 }
 .expr-keys .pad-key {
   min-height: 44px;
@@ -895,19 +905,6 @@ h3 > .help {
 }
 .expr-keys .pad-key.done .pad-key-sub {
   font-size: 13px;
-}
-/* 「＝」で始めた入力中は「＝」のキーに色を付ける */
-.pad-key.eq.on {
-  background: var(--fin-soft);
-  border-color: var(--fin);
-  color: var(--fin);
-  font-weight: 700;
-}
-/* キーの上の行の式の先頭の「＝」 */
-.expr-eq {
-  font-weight: 700;
-  color: var(--fin);
-  margin-right: 2px;
 }
 .pt-show-hint.pick {
   margin-left: 6px;

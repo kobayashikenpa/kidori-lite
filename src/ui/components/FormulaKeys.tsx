@@ -1,5 +1,6 @@
 // 式のボタンの並び（仕様書 20.1。スマホの数字キーボードと同じく、真ん中の3列が数字で 1 2 3 が上）：
-//   ＝ ＋ − × ÷ ／ 全部消す 1 2 3 ⌫ ／ ◀ 4 5 6 ▶ ／ ( 7 8 9 ) ／ 閉じる 0（2列） . 次へ
+//   ＋ − × ÷（4つを同じ幅で）／ 全部消す 1 2 3 ⌫ ／ ◀ 4 5 6 ▶ ／ ( 7 8 9 ) ／ 閉じる 0（2列） . 次へ
+// 第2.1版（仕様書 25.7）で「＝」のキーをなくし、一番上の段は ＋ − × ÷ の4つを詰めて並べる（式は「＝」なしで打ち始める）。
 // 部材の寸法・調整寸法はキーでなく、表のセルを押して入れる（仕様書 20.2・21.2。第1.7版でキーの上の調整寸法のボタンはなくした）。
 // 部材の表・調整寸法の表のアプリのキーで使う。枚数・調整寸法の寸法のキーも同じ並び（使わないキーは薄く出して押せない）。
 // 計算はしない（式の文字とカーソルを変えるだけ。formulaEdit.ts）。kidori の ui/components/FormulaInput.tsx のボタンの部分をもとにしたもの
@@ -26,7 +27,7 @@ const keepFocus = (e: PointerEvent) => e.preventDefault()
 /**
  * 式を、参照・調整寸法を色つきの塊にして見せる。caret（単位の番号）を渡すとカーソルを出す。
  * onCaret を渡すと、式を押した所にカーソルを移す（仕様書 18.7。塊の中は近いほうの端。formulaEdit の caretFromTap）。
- * equals なら先頭に「＝」を付けて出す（仕様書 20.2。「＝」は式の文字には入れない）。
+ * 「＝」は出さない（第2.1版 仕様書 25.7。保存してある古い式の先頭の「＝」は、呼ぶ側が外して渡す）。
  * refColors を渡すと、部材の寸法の塊を、表の色の枠と同じ色にする（鍵はそろえた部材名）
  */
 export function FormulaView({
@@ -34,21 +35,18 @@ export function FormulaView({
   adjusts,
   caret,
   onCaret,
-  equals = false,
   refColors,
 }: {
   value: string
   adjusts: readonly Adjust[]
   caret?: number
   onCaret?: (cursor: number) => void
-  equals?: boolean
   refColors?: ReadonlyMap<string, number>
 }) {
   const units = formulaUnits(value)
   const labels = formulaLabels(value, adjusts)
   const body = (
     <>
-      {equals && <span className="expr-eq">＝</span>}
       {units.map((u, i) => {
         const gap = i > 0 && u.start > units[i - 1].end
         // 削除した調整寸法は赤で見せる（直す場所が分かるように）
@@ -70,7 +68,7 @@ export function FormulaView({
   )
   if (!onCaret) return body
   const tap = (e: MouseEvent<HTMLSpanElement>) => {
-    // 単位ごとの位置を測る（カーソルの棒と「＝」は数えない。「＝」を押したら先頭）
+    // 単位ごとの位置を測る（カーソルの棒は数えない）
     const boxes = [...e.currentTarget.querySelectorAll('.expr-unit')].map((el) => el.getBoundingClientRect())
     onCaret(caretFromTap(boxes, e.clientX, e.clientY))
   }
@@ -82,41 +80,36 @@ export function FormulaView({
 }
 
 interface Props {
-  /** 式の文字（先頭の「＝」は入れない） */
+  /** 式の文字 */
   value: string
   /** カーソル（単位の番号） */
   cursor: number
   /** 式かカーソルが変わったとき */
   onEdit: (e: Edit) => void
-  /** 「＝」で始めた入力か（仕様書 20.2） */
-  equals?: boolean
-  /** 「＝」を付けた・外したとき（「＝」のキー・カーソルが先頭のときの 1字消す・全部消す） */
-  onEquals?: (on: boolean) => void
   /** 「閉じる」「次へ」（W・H・枚数・調整寸法で同じ位置） */
   onClose: () => void
   onNext: () => void
   /**
    * 数字だけのキーにする（枚数：仕様書 16.2・20.1、調整寸法の寸法：仕様書 21.1）：数字・1字消す・全部消す だけ押せる
-   * （onKey に '0'〜'9'・'back'・'clear'。decimal なら小数点 '.' も）。＝・記号・( )・◀▶ は同じ場所に薄く出して押せない
+   * （onKey に '0'〜'9'・'back'・'clear'。decimal なら小数点 '.' も）。記号・( )・◀▶ は同じ場所に薄く出して押せない
    */
   numeric?: { onKey: (key: string) => void; decimal?: boolean }
   id?: string
   ariaLabel?: string
 }
 
-/** キーの1つ（表示, 入れる文字か操作）。null は「0」の2列目（何も置かない） */
+/** キーの1つ（表示, 入れる文字か操作）。top は一番上の段（4つを同じ幅で並べる） */
 type KeyDef =
-  | { kind: 'put'; label: string; k: PadKey; aria?: string }
-  | { kind: 'eq' | 'clear' | 'back' | 'left' | 'right' | 'close' | 'next' }
+  | { kind: 'put'; label: string; k: PadKey; aria?: string; top?: boolean }
+  | { kind: 'clear' | 'back' | 'left' | 'right' | 'close' | 'next' }
 
-/** キーの並び（5列 × 5段。仕様書 20.1）。0 は2列ぶん */
+/** キーの並び（一番上の段は4つ、ほかは5列。仕様書 20.1・25.7）。0 は2列ぶん */
 const LAYOUT: KeyDef[][] = [
   [
-    { kind: 'eq' },
-    { kind: 'put', label: '＋', k: '+', aria: '足す' },
-    { kind: 'put', label: '−', k: '-', aria: '引く' },
-    { kind: 'put', label: '×', k: '*', aria: '掛ける' },
-    { kind: 'put', label: '÷', k: '/', aria: '割る' },
+    { kind: 'put', label: '＋', k: '+', aria: '足す', top: true },
+    { kind: 'put', label: '−', k: '-', aria: '引く', top: true },
+    { kind: 'put', label: '×', k: '*', aria: '掛ける', top: true },
+    { kind: 'put', label: '÷', k: '/', aria: '割る', top: true },
   ],
   [{ kind: 'clear' }, { kind: 'put', label: '1', k: '1' }, { kind: 'put', label: '2', k: '2' }, { kind: 'put', label: '3', k: '3' }, { kind: 'back' }],
   [{ kind: 'left' }, { kind: 'put', label: '4', k: '4' }, { kind: 'put', label: '5', k: '5' }, { kind: 'put', label: '6', k: '6' }, { kind: 'right' }],
@@ -130,7 +123,7 @@ const LAYOUT: KeyDef[][] = [
   [{ kind: 'close' }, { kind: 'put', label: '0', k: '0' }, { kind: 'put', label: '.', k: '.', aria: '小数点' }, { kind: 'next' }],
 ]
 
-export function FormulaKeys({ value, cursor, onEdit, equals = false, onEquals, onClose, onNext, numeric, id, ariaLabel }: Props) {
+export function FormulaKeys({ value, cursor, onEdit, onClose, onNext, numeric, id, ariaLabel }: Props) {
   const apply = (edit: (text: string, at: number) => Edit) => onEdit(edit(value, cursor))
   const put = (piece: string) => apply((t, at) => insertAt(t, at, piece))
   const keep = keepFocus
@@ -144,19 +137,15 @@ export function FormulaKeys({ value, cursor, onEdit, equals = false, onEquals, o
   /** このキーを押せるか（数字だけのキーは数字と、decimal なら小数点） */
   const enabled = (k: PadKey) => (numeric ? isDigit(k) || (k === '.' && numeric.decimal === true) : true)
 
-  /** 1字消す：カーソルが先頭で「＝」があれば「＝」を消す（式でない入力に戻る。仕様書 20.2） */
+  /** 1字消す（部材の寸法・調整寸法は塊ごと） */
   const back = () => {
     if (numeric) numeric.onKey('back')
-    else if (cursor === 0 && equals) onEquals?.(false)
     else apply(deleteBefore)
   }
-  /** 全部消す（「＝」も外す） */
+  /** 全部消す */
   const clear = () => {
     if (numeric) numeric.onKey('clear')
-    else {
-      apply(clearAll)
-      if (equals) onEquals?.(false)
-    }
+    else apply(clearAll)
   }
 
   const keyOf = (d: KeyDef, i: number): ReactNode => {
@@ -167,26 +156,12 @@ export function FormulaKeys({ value, cursor, onEdit, equals = false, onEquals, o
           <button
             key={i}
             {...base}
-            className={`pad-key num${d.k === '0' ? ' span2' : ''}${/^\d$/.test(d.k) ? ' digit' : ' sym'}`}
+            className={`pad-key num${d.k === '0' ? ' span2' : ''}${d.top ? ' top' : ''}${/^\d$/.test(d.k) ? ' digit' : ' sym'}`}
             aria-label={d.aria}
             disabled={!enabled(d.k)}
             onClick={() => pressKeyOf(d.k)}
           >
             {d.label}
-          </button>
-        )
-      case 'eq':
-        return (
-          <button
-            key={i}
-            {...base}
-            className={`pad-key num sym eq${equals && !qty ? ' on' : ''}`}
-            aria-label="＝（式を始める）"
-            aria-pressed={!qty ? equals : undefined}
-            disabled={qty || !onEquals}
-            onClick={() => onEquals?.(true)}
-          >
-            ＝
           </button>
         )
       case 'clear':

@@ -101,6 +101,14 @@ describe('部材の表の W・H の欄（見本 6章）', () => {
     expect(cell('棚板', 'H')).toMatchObject({ kind: 'formula', value: 1760 })
   })
 
+  it('「＝」で始まる古い式（第1.6版〜第2.0版で保存したもの）もそのまま計算して出す（仕様書 25.7）', () => {
+    const old = shelfJob()
+    old.parts[3] = { ...old.parts[3], expr: { W: '＝天板.W - 20', H: '=400' } }
+    const d = computeDimensions(old, adjusts).parts[3]
+    expect(tableDimCell(old.parts[3], d, 'W', adjusts)).toMatchObject({ kind: 'formula', value: 380 })
+    expect(tableDimCell(old.parts[3], d, 'H', adjusts)).toEqual({ kind: 'number', value: 400 })
+  })
+
   it('空の欄は空（エラーにしない）', () => {
     const p = newPart('x', { quantity: null, expr: { W: '', H: '700' } })
     expect(tableDimCell(p, undefined, 'W', adjusts)).toEqual({ kind: 'empty' })
