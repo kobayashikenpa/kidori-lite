@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { selectedPartIds } from '../../engine/clipboard/cells'
 import { partLabel, partLabelAt } from '../../engine/parts'
-import type { CellClip, CellRange, Job } from '../../engine/types'
+import type { Adjust, CellClip, CellRange, Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { clipText, flagState, pasteText } from '../cellSelect'
 import { referencingOthers } from '../partsTable'
@@ -32,12 +32,14 @@ interface Props {
   onRowsDeleted?: () => void
   /** ［調整］のタブのメニュー（切り取り・コピー・貼り付け・クリアだけ。W・H は調整の欄） */
   adjust?: boolean
+  /** 調整寸法の一覧（コピー中の表示を × ÷ − の書き方にする。仕様書 25.8） */
+  adjusts?: readonly Adjust[]
 }
 
 type Rotate = 'fixed' | 'free' | 'some'
 type Done = 'open' | 'done' | 'some'
 
-export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false }: Props) {
+export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false, adjusts }: Props) {
   const [confirm, setConfirm] = useState(false)
   const ids = selectedPartIds(job, range)
   const parts = job.parts.filter((p) => ids.includes(p.id))
@@ -122,7 +124,7 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
   const rotation = flagState(parts.map((p) => p.rotatable))
   const done = flagState(parts.map((p) => p.finishedDone))
   const refs = confirm ? referencingOthers(job.parts, ids) : []
-  const clipNow = clipText(clip)
+  const clipNow = clipText(clip, adjusts)
 
   return (
     <Sheet title={title} onClose={onClose}>

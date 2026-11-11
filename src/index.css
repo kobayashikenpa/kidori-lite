@@ -906,9 +906,6 @@ h3 > .help {
 .expr-keys .pad-key.done .pad-key-sub {
   font-size: 13px;
 }
-.pt-show-hint.pick {
-  margin-left: 6px;
-}
 /* 式に入っている部材のセルの色の枠（入力中だけ） */
 .pt-cell.refc {
   position: relative;
@@ -937,7 +934,7 @@ h3 > .help {
 .refc-4 {
   --refc: var(--refc-4);
 }
-/* キーの上の行の部材の寸法の塊も、同じ色にする */
+/* 式の欄の部材の寸法の塊も、同じ色にする */
 .expr-unit.chip-ref[class*='refc-'] {
   color: var(--refc);
   box-shadow: inset 0 0 0 1.5px var(--refc);
@@ -1889,72 +1886,12 @@ h3 > .help {
   border: 0;
   background: none;
 }
-.pt-show {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
-  padding: 0 4px;
-  /* W・H と枚数でキーの全体の高さが変わらないよう、ふつうの1行より少し高くしておく */
-  min-height: 30px;
-  min-width: 0;
-}
-.pt-show-name {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--muted);
-  white-space: nowrap;
-  max-width: 55%;
-  min-width: 0;
-}
-/* 部材名が長いときは名前だけ「…」にして、W（妻手）はいつも見せる */
-.pt-show-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pt-show-name b {
-  color: var(--fin);
-}
-.pt-show-expr {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  font-size: 16px;
-  overflow-wrap: anywhere;
-}
-.pt-show-hint {
-  font-size: 13px;
-  color: var(--muted);
-}
-.pt-show-val {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--fin);
-  white-space: nowrap;
-  margin-left: auto;
-}
-.pt-show-val.small {
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--muted);
-}
-.pt-show-err {
-  flex-basis: 100%;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--err);
-}
 /* 枚数のキーも W・H と同じ並び（第1.2版 16.2）。使わないキーは薄く出して押せない */
 .pad-key:disabled {
   opacity: 0.35;
   cursor: default;
 }
-/* ---------- 調整寸法の表（第1.7版 仕様書 21.1）：番号・名前・寸法。部材の表の下 ---------- */
+/* ---------- 調整寸法の表（第1.7版 仕様書 21.1）：番号・名前・寸法。［調整］の表の下（第2.1版） ---------- */
 .adj {
   margin-top: 20px;
 }
@@ -1993,11 +1930,6 @@ h3 > .help {
 /* 式に入っている調整寸法の行の色の枠 */
 .refa {
   --refc: var(--ok);
-}
-.pt-show-expr .unit {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 400;
 }
 
 /* 表の下の「＋ 5行足す」（第1.2版 16.6） */
@@ -2209,9 +2141,130 @@ h3 > .help {
 .pa-err {
   font-size: 14px;
 }
-.pt-show-name b.adj-ink {
-  color: var(--ok);
-}
 .pt.pt-edit.adjtab .pt-item:last-child .pt-no {
   border-bottom-left-radius: 9px;
+}
+
+/* ---------- タブと式の欄を画面の上に止める（第2.1版 仕様書 25.8） ---------- */
+.parts-sticky {
+  position: sticky;
+  z-index: 4;
+  margin: 0 -16px;
+  padding: 8px 16px 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+/* 式の欄の置き場所：中身が無いとき（名前のセル・何も選んでいない）も同じ高さの空の欄を出す（表の位置がずれない） */
+.fx-slot {
+  position: relative;
+  margin-top: 6px;
+  min-height: 44px;
+}
+.fx-slot:empty::before {
+  content: '';
+  display: block;
+  height: 44px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+.fx-row {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.fx-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fin);
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.fx-slot.adjust .fx-bar {
+  color: var(--ok);
+}
+.fx-slot.cut .fx-bar {
+  color: var(--ink);
+}
+.fx-bar.editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* ［木取り］のタブの式の欄は見るだけ */
+.fx-bar.view {
+  cursor: default;
+  background: var(--sunk);
+}
+.fx-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 700;
+}
+.fx-chars {
+  white-space: pre;
+}
+.fx-hint {
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.fx-note {
+  flex: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+.fx-done {
+  appearance: none;
+  flex: none;
+  width: 52px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+/* エラーの理由は欄のすぐ下に、表に重ねて出す（表の位置がずれないように） */
+.fx-err {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 1;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--err);
+  background: var(--err-soft);
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+}
+/* ［木取り］のタブで押して選んだセルの印（仕上がりの式を上の欄に出しているセル） */
+.pt.cut button.pt-cell {
+  cursor: pointer;
+}
+.pt.cut .pt-cell.picked {
+  box-shadow: inset 0 0 0 3px var(--accent);
 }

@@ -1,7 +1,8 @@
 // セルを選ぶ（第1.3版。仕様書 17.1）の画面の手伝い：選んでいる範囲（四角）の持ち方と、コピー・貼り付けの知らせの文。
 // 計算（コピー・貼り付け・消す・行を削除）は engine/clipboard/cells.ts と store の reducer が行う
 import type { PasteSkip } from '../engine/clipboard/cells'
-import type { CellClip, CellCol, CellPos, CellRange } from '../engine/types'
+import { formulaText } from '../engine/formula/display'
+import type { Adjust, CellClip, CellCol, CellPos, CellRange } from '../engine/types'
 
 /** セルの鍵（"行:列"） */
 export const cellKey = (pos: CellPos): string => `${pos.row}:${pos.col}`
@@ -60,12 +61,17 @@ export function clampRange(r: CellRange, rowCount: number): CellRange | null {
 
 const CLIP_TEXT_MAX = 10
 
-/** 今コピーしているもの（部材の表・調整寸法の表で同じ）：「コピー中：1つ（400）」「コピー中：2行×2列」（切り取りなら「切り取り中：…」）。無ければ null */
-export function clipText(clip: (Pick<CellClip, 'rows' | 'cols' | 'cells'> & { cut?: unknown }) | null): string | null {
+/**
+ * 今コピーしているもの（部材の表・調整寸法の表で同じ）：「コピー中：1つ（400）」「コピー中：2行×2列」（切り取りなら「切り取り中：…」）。無ければ null。
+ * adjusts を渡すと、1つのセルの中身を式の書き方（× ÷ −、調整寸法は メラミン1。第2.1版 仕様書 25.8）で出す。
+ * 部材名には式の記号を使えず、枚数は数字だけなので、どの列から写したかによらず同じ書き方でよい
+ */
+export function clipText(clip: (Pick<CellClip, 'rows' | 'cols' | 'cells'> & { cut?: unknown }) | null, adjusts?: readonly Adjust[]): string | null {
   if (!clip) return null
   const head = clip.cut ? '切り取り中' : 'コピー中'
   if (clip.rows === 1 && clip.cols === 1) {
-    const t = clip.cells[0]?.[0] ?? ''
+    const raw = clip.cells[0]?.[0] ?? ''
+    const t = adjusts ? formulaText(raw, adjusts) : raw
     const shown = t === '' ? '空' : [...t].length > CLIP_TEXT_MAX ? `${[...t].slice(0, CLIP_TEXT_MAX).join('')}…` : t
     return `${head}：1つ（${shown}）`
   }

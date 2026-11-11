@@ -785,3 +785,12 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 - 調整寸法の表（`AdjustTable`）は `PartAdjustTable` の下に置く（`PartsScreen` からは `PartAdjustTable` だけ）。`picking: ((row) => boolean) | null` は、入力中で `canInsertRef`（14.8）が true の間だけ渡す。押した行が式で使える行なら `{n:id}` を入れて true、書きかけの行は「名前と寸法をそろえると使えます」と出して true。false・空の行・番号・見出しは、調整寸法の表がふつうにそのセルを選び（`claimOpen('cellRange')` で［調整］の表の範囲が外れ）、入力が終わる
 - 寸法を変える・消すときの確認（21.3）は今の `AdjustTable` のまま（`adjustChangeUsages` が調整の欄で数える。14.4）
 - `CellMenu`：貼れなかったとき（［仕上がり］と［調整］をまたいだ など）もメニューを閉じて理由を出す（［仕上がり］も同じ。暫定）
+
+### 14.10 タブのすぐ下の式の欄（U-29。spec 25.8）
+
+- `screens/PartsScreen.tsx`：タブと式の欄の置き場所（`.fx-slot`）を `.parts-sticky`（`position: sticky`。`top` は上の仕事の名前の帯 `.topbar` の高さを測った値）に入れて画面の上に止める。表は選んでいるセルの中身をこの置き場所へ `createPortal` で出す（置き場所の要素は state で持ち、各表に `barSlot` で渡す）。置き場所が空のときは CSS（`:empty::before`）で同じ高さの点線の空の欄を出す（表の位置がずれない）
+- `components/FormulaBar.tsx`：式の欄。中身は `ui/fxBar.ts` の `BarContent`（`expr`＝式を `FormulaView` の塊つきで、`text`＝枚数・調整寸法の寸法）。選んでいるだけのときは押すと `onPress`（入力を始める）、入力中はカーソル（式を押すとその位置。`caretFromTap`）と右の「✓」（`onDone`）、`onPress` が無ければ見るだけ。エラーの理由は欄のすぐ下に重ねて出す（`.fx-err`。表を押し下げない）。計算した寸法は欄に出さない（セルに出ている）
+- `ui/fxBar.ts`（テストつき）：`barField(range)`（範囲の左上が W・H・枚数ならその列）、`partBar(parts, range, tab)`（［仕上がり］［木取り］は仕上がりの式（「＝」は外す）、［調整］は調整の式、枚数は枚数。部材の無い空の行は空の中身）、`adjustRowBar(rows, range)`（調整寸法の表の寸法のセル）、`barErrors(errors, axis, tab, editing)`（［仕上がり］は仕上がりの欄のエラーだけ、ほかはその軸全部。入力中は `errorsWhileEditing`）
+- 各表：`PartsTable`・`PartAdjustTable`・`AdjustTable` は、キーの上の行（`ExprKeys`・`QtyKeys` の `.pt-show`）をなくし、キーだけを画面の下に出す。入力中は欄も「中」とみなす（`useOutsideEnd` の inside に `barSlot`）。`CutTable` は W・H・枚数のセルを押すと選んだ印（`.picked`）を付け、欄に見るだけで出す（もう一度押すか外を押すと外す）。［調整］の枚数のセルは見るだけ（欄を押しても入力しない）
+- `useGrid.ts` の `stickyBottom()`：画面の上に止めてあるもの（`.topbar`・`.parts-sticky`）の下の端。入力している行を見せるスクロール（`useRevealRow`）と、取っ手を引いたときの端のスクロール（`edgeDelta`）がこの下を上の端とみなす
+- コピー中の表示：`cellSelect.ts` の `clipText(clip, adjusts?)` は、adjusts を渡すと1つのセルの中身を `formulaText`（× ÷ −・メラミン1）で出す（部材の表・［調整］の表・長押しのメニュー）

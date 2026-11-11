@@ -10,6 +10,8 @@
 // そうでなければ入力を終えて押したセルを選ぶ（第2.1版 仕様書 25.7。「＝」のキーは無い。判定は formulaEdit の canInsertRef）。
 // 第2.1版：調整寸法の表は［調整］のタブへ移した（仕様書 25.3）。［仕上がり］の式では調整寸法を使わない（仕様書 25.4）。
 // 選ぶ・取っ手・長押しの指の動きは useGrid（調整寸法の表と同じ仕組み）
+// 第2.1版（仕様書 25.8）：選んでいるセルの中身は、タブのすぐ下の式の欄（FormulaBar。barSlot）に出す。欄を押すか、選んでいるセルをもう一度押すと入力。
+// キーの上にあった行（部材名・W・入れている式）はなくし、エラーの理由は式の欄のすぐ下に出す。
 // 第2.0版（仕様書 24）：見出しを長押しすると並べ替えのメニュー（大きい順・小さい順／あいうえお順・逆の順。並べ替えは engine の sortParts）。
 // 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）
 import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
@@ -42,10 +44,12 @@ import {
   type TableCell,
   type TableField,
 } from '../partsTable'
+import { barErrors, barField, partBar } from '../fxBar'
 import { useLongPress } from '../useLongPress'
 import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
 import { CellMenu } from './CellMenu'
-import { FormulaKeys, FormulaView } from './FormulaKeys'
+import { FormulaBar } from './FormulaBar'
+import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
 import { Sheet } from './Sheet'
 
@@ -57,6 +61,8 @@ interface Props {
   clip: CellClip | null
   dispatch: (action: StoreAction) => ReduceResult
   onError: (message: string | null) => void
+  /** 式の欄の置き場所（PartsScreen のタブのすぐ下。仕様書 25.8） */
+  barSlot: HTMLElement | null
   ref?: Ref<PartsTableHandle>
 }
 
@@ -101,7 +107,7 @@ function sortChoices(f: TableField): { order: SortOrder; label: string }[] {
       ]
 }
 
-export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }: Props) {
+export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlot, ref }: Props) {
   const parts = job.parts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ、仕事ごとに覚える。保存しない）
   const [minRows, setMinRows] = useState(() => sessionTableMinRows(job.id))
@@ -157,6 +163,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   })
   const tableRef = useRef<HTMLDivElement>(null)
   const padRef = useRef<HTMLDivElement>(null)
+  const barSlotRef = useRef(barSlot)
+  useEffect(() => {
+    barSlotRef.current = barSlot
+  })
   const nameInputs = useRef(new Map<number, HTMLInputElement>())
   const rowEls = useRef(new Map<number, HTMLDivElement>())
   const headEls = useRef<(HTMLButtonElement | null)[]>([])
@@ -326,10 +336,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     return canInsertRef(jobRef.current.parts[c.row]?.expr[c.field] ?? '', cursorRef.current)
   }
 
-  // 欄を選んでいる間：表とキーの外を押したら閉じる（ほかの表のセルは押したことが決まってから。useOutsideEnd）
+  // 欄を選んでいる間：表・キー・式の欄の外を押したら閉じる（ほかの表のセルは押したことが決まってから。useOutsideEnd）
   useOutsideEnd(
     anySel,
-    (t) => !!tableRef.current?.contains(t) || !!padRef.current?.contains(t),
+    (t) => !!tableRef.current?.contains(t) || !!padRef.current?.contains(t) || !!barSlotRef.current?.contains(t),
     () => selectRef.current(null),
   )
   useEffect(() => {
@@ -554,8 +564,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
     const c = refColors.get(key)
     return c !== undefined && refCells.has(`${key}.${axis}`) ? ` refc refc-${c}` : ''
   }
-  /** 部材の1つの軸の寸法のエラー */
-  const axisErrors = (partId: string, axis: Axis) => dimsOf(partId)?.errors.filter((x) => x.axis === axis) ?? []
+  /** 部材の1つの軸の、仕上がりの欄のエラー（［仕上がり］のタブは調整の欄のエラーを出さない） */
+  const axisErrors = (partId: string, axis: Axis) => dimsOf(partId)?.errors.filter((x) => x.axis === axis && x.field === 'finished') ?? []
 
   // 表に出す範囲（行が減って下にはみ出したら収める）
   const shown = range ? clampRange(range, rowCount) : null
@@ -565,11 +575,25 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
   const fillExt = dragging === 'fill' && fillTo && shown ? fillExtension(shown, fillTo) : null
   // 切り取った元の点線は、［仕上がり］で切り取ったものだけ（［調整］の切り取りは［調整］の表に出す）
   const cutKey = rangeKey(clip?.cut && clip.source !== 'adjust' && clip.cut.jobId === job.id ? clampRange(clip.cut.range, rowCount) : null)
-  const clipNow = clipText(clip)
+  const clipNow = clipText(clip, adjusts)
   const { handleAt, fillBox, cutBox } = useGridBoxes(tableRef, rowEls, headEls, shown, rangeKey(fillExt), cutKey)
 
   const rows = Array.from({ length: rowCount }, (_, i) => i)
   const showHandles = shown !== null && shownEnd !== null && !anySel
+
+  // 式の欄（仕様書 25.8）：入力中はそのセル、選んでいるだけのときは範囲の左上のセル。名前のセルは空
+  const barRange = sel ? singleRange({ row: sel.row, col: colOf(sel.field) }) : shown
+  const barAt = barField(barRange)
+  const bar = sel?.field === 'name' ? null : partBar(parts, barRange, 'finished')
+  const barPart = barRange ? parts[barRange.top] : undefined
+  const barWho = barPart && hasName(barPart) ? barPart.name : barRange ? `#${barRange.top + 1}` : ''
+  const barEmpty = bar?.kind === 'expr' ? bar.expr.trim() === '' : bar?.text === ''
+  const barErrs = refMsg
+    ? [refMsg]
+    : barPart && (barAt === 'W' || barAt === 'H') && !(padOpen && barEmpty)
+      ? barErrors(dimsOf(barPart.id)?.errors ?? [], barAt, 'finished', padOpen)
+      : []
+  const qtyNote = (q: number | null | undefined) => (q === null || q === undefined ? '空＝木取りに入れない' : q === 0 ? '寸法だけ（切らない）' : `${q}枚`)
 
   // 長押しのメニューの見出し：1つのセルは「天板 の W」、範囲は「3行×2列（2〜4行目）」
   const menuTitle = (() => {
@@ -798,6 +822,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           range={shown}
           title={menuTitle}
           clip={clip}
+          adjusts={adjusts}
           dispatch={dispatch}
           onClose={() => setMenuOpen(false)}
           onNotice={setNotice}
@@ -822,37 +847,53 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
           </div>
         </Sheet>
       )}
+      <FormulaBar
+        slot={barSlot}
+        content={bar}
+        adjusts={adjusts}
+        label={barAt ? `${barWho} の ${FIELD_LABEL[barAt]}` : ''}
+        editing={padOpen}
+        caret={cursor}
+        onCaret={(c) => {
+          if (sel && padAxis) editExpr(sel.row, padAxis, { text: editingExpr, cursor: c })
+        }}
+        refColors={refColors}
+        onPress={() => {
+          if (barRange && barAt) startInput({ row: barRange.top, field: barAt })
+        }}
+        onDone={() => selectCell(null)}
+        hint={barAt === 'qty' ? '枚数を入れる' : '数字か式を入れる'}
+        errors={barErrs}
+        note={padOpen && sel?.field === 'qty' ? qtyNote(selPart?.quantity) : undefined}
+      />
       {padOpen &&
         sel &&
         createPortal(
           <div className="numpad pt-pad" ref={padRef} role="group" aria-label={`${selLabel} の ${FIELD_LABEL[sel.field]} のキー`}>
             <div className="numpad-in">
               {sel.field === 'qty' ? (
-                <QtyKeys
+                // 枚数のキーも W・H と同じ並び（仕様書 16.2・20.1）。使わないキーは薄く出して押せない
+                <FormulaKeys
                   key={`${sel.row}-qty`}
-                  label={selLabel}
-                  quantity={selPart?.quantity ?? null}
-                  onKey={(k) => pressQty(sel.row, k)}
+                  value=""
+                  cursor={0}
+                  onEdit={() => {}}
+                  numeric={{ onKey: (k) => pressQty(sel.row, k) }}
+                  ariaLabel="枚数のボタン"
                   onNext={goNext}
                   onClose={() => selectCell(null)}
                 />
               ) : (
                 padAxis && (
-                <ExprKeys
-                  key={`${sel.row}-${padAxis}`}
-                  label={selLabel}
-                  axis={padAxis}
-                  value={editingExpr}
-                  cursor={cursor}
-                  onEdit={(e) => editExpr(sel.row, padAxis, e)}
-                  refColors={refColors}
-                  refMsg={refMsg}
-                  finished={selPart ? dimsOf(selPart.id)?.finishedByAxis[padAxis] : undefined}
-                  errors={selPart ? [...new Set(errorsWhileEditing(axisErrors(selPart.id, padAxis)).map((x) => x.message))] : []}
-                  adjusts={adjusts}
-                  onNext={goNext}
-                  onClose={() => selectCell(null)}
-                />
+                  <FormulaKeys
+                    key={`${sel.row}-${padAxis}`}
+                    value={editingExpr}
+                    cursor={cursor}
+                    onEdit={(e) => editExpr(sel.row, padAxis, e)}
+                    ariaLabel={`${padAxis} の式のボタン`}
+                    onNext={goNext}
+                    onClose={() => selectCell(null)}
+                  />
                 )
               )}
             </div>
@@ -881,109 +922,5 @@ function HeadButton({ buttonRef, className, label, onPress, onLong, children }: 
     <button type="button" ref={buttonRef} className={className} aria-label={label} {...longPress(onPress, onLong)}>
       {children}
     </button>
-  )
-}
-
-interface ExprKeysProps {
-  label: string
-  axis: Axis
-  value: string
-  cursor: number
-  onEdit: (e: Edit) => void
-  refColors: ReadonlyMap<string, number>
-  /** セルを押して寸法を入れられなかった理由 */
-  refMsg: string | null
-  finished: number | undefined
-  errors: string[]
-  adjusts: readonly Adjust[]
-  onNext: () => void
-  onClose: () => void
-}
-
-/** W・H のキー：上の1行に式の全文と計算した寸法（エラーなら赤で理由）、その下に式のボタン */
-function ExprKeys({
-  label,
-  axis,
-  value,
-  cursor,
-  onEdit,
-  refColors,
-  refMsg,
-  finished,
-  errors,
-  adjusts,
-  onNext,
-  onClose,
-}: ExprKeysProps) {
-  const empty = value.trim() === ''
-  const shownErrors = refMsg ? [refMsg] : empty ? [] : errors
-  return (
-    <>
-      <div className="pt-show" aria-live="polite">
-        <span className="pt-show-name">
-          <span className="pt-show-label">{label}</span>
-          <b>{axis}</b>
-        </span>
-        <span className="pt-show-expr">
-          {empty ? (
-            <span className="pt-show-hint">数字か式を入れる（部材の W・H を押すと入ります）</span>
-          ) : (
-            // 式を押すと、押した所にカーソルが移る（仕様書 18.7）
-            <FormulaView value={value} adjusts={adjusts} caret={cursor} refColors={refColors} onCaret={(c) => onEdit({ text: value, cursor: c })} />
-          )}
-        </span>
-        {shownErrors.length > 0 ? (
-          <span className="pt-show-err">{shownErrors.join('。')}</span>
-        ) : (
-          finished !== undefined && !empty && <span className="pt-show-val num">＝ {fmt(finished)}</span>
-        )}
-      </div>
-      <FormulaKeys
-        value={value}
-        cursor={cursor}
-        onEdit={onEdit}
-        ariaLabel={`${axis} の式のボタン`}
-        onNext={onNext}
-        onClose={onClose}
-      />
-    </>
-  )
-}
-
-interface QtyKeysProps {
-  label: string
-  quantity: number | null
-  onKey: (key: string) => void
-  onNext: () => void
-  onClose: () => void
-}
-
-/**
- * 枚数のキー（仕様書 16.2）：W・H のキーと同じ並び・同じ高さ。数字・1字消す・全部消す・閉じる・次へ は同じ位置で、
- * 使わないキー（＝・記号・( )・◀▶・小数点）は薄く出して押せない（仕様書 20.1）
- */
-function QtyKeys({ label, quantity, onKey, onNext, onClose }: QtyKeysProps) {
-  return (
-    <>
-      <div className="pt-show" aria-live="polite">
-        <span className="pt-show-name">
-          <span className="pt-show-label">{label}</span>
-          <b>枚数</b>
-        </span>
-        <span className="pt-show-expr num">{quantity ?? ''}</span>
-        <span className="pt-show-val small">
-          {quantity === null ? '空（木取りに入れません）' : quantity === 0 ? '寸法だけ（切らない）' : `${quantity}枚`}
-        </span>
-      </div>
-      <FormulaKeys
-        value=""
-        cursor={0}
-        onEdit={() => {}}
-        numeric={{ onKey }}
-        ariaLabel="枚数のボタン"
-        onNext={onNext}
-        onClose={onClose}
-      />
-    </>
   )
 }

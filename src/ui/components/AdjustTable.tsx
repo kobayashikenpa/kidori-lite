@@ -7,6 +7,7 @@
 // 第2.1版：［調整］のタブの表の下に置く（仕様書 25.3）。［調整］の W・H を入力していて、欄が空かカーソルのすぐ前が記号の間（picking）は、
 // 行（名前か寸法のセル）を押すとその調整寸法を調整の式に入れる（仕様書 25.7）。入れないとき（picking が false を返す・空の行）は、ふつうにそのセルを選ぶ
 // （選ぶと［調整］の表の範囲が外れ、向こうの入力が終わる）
+// 寸法のセルを選ぶと、その数字をタブのすぐ下の式の欄（FormulaBar。仕様書 25.8）に出す。欄を押すか、もう一度押すと欄で入力（キーは画面の下）
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { adjustChangeUsages, adjustConflict, adjustValueText, duplicateAdjustMessage, isBlankAdjustRow, isUsableAdjust } from '../../engine/adjusts'
@@ -28,9 +29,11 @@ import {
 } from '../adjustTable'
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, pasteText, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
 import { claimOpen } from '../exclusive'
+import { adjustRowBar } from '../fxBar'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
 import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
+import { FormulaBar } from './FormulaBar'
 import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
 import { Help } from './Help'
@@ -45,6 +48,8 @@ interface Props {
   /** 入力中の式に入っている調整寸法（その行に色の枠） */
   refIds: ReadonlySet<string>
   onError: (message: string | null) => void
+  /** 式の欄の置き場所（PartsScreen のタブのすぐ下。仕様書 25.8） */
+  barSlot: HTMLElement | null
 }
 
 /** 入力しているセル（行の id と列）。rowId が null なら いちばん上の空の行 */
@@ -73,7 +78,7 @@ interface Confirm {
   run: () => void
 }
 
-export function AdjustTable({ picking, refIds, onError }: Props) {
+export function AdjustTable({ picking, refIds, onError, barSlot }: Props) {
   const { state, data, dispatch } = useJobStore()
   const rows = data.adjusts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ。保存しない）
@@ -103,11 +108,13 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
   const nameDraftRef = useRef('')
   const valueDraftRef = useRef('')
   const pickingRef = useRef(picking)
+  const barSlotRef = useRef(barSlot)
   useEffect(() => {
     dataRef.current = data
     jobIdRef.current = state.currentJobId
     selSRef.current = selS
     pickingRef.current = picking
+    barSlotRef.current = barSlot
   })
   const setSel = (s: Sel | null) => {
     selSRef.current = s
@@ -367,10 +374,10 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
   const padOpen = sel !== null && sel.col === 'value'
   const anySel = sel !== null
 
-  // 入力している間：表とキーの外を押したら入力を終える（ほかの表のセルは押したことが決まってから。useOutsideEnd）
+  // 入力している間：表・キー・式の欄の外を押したら入力を終える（ほかの表のセルは押したことが決まってから。useOutsideEnd）
   useOutsideEnd(
     anySel,
-    (t) => !!tableRef.current?.contains(t) || !!padRef.current?.contains(t),
+    (t) => !!tableRef.current?.contains(t) || !!padRef.current?.contains(t) || !!barSlotRef.current?.contains(t),
     () => leaveRef.current(endInput),
   )
   useEffect(() => {
@@ -436,6 +443,10 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
   const { handleAt, fillBox, cutBox } = useGridBoxes(tableRef, rowEls, headEls, shown, rangeKey(fillExt), cutKey)
   const showHandles = shown !== null && shownEnd !== null && !anySel && picking === null
   const lines = Array.from({ length: rowCount }, (_, i) => i)
+
+  // 式の欄（仕様書 25.8）：寸法のセルならその数字（入力中は入れている数字）。名前のセルは空
+  const bar = padOpen ? ({ kind: 'text', text: valueDraft } as const) : sel?.col === 'name' ? null : adjustRowBar(rows, shown)
+  const barRow = padOpen && sel ? sel.row : (shown?.top ?? 0)
 
   const menuTitle = (() => {
     if (!shown) return ''
@@ -662,26 +673,25 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
           </div>
         </Sheet>
       )}
+      <FormulaBar
+        slot={barSlot}
+        content={bar}
+        adjusts={[]}
+        label={`${adjustRowLabel(rows[barRow], barRow)} の寸法（調整寸法）`}
+        editing={padOpen}
+        onPress={() => {
+          if (shown) startInput({ row: shown.top, col: 'value' })
+        }}
+        onDone={close}
+        hint="数字と小数点だけ"
+        note={padOpen && valueDraft !== '' ? 'mm' : undefined}
+        errors={padOpen && msg ? [msg] : []}
+      />
       {padOpen &&
         sel &&
         createPortal(
           <div className="numpad pt-pad" ref={padRef} role="group" aria-label={`${adjustRowLabel(selRow, sel.row)} の寸法のキー`}>
             <div className="numpad-in">
-              <div className="pt-show" aria-live="polite">
-                <span className="pt-show-name">
-                  <span className="pt-show-label">{selRow?.name || `${sel.row + 1}行目`}</span>
-                  <b>寸法</b>
-                </span>
-                <span className="pt-show-expr num">
-                  {valueDraft}
-                  {valueDraft !== '' && <span className="unit"> mm</span>}
-                </span>
-                {msg ? (
-                  <span className="pt-show-err">{msg}</span>
-                ) : (
-                  <span className="pt-show-val small">数字と小数点だけ</span>
-                )}
-              </div>
               <FormulaKeys
                 value=""
                 cursor={0}

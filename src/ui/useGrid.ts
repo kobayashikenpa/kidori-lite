@@ -44,9 +44,22 @@ function cellUnder(table: HTMLElement | null, x: number, y: number): PressAt | n
   return pressAtOf(el)
 }
 
+/**
+ * 画面の上に止めてあるもの（仕事の名前の帯・部材の画面のタブと式の欄。第2.1版 仕様書 25.8）の下の端（px）。
+ * 表の行がこれより上に隠れないようにスクロールする
+ */
+export function stickyBottom(): number {
+  let bottom = 0
+  for (const sel of ['.topbar', '.parts-sticky']) {
+    const el = document.querySelector(sel)
+    if (el) bottom = Math.max(bottom, el.getBoundingClientRect().bottom)
+  }
+  return bottom
+}
+
 /** 引いている指が表の上下の端（上の見出し・下のタブの近く）にあるとき、1こまにスクロールする量（px。端に無ければ 0） */
 function edgeDelta(y: number): number {
-  const top = (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0) + EDGE_ZONE
+  const top = stickyBottom() + EDGE_ZONE
   const bottom = (document.querySelector('.tabbar')?.getBoundingClientRect().top ?? window.innerHeight) - EDGE_ZONE
   if (y < top) return -Math.min(EDGE_STEP, Math.ceil((top - y) / 3))
   if (y > bottom) return Math.min(EDGE_STEP, Math.ceil((y - bottom) / 3))
@@ -681,7 +694,7 @@ export function useRevealRow(
       const vv = window.visualViewport
       const viewTop = vv ? vv.offsetTop : 0
       const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
-      const head = document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0
+      const head = stickyBottom()
       const top = Math.max(viewTop, head)
       const bottom = padRef.current ? Math.min(viewBottom, padRef.current.getBoundingClientRect().top) : viewBottom
       const r = rowEl.getBoundingClientRect()

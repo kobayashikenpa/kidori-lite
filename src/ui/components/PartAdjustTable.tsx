@@ -5,6 +5,7 @@
 // 長押しのメニュー（切り取り・コピー・貼り付け・クリアだけ。CellMenu の adjust）・オートフィル（指の動きは useGrid）。名前・枚数は見るだけ。
 // 表の下に調整寸法の表（AdjustTable）を置き、W・H の入力中に欄が空か記号の後でその行を押すと、その調整寸法を入れる（仕様書 25.3・25.7）。
 // 入力中にほかの部材の W・H を押したら、入れずに入力を終えてそのセルを選ぶ（調整に部材の寸法は使えない。仕様書 25.9）。
+// 選んでいるセルの中身は、タブのすぐ下の式の欄（FormulaBar。仕様書 25.8）に出す（W・H は調整の式、枚数は枚数を見るだけ、名前は空）。
 // 計算は engine（computeDimensions の adjustedByAxis）、欄に出すものは partsTable.ts の adjustDimCell、保存は store の setPartAdjust など
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -20,11 +21,13 @@ import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import { canInsertRef, insertAt, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
+import { barErrors, barField, partBar } from '../fxBar'
 import { adjustCellLabel, adjustDimCell, errorsWhileEditing, nextAdjustTabCell, type AdjustDimCell } from '../partsTable'
 import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
 import { AdjustTable } from './AdjustTable'
 import { CellMenu } from './CellMenu'
-import { FormulaKeys, FormulaView } from './FormulaKeys'
+import { FormulaBar } from './FormulaBar'
+import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
 
 interface Props {
@@ -35,6 +38,8 @@ interface Props {
   clip: CellClip | null
   dispatch: (action: StoreAction) => ReduceResult
   onError: (message: string | null) => void
+  /** 式の欄の置き場所（PartsScreen のタブのすぐ下。仕様書 25.8） */
+  barSlot: HTMLElement | null
 }
 
 /** 入力している欄（部材の id と W・H） */
@@ -55,7 +60,7 @@ function cellOf(s: Sel | null, job: Job): Cell | null {
 
 const colOf = (axis: Axis): number => CELL_COLS.indexOf(axis)
 
-export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }: Props) {
+export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, barSlot }: Props) {
   const parts = job.parts
   const rowCount = parts.length
   const [menuOpen, setMenuOpen] = useState(false)
@@ -82,6 +87,10 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }:
   const tableRef = useRef<HTMLDivElement>(null)
   const padRef = useRef<HTMLDivElement>(null)
   const adjustWrapRef = useRef<HTMLDivElement>(null)
+  const barSlotRef = useRef(barSlot)
+  useEffect(() => {
+    barSlotRef.current = barSlot
+  })
   const rowEls = useRef(new Map<number, HTMLDivElement>())
   const headEls = useRef<(HTMLButtonElement | null)[]>([])
 
@@ -249,7 +258,11 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }:
   // 入力している間：表・キー・（押すと入るときは）調整寸法の表の外を押したら入力を終える
   useOutsideEnd(
     padOpen,
-    (t) => !!tableRef.current?.contains(t) || !!padRef.current?.contains(t) || (picking() && !!adjustWrapRef.current?.contains(t)),
+    (t) =>
+      !!tableRef.current?.contains(t) ||
+      !!padRef.current?.contains(t) ||
+      !!barSlotRef.current?.contains(t) ||
+      (picking() && !!adjustWrapRef.current?.contains(t)),
     () => endRef.current(),
   )
   useEffect(() => {
@@ -273,9 +286,21 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }:
   const fillExt = dragging === 'fill' && fillTo && shown ? fillExtension(shown, fillTo) : null
   // 切り取った元の点線は、［調整］で切り取ったものだけ（［仕上がり］の切り取りは［仕上がり］の表に出す）
   const cutKey = rangeKey(clip?.cut && clip.source === 'adjust' && clip.cut.jobId === job.id ? clampRange(clip.cut.range, rowCount) : null)
-  const clipNow = clipText(clip)
+  const clipNow = clipText(clip, adjusts)
   const { handleAt, fillBox, cutBox } = useGridBoxes(tableRef, rowEls, headEls, shown, rangeKey(fillExt), cutKey)
   const showHandles = shown !== null && shownEnd !== null && !padOpen
+
+  // 式の欄（仕様書 25.8）：入力中はそのセル、選んでいるだけのときは範囲の左上のセル。名前のセルは空、枚数は見るだけ
+  const barRange = sel ? singleRange({ row: sel.row, col: colOf(sel.axis) }) : shown
+  const barAt = barField(barRange)
+  const bar = partBar(parts, barRange, 'adjust')
+  const barPart = barRange ? parts[barRange.top] : undefined
+  const barWho = barPart && hasName(barPart) ? barPart.name : barRange ? `#${barRange.top + 1}` : ''
+  const barErrs = refMsg
+    ? [refMsg]
+    : barPart && (barAt === 'W' || barAt === 'H')
+      ? barErrors(dimsOf(barPart.id)?.errors ?? [], barAt, 'adjust', padOpen)
+      : []
 
   const menuTitle = (() => {
     if (!shown) return ''
@@ -433,7 +458,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }:
       )}
       {/* 調整寸法の表（仕様書 25.3）。押すと入る間は、行を押すとその調整寸法を調整の式に入れる */}
       <div ref={adjustWrapRef}>
-        <AdjustTable picking={canPick ? putAdjust : null} refIds={refIds} onError={onError} />
+        <AdjustTable picking={canPick ? putAdjust : null} refIds={refIds} onError={onError} barSlot={barSlot} />
       </div>
       {padOpen && <div className="pt-spacer" style={{ height: padH }} aria-hidden="true" />}
       {menuOpen && shown && (
@@ -442,6 +467,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }:
           range={shown}
           title={menuTitle}
           clip={clip}
+          adjusts={adjusts}
           dispatch={dispatch}
           onClose={() => setMenuOpen(false)}
           onNotice={setNotice}
@@ -449,36 +475,34 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError }:
           adjust
         />
       )}
+      <FormulaBar
+        slot={barSlot}
+        content={bar}
+        adjusts={adjusts}
+        label={barAt ? `${barWho} の ${CELL_COL_LABEL[barAt]}（調整）` : ''}
+        editing={padOpen}
+        caret={cursor}
+        onCaret={(c) => {
+          if (sel) editAdjust(sel.row, sel.axis, { text: editingText, cursor: c })
+        }}
+        // 枚数は見るだけ（押しても入力しない）
+        onPress={
+          barAt === 'W' || barAt === 'H'
+            ? () => {
+                if (barRange) startInput({ row: barRange.top, axis: barAt })
+              }
+            : undefined
+        }
+        onDone={endInput}
+        hint="− と調整寸法の行で入れる（空は調整なし）"
+        errors={barErrs}
+      />
       {padOpen &&
         sel &&
         selPart &&
         createPortal(
           <div className="numpad pt-pad" ref={padRef} role="group" aria-label={`${hasName(selPart) ? selPart.name : `#${sel.row + 1}`} の ${sel.axis}（調整）のキー`}>
             <div className="numpad-in">
-              <div className="pt-show" aria-live="polite">
-                <span className="pt-show-name">
-                  <span className="pt-show-label">{hasName(selPart) ? selPart.name : `#${sel.row + 1}`}</span>
-                  <b className="adj-ink">{sel.axis} 調整</b>
-                </span>
-                <span className="pt-show-expr">
-                  {editingText.trim() === '' ? (
-                    <span className="pt-show-hint">− と調整寸法の行で入れる（空は調整なし）</span>
-                  ) : (
-                    <FormulaView
-                      value={editingText}
-                      adjusts={adjusts}
-                      caret={cursor}
-                      onCaret={(c) => editAdjust(sel.row, sel.axis, { text: editingText, cursor: c })}
-                    />
-                  )}
-                </span>
-                {(() => {
-                  const errs = refMsg ? [refMsg] : [...new Set(errorsWhileEditing(axisErrors(selPart.id, sel.axis)).map((x) => x.message))]
-                  const v = dimsOf(selPart.id)?.adjustedByAxis[sel.axis]
-                  if (errs.length > 0) return <span className="pt-show-err">{errs.join('。')}</span>
-                  return v !== undefined && <span className="pt-show-val num">調整後 {fmt(v)}</span>
-                })()}
-              </div>
               <FormulaKeys
                 key={`${sel.row}-${sel.axis}`}
                 value={editingText}
