@@ -1,7 +1,10 @@
 // 部材の表（仕様書 15.1）の行と欄の決まり。画面から切り離して試せるようにする（寸法の計算はしない）
 import { partsReferencing } from '../engine/dimensions/resolve'
+import { isBlankAdjustExpr } from '../engine/formula/adjustExpr'
+import { formulaText } from '../engine/formula/display'
 import { isBlankPart } from '../engine/parts'
 import type { Adjust, Axis, DimensionError, Part, PartDimensions } from '../engine/types'
+import { fmt } from './format'
 import { dimCell, type DimCell } from './partCells'
 
 /** 表の欄（番号の欄は選ばない） */
@@ -90,7 +93,49 @@ export function tableDimCell(part: Part, dims: PartDimensions | undefined, axis:
   return dimCell(part, dims, axis, 'finished', adjusts)
 }
 
-/** 木取りのタブの W・H の欄：空、または木取り寸法（仕上がり ＋ 切り代）の欄 */
+/**
+ * ［調整］のタブの W・H の欄（第2.1版。仕様書 25.2）。計算はせず、engine の結果（computeDimensions）と調整の式の表示を並べるだけ
+ * - empty：仕上がりも調整も空
+ * - finished：調整が空（調整なし）。仕上がり寸法を薄く出す
+ * - adjusted：調整の値 ｜ 調整後の寸法（label は × ÷ − の書き方。例「−メラミン1×2」）
+ * - error：赤で「エラー」。仕上がり寸法のエラーも、調整の欄のエラーも出す（仕上がりがエラーなら調整後もエラー）
+ */
+export type AdjustDimCell =
+  | { kind: 'empty' }
+  | { kind: 'finished'; value: number }
+  | { kind: 'adjusted'; label: string; value: number }
+  | { kind: 'error'; label: string | null; messages: string[] }
+
+export function adjustDimCell(part: Part, dims: PartDimensions | undefined, axis: Axis, adjusts: readonly Adjust[]): AdjustDimCell {
+  const text = part.adjust[axis]
+  const blank = isBlankAdjustExpr(text)
+  if (blank && part.expr[axis].trim() === '') return { kind: 'empty' }
+  const label = blank ? null : formulaText(text, adjusts)
+  // ［調整］のタブは、その軸のエラーを全部（仕上がりの欄のものも）出す
+  const errors = dims?.errors.filter((e) => e.axis === axis) ?? []
+  const value = blank ? dims?.finishedByAxis[axis] : dims?.adjustedByAxis[axis]
+  if (errors.length > 0 || value === undefined) {
+    const messages = [...new Set(errors.map((e) => e.message))]
+    return { kind: 'error', label, messages: messages.length > 0 ? messages : ['計算できません'] }
+  }
+  return label === null ? { kind: 'finished', value } : { kind: 'adjusted', label, value }
+}
+
+/** ［調整］のタブの W・H の欄の読み上げ用の文（数は小数第1位まで） */
+export function adjustCellLabel(c: AdjustDimCell): string {
+  switch (c.kind) {
+    case 'empty':
+      return '空'
+    case 'finished':
+      return `調整なし（仕上がり ${fmt(c.value)}）`
+    case 'adjusted':
+      return `${c.label}、調整後 ${fmt(c.value)}`
+    case 'error':
+      return `${c.label ? `${c.label}、` : ''}エラー`
+  }
+}
+
+/** 木取りのタブの W・H の欄：空、または木取り寸法（調整後 ＋ 切り代。第2.1版）の欄 */
 export function cutDimCell(part: Part, dims: PartDimensions | undefined, axis: Axis, adjusts: readonly Adjust[]): TableDimCell {
   if (part.expr[axis].trim() === '') return { kind: 'empty' }
   return dimCell(part, dims, axis, 'cut', adjusts)

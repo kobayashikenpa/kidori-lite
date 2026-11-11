@@ -1,6 +1,6 @@
 // 部材の表の［木取り］のタブ（仕様書 15.1・5.1）：仕上がりのタブと同じ表の形で、番号・名前・木取り寸法 W・H・枚数（切った数）を見るだけ。
 // 押しても編集しない（入力は［仕上がり］のタブ）。枚数 0 は「切らない」、枚数が空の行は薄く出す。
-// 木取り寸法は engine（computeDimensions の cutByAxis）、切った数は engine（partCutProgress）の結果を並べるだけ
+// 木取り寸法（調整後 ＋ 切り代。第2.1版 仕様書 25.1）は engine（computeDimensions の cutByAxis）、切った数は engine（partCutProgress）の結果を並べるだけ
 import { hasName } from '../../engine/parts'
 import type { PartCutProgress } from '../../engine/progress/partProgress'
 import type { Adjust, Axis, DimensionResult, Job } from '../../engine/types'

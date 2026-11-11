@@ -677,7 +677,7 @@ h3 > .help {
 /* ---------- 部材の一覧（仕様書 5.1・5.2） ---------- */
 .parts-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .parts-tab {
@@ -702,6 +702,12 @@ h3 > .help {
   background: var(--cut-soft);
   color: var(--cut);
 }
+/* ［調整］のタブ（第2.1版 仕様書 25.1）は緑系（調整寸法の色と同じ） */
+.parts-tab.adjust[aria-selected='true'] {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
 .parts-band {
   margin-top: 10px;
   padding: 0 10px;
@@ -719,6 +725,11 @@ h3 > .help {
   color: var(--cut);
   background: var(--cut-soft);
   border-color: var(--cut);
+}
+.parts-band.adjust {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: var(--ok);
 }
 /* ---------- 下から出るシート（長押しのメニュー・取り込みの確認など） ---------- */
 .sheet-backdrop {
@@ -1642,17 +1653,6 @@ h3 > .help {
   color: var(--accent);
   font-weight: 700;
 }
-/* W・H の見出しは2段（W／妻手、H／長手。仕様書 18.4）。下の段は小さく */
-.pt-h2 {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.15;
-}
-.pt-h2-sub {
-  font-size: 10px;
-  font-weight: 400;
-}
 .pt-cell.rs {
   position: relative;
   opacity: 1 !important;
@@ -2174,4 +2174,44 @@ h3 > .help {
 .allowance-row .unit-input {
   width: 150px;
   flex: none;
+}
+
+/* ---------- ［調整］のタブの表（第2.1版 仕様書 25.2）：W・H の欄は「調整の値」を上に小さく、調整後の寸法を下に ---------- */
+.pt-dim.pa {
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.pa-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ok);
+}
+.pa-val {
+  font-size: 16px;
+  font-weight: 700;
+}
+/* 調整が空の欄は、仕上がり寸法を薄く */
+.pa-fin {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--fin);
+  opacity: 0.5;
+}
+.pt-dim.pa.bad .pa-label {
+  color: var(--err);
+  font-weight: 400;
+}
+.pa-err {
+  font-size: 14px;
+}
+.pt.adjtab .pt-cell {
+  cursor: default;
 }

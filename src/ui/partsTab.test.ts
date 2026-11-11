@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadPartsTab, savePartsTab, UI_KEY } from './partsTab'
+import { loadPartsTab, PARTS_TABS, savePartsTab, UI_KEY } from './partsTab'
 
 function memory(init: Record<string, string> = {}) {
   const m = new Map(Object.entries(init))
@@ -16,6 +16,16 @@ describe('選んでいるタブを端末ごとに覚える', () => {
     savePartsTab(s, 'cut')
     expect(loadPartsTab(s)).toBe('cut')
     expect(JSON.parse(s.m.get(UI_KEY)!)).toEqual({ other: 1, partsTab: 'cut' })
+  })
+  it('タブは ［仕上がり］［調整］［木取り］ の3つ（仕様書 25.1）', () => {
+    expect(PARTS_TABS.map((t) => t.label)).toEqual(['仕上がり', '調整', '木取り'])
+  })
+  it('［調整］のタブも覚える。第2.0版までに覚えた値（finished・cut）もそのまま読める', () => {
+    const s = memory()
+    savePartsTab(s, 'adjust')
+    expect(loadPartsTab(s)).toBe('adjust')
+    expect(loadPartsTab(memory({ [UI_KEY]: JSON.stringify({ partsTab: 'cut' }) }))).toBe('cut')
+    expect(loadPartsTab(memory({ [UI_KEY]: JSON.stringify({ partsTab: 'finished' }) }))).toBe('finished')
   })
   it('壊れた値・読めない・書けないときも画面は動く', () => {
     expect(loadPartsTab(memory({ [UI_KEY]: '{壊れ' }))).toBe('finished')

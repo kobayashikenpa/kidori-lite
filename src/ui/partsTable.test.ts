@@ -4,6 +4,8 @@ import { shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
 import { newPart } from '../store/jobs'
 import type { DimensionError } from '../engine/types'
 import {
+  adjustCellLabel,
+  adjustDimCell,
   cutDimCell,
   cutQuantityText,
   inputRow,
@@ -128,7 +130,7 @@ describe('全部回転してよい・削除の確認・木取りの表（U-12）
     expect(cutQuantityText(3)).toBe('3')
   })
 
-  it('木取りの表の W・H は木取り寸法（仕上がり ＋ 切り代）', () => {
+  it('木取りの表の W・H は木取り寸法（調整後 ＋ 切り代。第2.1版）', () => {
     const job = shelfJob()
     const dims = computeDimensions(job, shelfAdjusts())
     const tanaita = job.parts[3]
@@ -136,6 +138,50 @@ describe('全部回転してよい・削除の確認・木取りの表（U-12）
     expect(cutDimCell(tanaita, d, 'W', shelfAdjusts())).toMatchObject({ kind: 'formula', value: 389 })
     expect(cutDimCell(job.parts[2], dims.parts[2], 'H', shelfAdjusts())).toEqual({ kind: 'number', value: 710 })
     expect(cutDimCell(newPart('x'), undefined, 'W', shelfAdjusts())).toEqual({ kind: 'empty' })
+  })
+})
+
+describe('［調整］のタブの W・H の欄（仕様書 25.2）', () => {
+  const adjusts = shelfAdjusts()
+  const at = (job: ReturnType<typeof shelfJob>, name: string, axis: 'W' | 'H') => {
+    const dims = computeDimensions(job, adjusts)
+    const p = job.parts.find((x) => x.name === name)!
+    return adjustDimCell(p, dims.parts.find((d) => d.partId === p.id), axis, adjusts)
+  }
+
+  it('見本の棚板 W は「−メラミン1 ｜ 379」、H は調整なしで仕上がり 1760 を薄く', () => {
+    const job = shelfJob()
+    expect(at(job, '棚板', 'W')).toEqual({ kind: 'adjusted', label: '−メラミン1', value: 379 })
+    expect(at(job, '棚板', 'H')).toEqual({ kind: 'finished', value: 1760 })
+    expect(at(job, '天板', 'W')).toEqual({ kind: 'finished', value: 400 })
+  })
+
+  it('× ÷ − の書き方で出し、調整後の寸法を並べる（W900 に −メラミン1×2 で 898）', () => {
+    const job = shelfJob()
+    job.parts[0] = { ...job.parts[0], expr: { W: '900', H: '1800' }, adjust: { W: '-{n:adjust-melamine}*2', H: '+2' } }
+    expect(at(job, '全体', 'W')).toEqual({ kind: 'adjusted', label: '−メラミン1 × 2', value: 898 })
+    expect(at(job, '全体', 'H')).toEqual({ kind: 'adjusted', label: '+2', value: 1802 })
+  })
+
+  it('読み上げの文', () => {
+    expect(adjustCellLabel({ kind: 'adjusted', label: '−メラミン1', value: 379 })).toBe('−メラミン1、調整後 379')
+    expect(adjustCellLabel({ kind: 'finished', value: 1760 })).toBe('調整なし（仕上がり 1760）')
+    expect(adjustCellLabel({ kind: 'error', label: null, messages: [] })).toBe('エラー')
+    expect(adjustCellLabel({ kind: 'empty' })).toBe('空')
+  })
+
+  it('仕上がりも調整も空なら空', () => {
+    expect(adjustDimCell(newPart('x'), undefined, 'W', adjusts)).toEqual({ kind: 'empty' })
+  })
+
+  it('調整後が 0 以下・調整の式が読めない・仕上がりがエラーのときはエラー（理由つき）', () => {
+    const job = shelfJob()
+    job.parts[1] = { ...job.parts[1], adjust: { W: '-500', H: '天板.W' } }
+    expect(at(job, '天板', 'W')).toMatchObject({ kind: 'error', label: '−500' })
+    expect(at(job, '天板', 'H')).toMatchObject({ kind: 'error', messages: ['調整には部材の寸法は使えません'] })
+    // 仕上がりがエラー（存在しない部材）なら、調整が空でも調整後もエラー
+    job.parts[2] = { ...job.parts[2], expr: { W: '無い.W', H: '700' } }
+    expect(at(job, '側板', 'W')).toMatchObject({ kind: 'error', label: null })
   })
 })
 

@@ -758,3 +758,11 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
   - `{ type: 'pastePartAdjustCells' }`：結果の `paste: { pasted, skipped: [], renamed: [] }`。切り取りなら元を空にし（ほかの仕事でも。updatedAt を付ける）、1つでも貼れたら `cellClip` から `cut` を外す。コピーが無ければ「コピーしたセルがありません」
   - `{ type: 'fillPartAdjustCells', from, to }`：結果の `paste`
   - `{ type: 'clearPartAdjustCells' }`：変わらなければ updatedAt を付けない
+
+### 14.7 タブを3つに・［調整］の表（U-26。spec 25.1・25.2・25.3・25.5・25.6）
+
+- `ui/partsTab.ts`：`PartsTab = 'finished' | 'adjust' | 'cut'`。並びは ［仕上がり］［調整］［木取り］。覚えるキーは今までどおり `kidori-lite.ui` の `partsTab`（第2.0版の 'finished'・'cut' はそのまま読める）
+- `ui/partsTable.ts` の `adjustDimCell(part, dims, axis, adjusts)`：［調整］の W・H の欄。`empty`（仕上がりも調整も空）／`finished`（調整が空。仕上がり寸法を薄く）／`adjusted`（`label` は `formulaText` の書き方「−メラミン1 × 2」・`value` は `adjustedByAxis`）／`error`（その軸のエラー全部。仕上がりのものも）。読み上げの文は `adjustCellLabel`
+- `components/PartAdjustTable.tsx`：［調整］の表（U-26 では見るだけ。U-28 で入力できるようにする）。部材のある行だけ。W・H の欄は375px に収めるため2段（上に調整の値を小さく緑、下に調整後の寸法）（暫定）
+- `screens/PartsScreen.tsx`：3つのタブ。タブの色は 仕上がり＝青（`fin`）・調整＝緑（`adjust`。調整寸法の色 `--ok`）・木取り＝橙（`cut`）。調整寸法の表（`AdjustTable`）は［調整］の表の下に移した（`PartsTable` の中から外した。［仕上がり］の入力中に調整寸法の行を押して `{n:id}` が入ることは無くなった）
+- 見出しは「W」「H」の1段（`PartsTable` の `AXIS_SIDE` と `.pt-h2` をなくした。並べ替えのシートの題も「W で並べ替え」）。［木取り］のタブの ⓘ と題は「調整後 ＋ 切り代」
