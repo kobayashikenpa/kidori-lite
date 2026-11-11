@@ -4,6 +4,7 @@
 import { usableAdjusts } from '../adjusts'
 import { adjustNameKey } from '../defaults'
 import { remapAdjustIds } from '../formula/usages'
+import { inlineJobAdjusts } from '../migrate/finishedAdjusts'
 import type { Adjust, AppData, FrozenSheet, Job, Part } from '../types'
 import type { TransferFile } from './envelope'
 
@@ -106,6 +107,7 @@ function rekeyJob(
 /**
  * 読んだファイル（readTransferFile の file）を今の保存データに足す。
  * - 仕事・部材・固定した1枚の id は振り直し、コピーとして後ろに足す（今ある仕事は変えない）。名前が重なれば「◯◯のコピー」
+ * - 仕上がりの式の調整寸法（第2.0版までのファイル）は、ファイルの調整寸法の寸法で数字に置き換える（第2.1版。仕様書 25.4）
  * - 調整寸法は表示名が同じものが今の一覧にあればそれを使い、無ければ新しい id で足して、式の {n:id} をつけ替える
  * - 共有（kind: job）：切り出しチェック・仕上がりの完了は無し。作った日・変えた日は now
  * - バックアップ（kind: backup）：切り出しチェック・仕上がりの完了も戻す。作った日・変えた日はファイルのまま
@@ -119,7 +121,8 @@ export function importTransfer(
   // 今の表の書きかけの行とは合わせない（式で使える行だけ見る。第1.7版）
   const { map, added } = mergeAdjusts(usableAdjusts(data.adjusts), file.adjusts, newId)
   const names = data.jobs.map((j) => j.name)
-  const incoming = file.kind === 'job' ? [file.job] : file.jobs
+  // 第2.0版までのファイルの仕上がりの式の調整寸法は、ファイルの調整寸法の寸法で数字に置き換えてから取り込む（第2.1版。仕様書 25.4）
+  const incoming = (file.kind === 'job' ? [file.job] : file.jobs).map((j) => inlineJobAdjusts(j, file.adjusts))
   const keepProgress = file.kind === 'backup'
   const jobs = incoming.map((src) => {
     const job = rekeyJob(src, newId, map, keepProgress)

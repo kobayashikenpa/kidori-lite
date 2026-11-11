@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { adjustChangeUsages, usableAdjusts } from '../engine/adjusts'
 import { computeDimensions } from '../engine/dimensions'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob } from '../engine/fixtures/shelf'
+import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob, shelfJob } from '../engine/fixtures/shelf'
 import { formulaText } from '../engine/formula/display'
 import { backupFile } from '../engine/transfer/backup'
 import { importTransfer } from '../engine/transfer/importFile'
@@ -165,15 +165,13 @@ describe('store：調整寸法の表の操作', () => {
     expect(u.changed.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(u.otherJobCount).toBe(1)
     expect(u.jobCount).toBe(2)
-    // 確認のあとで当てる。全部の仕事の式の値がついてくる
-    const next = run(s, action).state
-    for (const job of next.data.jobs) {
-      expect(computeDimensions(job, usableAdjusts(next.data.adjusts)).parts[3].finished?.W).toBe(378)
-    }
+    // 確認のあとで当てる（値がついてくることは、調整の欄で数える形にしたときに確かめる：E-21）
+    expect(run(s, action).state.data.adjusts[0].value).toBe(2)
   })
 
-  it('書きかけにした調整寸法を使う式は「削除した調整寸法」のエラーになり、寸法を戻すと直る', () => {
-    let s = run(start(), { type: 'clearAdjustCells', cells: [{ row: 0, col: 'value' }] }).state
+  it('書きかけにした調整寸法を使う調整は「削除した調整寸法」のエラーになり、寸法を戻すと直る（第2.1版：棚板 W の調整 −メラミン1）', () => {
+    const first = initialState({ status: 'ok', data: { ...data(), jobs: [shelfJob()] }, currentJobId: 'job-shelf', canSave: true })
+    let s = run(first, { type: 'clearAdjustCells', cells: [{ row: 0, col: 'value' }] }).state
     const kinds = computeDimensions(s.data.jobs[0], usableAdjusts(s.data.adjusts)).parts[3].errors.map((e) => e.kind)
     expect(kinds).toContain('unknownAdjust')
     s = run(s, { type: 'setAdjustCell', pos: { row: 0, col: 'value' }, text: '1' }).state

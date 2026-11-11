@@ -57,7 +57,8 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
 
   for (const p of parts) {
     for (const axis of AXES) {
-      const parsed = parse(p.expr[axis], adjusts)
+      // 仕上がりの式（調整寸法は使えない。第2.1版 仕様書 25.4）
+      const parsed = parse(p.expr[axis], adjusts, { kind: 'finished' })
       if (!parsed.ok) {
         nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: null, deps: [] })
         addError({ partId: p.id, axis, field: 'finished', kind: 'syntax', message: parsed.error.message, ...(parsed.error.incomplete ? { incomplete: true } : {}) })

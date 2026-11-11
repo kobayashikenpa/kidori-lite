@@ -2,6 +2,7 @@
 // kidori の store/storage.ts を参考に作り直したもの（以前の版からの移し替え・材料・フラッシュなどは無い）。
 // キーはすべて「kidori-lite.」で始める（kidori と同じ github.io のドメインで localStorage を分け合うため。kidori は「kidori.」）
 import { defaultAppData } from '../engine/defaults'
+import { inlineAppDataAdjusts } from '../engine/migrate/finishedAdjusts'
 import { isRecord, readAdjustClip, readAdjustRows, readCellClip, readJobs } from '../engine/shape'
 import type { AppData } from '../engine/types'
 
@@ -65,7 +66,8 @@ export function parseAppData(raw: unknown): AppData | null {
   const cellClip = readCellClip(raw.cellClip)
   // 調整寸法の表のクリップ（第1.7版）。無い・形が違えば null
   const adjustClip = readAdjustClip(raw.adjustClip)
-  return { version: 1, jobs, adjusts, cellClip, adjustClip }
+  // 第2.0版までの仕上がりの式・コピーしたセルの調整寸法は、今の寸法の数字に置き換える（第2.1版。仕様書 25.4・25.9）
+  return inlineAppDataAdjusts({ version: 1, jobs, adjusts, cellClip, adjustClip })
 }
 
 // ---------- 読み込み ----------

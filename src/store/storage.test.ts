@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
+import { computeDimensions } from '../engine/dimensions'
+import { legacyShelfJob, MELAMINE_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
 import type { AppData } from '../engine/types'
 import { BROKEN_KEY_PREFIX, CURRENT_JOB_KEY, DATA_KEY, loadSaved, parseAppData, saveSaved, type KeyValueStorage } from './storage'
 
@@ -185,6 +186,37 @@ describe('保存と読み込み', () => {
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+  })
+
+  it('第2.0版の保存データの仕上がりの式の調整寸法は、今の寸法の数字に置き換えて読む（仕様書 25.4）。仕上がり寸法は変わらない', () => {
+    const old = { ...sample(), jobs: [legacyShelfJob()] }
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(old))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    const job = r.data.jobs[0]
+    expect(job.parts[3].expr.W).toBe('天板.W - 20 - 1')
+    const d = computeDimensions(job, shelfAdjusts())
+    expect(d.errors).toEqual([])
+    expect(d.parts[3].finished).toEqual({ W: 379, H: 1760 })
+    expect(d.parts[3].cut).toEqual({ W: 389, H: 1770 })
+  })
+
+  it('削除した調整寸法を使っていた仕上がりの式はそのまま（エラーのまま）。調整の欄は置き換えない', () => {
+    const old = sample()
+    old.jobs[0].parts[2] = { ...old.jobs[0].parts[2], expr: { W: '全体.W - {n:gone}', H: `700 - {n:${MELAMINE_ID}}` } }
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(old))
+    const job = loadSaved(st, ids(), NOW).data.jobs[0]
+    expect(job.parts[2].expr).toEqual({ W: '全体.W - {n:gone}', H: '700 - 1' })
+    expect(job.parts[3].adjust.W).toBe(`-{n:${MELAMINE_ID}}`)
+  })
+
+  it('保存してあるコピーしたセルの中の調整寸法も数字に置き換える（仕様書 25.9）', () => {
+    const data = { ...sample(), cellClip: { rows: 1, cols: 2, cells: [['棚板', `天板.W - 20 - {n:${MELAMINE_ID}}`]] } }
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(data))
+    expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual({ rows: 1, cols: 2, cells: [['棚板', '天板.W - 20 - 1']] })
   })
 
   it('開いていた仕事が無ければ開いていない状態', () => {

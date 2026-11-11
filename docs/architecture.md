@@ -689,3 +689,18 @@ export interface PartDimensions {
 - 木取りの計算（`packing/`）・お知らせ（`hints/saving.ts`）・比べ（`packing/sizes.ts`）・固定した1枚の drift（`progress/frozen.ts`）は `cut`／`cutByAxis` を使っているので、そのまま調整後の木取り寸法についてくる（テストで確かめた）。並べ替え（`order.ts`）は今までどおり `finishedByAxis`（仕上がり）で比べる
 - テストの見本 `fixtures/shelf.ts` の `shelfJob()`：棚板 W を仕上がり `天板.W - 20`・調整 `-{n:adjust-melamine}` にした（仕上がり 380・調整後 379・木取り 389）。第2.0版までの形（仕上がりの式にメラミン1）は `legacyShelfJob()`（古いデータの読み込み・置き換えのテスト用）
 - 見本（`store/sample.ts` の `sampleJob`）：棚板 W は仕上がり `天板.W - 20`・調整 `-{n:メラミン1 の id}`（25.4）。4×8 2枚・57.2% は今と同じ
+
+### 14.3 仕上がりの式から調整寸法をなくす（E-20。spec 25.4・25.9）
+
+- **仕上がりの式では調整寸法を使えない**：`parse(expr, adjusts, { kind: 'finished' })` は調整寸法 `{n:id}` をエラー `ADJUST_IN_FINISHED_MESSAGE`「仕上がりの式では調整寸法は使えません」（kind は `syntax`、位置つき、`incomplete` なし）にする。`dimensions/resolve.ts` は仕上がりの式をこの種類で読む（`computeDimensions`・`partsReferencing` が通る）。削除した調整寸法の id も同じエラー（今までの `unknownAdjust` は、仕上がりの欄では出なくなった。調整の欄では今までどおり `unknownAdjust`）
+  - 記号が抜けている式（`全体.W {n:id}`）は、今までどおり「「全体.W」と「メラミン1」の間に…」の文（調整寸法を値として読む前に記号の抜けで止まるため）
+  - `parse` の初めの値（`kind` を省いたとき）は `any`（今までどおり両方使える）。`evaluateExpr`・`isIncompleteFormula` は `any` のまま
+- **数字に置き換える**（`src/engine/migrate/finishedAdjusts.ts`）
+  - `inlineAdjustsInExpr(expr, adjusts)`：式の `{n:id}`（全角も）を寸法の数字（`exactText`。丸めない）に置き換える。一覧に無い id（削除した調整寸法・書きかけの行）はそのまま。前後に数字・文字がくっついていれば空白をはさむ（`{n:x}5` → `1 5`。エラーの式を別の数にしない）
+  - `inlineJobAdjusts(job, adjusts)`：部材の仕上がりの式（`Part.expr`）だけ。調整の欄（`Part.adjust`）は置き換えない
+  - `inlineCellClipAdjusts(clip, adjusts)`：保存してあるコピーしたセル（名前には `{ }` を使えず、枚数は数字だけなので、`{n:id}` があるのは W・H のセルだけ）
+  - `inlineAppDataAdjusts(data)`：全部の仕事とコピーしたセルを、`usableAdjusts(data.adjusts)` で置き換える
+  - どれも、置き換えるものが無ければ同じオブジェクトを返す
+- **使う所**
+  - 保存データ：`store/storage.ts` の `parseAppData` の最後（アプリを開いたとき）
+  - 取り込み：`transfer/importFile.ts` の `importTransfer` で、ファイルの仕事を **ファイルの `adjusts` の寸法** で置き換えてから id をつけ替える（送った人の寸法のまま。受け取る人の一覧の寸法ではない）

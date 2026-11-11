@@ -1,7 +1,7 @@
 // 調整寸法の表の行（書きかけを含む）と、式で使える調整寸法（第1.7版。仕様書 21.1・21.3）
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from './dimensions'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob } from './fixtures/shelf'
+import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob, shelfJob } from './fixtures/shelf'
 import { formulaText } from './formula/display'
 import {
   adjustChangeUsages,
@@ -95,20 +95,20 @@ describe('adjustConflict（表示名が同じになる行）', () => {
 })
 
 describe('書きかけの行を使っている式', () => {
-  it('寸法を空にした調整寸法を使う式は「削除した調整寸法」と同じエラー・表示', () => {
+  it('寸法を空にした調整寸法を使う調整は「削除した調整寸法」と同じエラー・表示（第2.1版：棚板 W の調整 −メラミン1）', () => {
     const rows: AdjustRow[] = shelfAdjusts().map((a) => (a.id === MELAMINE_ID ? { ...a, value: null } : a))
-    const job = legacyShelfJob()
+    const job = shelfJob()
     const dims = computeDimensions(job, usableAdjusts(rows))
     const shelf = dims.parts.find((p) => p.name === '棚板')!
-    expect(shelf.errors.map((e) => e.kind)).toContain('unknownAdjust')
-    expect(formulaText(job.parts[3].expr.W, usableAdjusts(rows))).toBe('天板.W − 20 − （削除した調整寸法）')
+    expect(shelf.errors.map((e) => [e.field, e.kind])).toEqual([['adjust', 'unknownAdjust']])
+    expect(formulaText(job.parts[3].adjust.W, usableAdjusts(rows))).toBe('−（削除した調整寸法）')
   })
 
-  it('寸法を入れ直すと、同じ id なので式が元に戻る', () => {
+  it('寸法を入れ直すと、同じ id なので調整が元に戻る', () => {
     const rows: AdjustRow[] = shelfAdjusts()
-    const shelf = computeDimensions(legacyShelfJob(), usableAdjusts(rows)).parts.find((p) => p.name === '棚板')!
+    const shelf = computeDimensions(shelfJob(), usableAdjusts(rows)).parts.find((p) => p.name === '棚板')!
     expect(shelf.errors).toEqual([])
-    expect(shelf.finished?.W).toBe(379)
+    expect(shelf.adjusted?.W).toBe(379)
   })
 })
 

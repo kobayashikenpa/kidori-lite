@@ -46,12 +46,16 @@ export const EMPTY_FORMULA_MESSAGE = '数値か式を入れてください'
 /** 調整の式に部材の寸法を書いたときのエラーの文（第2.1版。仕様書 25.2・25.9） */
 export const REF_IN_ADJUST_MESSAGE = '調整には部材の寸法は使えません'
 
+/** 仕上がりの式に調整寸法を書いたときのエラーの文（第2.1版。仕様書 25.4・25.9） */
+export const ADJUST_IN_FINISHED_MESSAGE = '仕上がりの式では調整寸法は使えません'
+
 /**
  * 式の種類（第2.1版）。
  * - any：区別しない（第2.0版までと同じ。部材の寸法も調整寸法も使える）
+ * - finished：［仕上がり］の W・H（仕様書 25.4）。調整寸法は使えない（削除した調整寸法も同じエラー）
  * - adjust：部材の調整（仕様書 25.2）。部材の寸法は使えない。先頭の「+」を読む（足す）。終わりが記号のときの案内は「数値か調整寸法」
  */
-export type FormulaKind = 'any' | 'adjust'
+export type FormulaKind = 'any' | 'finished' | 'adjust'
 
 export interface ParseOptions {
   /** 式の種類（省略で any） */
@@ -154,6 +158,8 @@ export function parse(expr: string, adjusts?: readonly Adjust[], options: ParseO
         pos++
         return { type: 'ref', part: tok.part, axis: tok.axis }
       case 'adjust':
+        // 仕上がりの式では調整寸法は使えない（仕様書 25.4）
+        if (kind === 'finished') return fail(ADJUST_IN_FINISHED_MESSAGE, tok)
         pos++
         return { type: 'adjust', adjustId: tok.adjustId }
       case '(': {

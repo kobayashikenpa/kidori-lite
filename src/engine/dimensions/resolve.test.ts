@@ -98,9 +98,9 @@ describe('resolve（参照の依存関係）', () => {
     expect(at('id-全体')).toBeLessThan(at('id-棚板'))
   })
 
-  it('調整寸法 {n:id} は部材の参照にならない（依存関係に入らない）', () => {
+  it('仕上がりの式の調整寸法 {n:id} はエラー（第2.1版。仕様書 25.4）。部材の参照にはならない（依存関係に入らない）', () => {
     const r = resolve([mkPart('A', { W: '100 - {n:adjust-melamine}' })])
-    expect(r.errors).toEqual([])
+    expect(r.errors).toEqual([{ partId: 'id-A', axis: 'W', field: 'finished', kind: 'syntax', message: '仕上がりの式では調整寸法は使えません' }])
     expect(r.nodes.get('id-A:W')!.deps).toEqual([])
   })
 })
