@@ -4,7 +4,7 @@ import { computeDimensions } from '../dimensions'
 import { MELAMINE_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { moveParts, sortParts } from '../order'
 import type { CellClip, Job } from '../types'
-import { clearCells, deleteRows, fillCells, pasteCells } from './cells'
+import { clearCells, cutCells, deleteRows, fillCells, pasteCells, rowRange } from './cells'
 import { duplicatePart } from './copy'
 
 const M = `-{n:${MELAMINE_ID}}`
@@ -34,7 +34,7 @@ describe('部材の行の操作で調整がついていく', () => {
     expect(copy.adjust).not.toBe(r.job.parts[3].adjust)
   })
 
-  it('並べ替え（W の大きい順）・番号を引いて動かす：調整は部材といっしょに動く', () => {
+  it('並べ替え（H の小さい順）・番号を引いて動かす：調整は部材といっしょに動く', () => {
     const j = job()
     const sorted = sortParts(j.parts, computeDimensions(j, shelfAdjusts()), 'H', 'asc')
     expect(sorted.map((p) => p.name)).toEqual(['側板', '棚板', '全体', '天板'])
@@ -83,4 +83,39 @@ describe('部材の行の操作で調整がついていく', () => {
     expect(r.job.parts[3].expr.W).toBe('')
     expect(r.job.parts[3].adjust).toEqual({ W: M, H: '' })
   })
+
+  it('行をまるごと（名前・W・H・枚数）切り取って同じ仕事に貼る：調整も貼った行へ動く（行を動かすのと同じ）', () => {
+    const j = job()
+    const cut = cutCells(j, rowRange(3))
+    if (!cut.ok) throw new Error(cut.message)
+    // 下の空の行（5行目）に貼る
+    const r = pasteCells(j, cut.clip, [{ row: 5, col: 'name' }], ids())
+    if (!r.ok) throw new Error(r.message)
+    const names = r.job.parts.map((p) => p.name)
+    expect(names).toEqual(['全体', '天板', '側板', '棚板'])
+    expect(r.job.parts[3].adjust).toEqual({ W: M, H: '' })
+    // 木取り寸法は変わらない
+    const cutW = (x: Job) => computeDimensions(x, shelfAdjusts()).parts.find((d) => d.name === '棚板')!.cutByAxis.W
+    expect(cutW(r.job)).toBe(cutW(j))
+  })
+
+  it('行をまるごと切り取って、ほかの部材の行に貼る：その行の調整は、切り取った部材の調整に入れ替わる', () => {
+    const j = job()
+    const cut = cutCells(j, rowRange(3))
+    if (!cut.ok) throw new Error(cut.message)
+    const r = pasteCells(j, cut.clip, [{ row: 2, col: 'name' }], ids())
+    if (!r.ok) throw new Error(r.message)
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '天板', '棚板'])
+    expect(r.job.parts[2].adjust).toEqual({ W: M, H: '' })
+  })
+
+  it('行の一部の欄だけ切り取ったときは、調整は動かない', () => {
+    const j = job()
+    const clip: CellClip = { rows: 1, cols: 3, cells: [['棚板', '天板.W - 20', '天板.H - 20 × 2']], cut: { jobId: j.id, range: { top: 3, left: 0, rows: 1, cols: 3 } } }
+    const r = pasteCells(j, clip, [{ row: 5, col: 'name' }], ids())
+    if (!r.ok) throw new Error(r.message)
+    expect(r.job.parts[3].adjust).toEqual({ W: M, H: '' })
+    expect(r.job.parts.at(-1)!.adjust).toEqual({ W: '', H: '' })
+  })
 })
+

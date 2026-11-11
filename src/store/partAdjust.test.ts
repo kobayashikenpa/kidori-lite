@@ -124,7 +124,7 @@ describe('reducer：行の操作で調整がその部材についていく（削
     expect(adjustByName(j)).toEqual(before)
   })
 
-  it('W の大きい順に並べ替える（sortParts。比べるのは仕上がり）', () => {
+  it('H の小さい順に並べ替える（sortParts。比べるのは仕上がり）', () => {
     const before = adjustByName(job())
     const j = currentJob(run(start(), { type: 'sortParts', key: 'H', order: 'asc' }).state)!
     expect(j.parts.map((p) => p.name)).toEqual(['側板', '棚板', '全体', '天板'])

@@ -250,4 +250,13 @@ describe('木取りの計算・お知らせ・比べ・固定は、調整後 ＋
     const dims = computeDimensions(job, shelfAdjusts())
     expect(sortParts(job.parts, dims, 'W', 'desc').map((p) => p.name)).toEqual(['A', 'B'])
   })
+
+  it('調整の欄だけがエラーの部材も、仕上がり寸法の順に並ぶ（一番下に回さない）', () => {
+    const job = createJob({ id: 'job', name: 'x', now: '2026-11-11T00:00:00.000Z' })
+    // C は仕上がり 400 で、調整「−」が書きかけ（調整の欄のエラー）
+    job.parts = [mkPart('A', { W: '500' }), mkPart('B', { W: '380' }), mkPart('C', { W: '400' }, { W: '-' })]
+    const dims = computeDimensions(job, shelfAdjusts())
+    expect(dims.parts[2].errors.map((e) => e.field)).toEqual(['adjust'])
+    expect(sortParts(job.parts, dims, 'W', 'desc').map((p) => p.name)).toEqual(['A', 'C', 'B'])
+  })
 })

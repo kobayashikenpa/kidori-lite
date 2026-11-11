@@ -102,7 +102,7 @@ export interface GridOptions {
   onPressRow: (row: number) => void
   /** 長押し（メニューを開く） */
   onLongPress: (at: PressAt) => void
-  /** 長押しのメニューを出さないとき（「＝」で寸法を入れている間など） */
+  /** 長押しのメニューを出さないとき（式の入力中に、押したセルの寸法を入れる場面など） */
   noLongPress: () => boolean
   /** オートフィル（指を離したとき。to は元を含む範囲） */
   onFill: (from: CellRange, to: CellRange) => void

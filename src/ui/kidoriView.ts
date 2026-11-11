@@ -1,5 +1,5 @@
 // 木取りの画面に出す文字（計算はしない。engine の結果を並べる形にするだけ）
-import type { Rect, SheetOrientation } from '../engine/types'
+import type { DimensionError, Rect, SheetOrientation } from '../engine/types'
 import { fmt } from './format'
 
 /** 歩留まり（0〜1）を「81.2%」の形にする */
@@ -14,4 +14,9 @@ export function pct(rate: number): string {
 export function scrapLabel(r: Pick<Rect, 'w' | 'h'>, orientation: SheetOrientation): string {
   const [W, H] = orientation === 'landscape' ? [r.h, r.w] : [r.w, r.h]
   return `${fmt(W)}×${fmt(H)}`
+}
+
+/** 計算から外した部材のエラーが、部材の画面のどのタブのどの欄か（例：「［調整］の W」）。直す所が分かるように出す */
+export function skippedErrorPlace(e: Pick<DimensionError, 'field' | 'axis'>): string {
+  return `［${e.field === 'adjust' ? '調整' : '仕上がり'}］の ${e.axis}`
 }
