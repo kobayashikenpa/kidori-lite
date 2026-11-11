@@ -1,11 +1,14 @@
-// 部材の画面で選んでいる［仕上がり］［木取り］のタブ（仕様書 5.1）。端末ごとの好みなので localStorage の kidori-lite.ui に置く。
-// 読めない・書けないときも画面は「仕上がり」で動く（kidori の dimensionTab.ts と同じ考え方）
+// 部材の画面で選んでいる［仕上がり］［調整］［木取り］のタブ（仕様書 5.1・25.1）。端末ごとの好みなので localStorage の kidori-lite.ui に置く。
+// 読めない・書けないときも画面は「仕上がり」で動く（kidori の dimensionTab.ts と同じ考え方）。
+// 第2.1版で［調整］（'adjust'）を足した。第2.0版までに覚えた 'finished'・'cut' はそのまま読める
 import type { KeyValueStorage } from '../store/storage'
 
-export type PartsTab = 'finished' | 'cut'
+export type PartsTab = 'finished' | 'adjust' | 'cut'
 
+/** タブの並び（仕様書 25.1：［仕上がり］［調整］［木取り］） */
 export const PARTS_TABS: readonly { value: PartsTab; label: string }[] = [
   { value: 'finished', label: '仕上がり' },
+  { value: 'adjust', label: '調整' },
   { value: 'cut', label: '木取り' },
 ]
 

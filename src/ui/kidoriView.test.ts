@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pct, scrapLabel } from './kidoriView'
+import { pct, scrapLabel, skippedErrorPlace } from './kidoriView'
 
 describe('木取りの画面の文字', () => {
   it('歩留まりは小数第1位までの %', () => {
@@ -10,5 +10,9 @@ describe('木取りの画面の文字', () => {
   it('端材は W（妻手方向）×H（長手方向）。横長の配置図は入れ替える', () => {
     expect(scrapLabel({ w: 400, h: 1200 }, 'portrait')).toBe('400×1200')
     expect(scrapLabel({ w: 1200, h: 400 }, 'landscape')).toBe('400×1200')
+  })
+  it('計算から外した部材のエラーは、直すタブと欄を付けて出す', () => {
+    expect(skippedErrorPlace({ field: 'adjust', axis: 'W' })).toBe('［調整］の W')
+    expect(skippedErrorPlace({ field: 'finished', axis: 'H' })).toBe('［仕上がり］の H')
   })
 })

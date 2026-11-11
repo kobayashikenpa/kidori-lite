@@ -14,7 +14,7 @@ const SHIHACHI = { width: 1220, length: 2430 }
 const U = usableRect(SHIHACHI, 5, 'vertical')
 
 function part(id: string, W: number, H: number, quantity: number, rotatable: boolean): Part {
-  return { id, name: id, expr: { W: String(W), H: String(H) }, quantity, rotatable, finishedDone: false }
+  return { id, name: id, expr: { W: String(W), H: String(H) }, adjust: { W: '', H: '' }, quantity, rotatable, finishedDone: false }
 }
 
 /** オーナーの設定：4×8・刃厚3・端切り5・切り代0 */

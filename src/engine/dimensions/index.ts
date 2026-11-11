@@ -1,6 +1,7 @@
-// 寸法の計算：仕上がり寸法（式の計算結果）と木取り寸法（仕上がり ＋ 切り代）、エラー
+// 寸法の計算：仕上がり寸法（式の計算結果）→ 調整後の寸法（仕上がり ＋ 調整。第2.1版）→ 木取り寸法（調整後 ＋ 切り代）、エラー
 // kidori の dimensions/finished.ts・index.ts・cutSize.ts をもとに、厚み・材料・フラッシュ・部材ごとの切り代を外し、
-// 木取り寸法を「仕上がり ＋ settings.allowance（W・H に1回ずつ）」にしたもの
+// 木取り寸法を「仕上がり ＋ settings.allowance（W・H に1回ずつ）」にしたもの。第2.1版で部材ごとの調整（Part.adjust）を間に入れた
+import { evaluateAdjustExpr } from '../formula/adjustExpr'
 import { evaluate } from '../formula/evaluate'
 import { normalizePartName } from '../formula/tokenize'
 import { hasName, partLabels } from '../parts'
@@ -27,8 +28,11 @@ type Value = { ok: true; value: number } | { ok: false; error: DimensionError }
  * - 調整寸法 {n:id} は adjusts（アプリ全体の一覧）の寸法。無ければ unknownAdjust（削除した調整寸法）
  * - 計算結果が 0 以下（小数第1位に丸めて比べる）は nonPositive
  * - エラーのある寸法を参照している寸法は計算せず、元のエラーの寸法を from で示す
- * - 木取り寸法 ＝ 仕上がり ＋ settings.allowance（W・H それぞれに1回）。仕上がりが出ない軸は出さない
- * - finished・cut は W・H の両方が計算できたときだけ。片方だけのときは finishedByAxis・cutByAxis に入る
+ * - 調整後 ＝ 仕上がり ＋ 調整（Part.adjust の式。空は 0。第2.1版 仕様書 25.1）。調整後が 0 以下（小数第1位に丸めて比べる）・
+ *   調整の式のエラーは field: 'adjust' のエラー。仕上がりがエラーなら調整後も出さない（調整の欄のエラーは足さない）
+ * - 木取り寸法 ＝ 調整後 ＋ settings.allowance（W・H それぞれに1回）。調整後が出ない軸は出さない
+ * - 式の参照（天板.W）は仕上がりを使うので、調整のエラーはほかの部材に伝わらない
+ * - finished・adjusted・cut は W・H の両方が計算できたときだけ。片方だけのときは finishedByAxis・adjustedByAxis・cutByAxis に入る
  * - 名前の無い部材も寸法を計算する（式からは参照できない）。name は表示用の名前（空なら #行番号）。枚数が空（null）の部材も計算する
  */
 export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts: readonly Adjust[]): DimensionResult {
@@ -59,6 +63,7 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
     return {
       partId: d.partId,
       axis: d.axis,
+      field: 'finished',
       kind: originError.kind,
       message: `参照している「${label(origin)}」が計算できません（${originError.message}）`,
       ...(originError.refs ? { refs: originError.refs } : {}),
@@ -103,6 +108,7 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
       return setOwnError(d, {
         partId: d.partId,
         axis: d.axis,
+        field: 'finished',
         kind: r.error.kind,
         message: r.error.message,
         ...(r.error.refs ? { refs: r.error.refs } : {}),
@@ -112,6 +118,7 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
       return setOwnError(d, {
         partId: d.partId,
         axis: d.axis,
+        field: 'finished',
         kind: 'nonPositive',
         message: `計算結果が 0 以下になります（${signedText(round1(r.value))}）`,
       })
@@ -123,24 +130,54 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
 
   const parts: PartDimensions[] = job.parts.map((p) => {
     const finishedByAxis: Partial<Record<Axis, number>> = {}
+    const adjustByAxis: Partial<Record<Axis, number>> = {}
+    const adjustedByAxis: Partial<Record<Axis, number>> = {}
     const cutByAxis: Partial<Record<Axis, number>> = {}
     const errors: DimensionError[] = []
     for (const axis of AXES) {
       const f = finishedOf({ partId: p.id, axis })
-      if (f.ok) {
-        finishedByAxis[axis] = f.value
-        cutByAxis[axis] = f.value + allowance
-      } else {
-        errors.push(...(ownErrors.get(dimKey(p.id, axis)) ?? [f.error]))
+      if (f.ok) finishedByAxis[axis] = f.value
+      else errors.push(...(ownErrors.get(dimKey(p.id, axis)) ?? [f.error]))
+      // 調整の式（第2.1版）。仕上がりがエラーでも、調整の式そのもののエラーは出す
+      const a = evaluateAdjustExpr(p.adjust[axis], adjusts)
+      if (!a.ok) {
+        errors.push({
+          partId: p.id,
+          axis,
+          field: 'adjust',
+          kind: a.error.kind,
+          message: a.error.message,
+          ...(a.error.incomplete ? { incomplete: true } : {}),
+        })
+        continue
       }
+      adjustByAxis[axis] = a.value
+      // 仕上がりがエラーなら調整後も出さない（調整の欄のエラーは足さない）
+      if (!f.ok) continue
+      const adjusted = f.value + a.value
+      if (round1(adjusted) <= 0) {
+        errors.push({
+          partId: p.id,
+          axis,
+          field: 'adjust',
+          kind: 'nonPositive',
+          message: `調整後の寸法が 0 以下になります（${signedText(round1(adjusted))}）`,
+        })
+        continue
+      }
+      adjustedByAxis[axis] = adjusted
+      cutByAxis[axis] = adjusted + allowance
     }
     return {
       partId: p.id,
       name: labels.get(p.id)!,
       quantity: p.quantity,
       finished: isComplete(finishedByAxis) ? finishedByAxis : null,
+      adjusted: isComplete(adjustedByAxis) ? adjustedByAxis : null,
       cut: isComplete(cutByAxis) ? cutByAxis : null,
       finishedByAxis,
+      adjustByAxis,
+      adjustedByAxis,
       cutByAxis,
       errors,
     }

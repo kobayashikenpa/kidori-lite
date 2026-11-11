@@ -9,7 +9,7 @@ import type { Job, Part } from './types'
 const adjusts = shelfAdjusts()
 
 function part(id: string, name: string, W: string, H: string, quantity: number | null): Part {
-  return { id, name, expr: { W, H }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
 }
 
 /** 見本の棚の後ろに部材を足した写し */
@@ -137,7 +137,7 @@ describe('行の移動（仕様書 24.2）', () => {
 
 describe('名前の中の数字は大きさで比べる', () => {
   it('棚板2 が 棚板10 より前（あいうえお順）', () => {
-    const mk = (id: string, name: string) => ({ id, name, expr: { W: '1', H: '1' }, quantity: 1, rotatable: false, finishedDone: false })
+    const mk = (id: string, name: string) => ({ id, name, expr: { W: '1', H: '1' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false })
     const parts = [mk('a', '棚板10'), mk('b', '棚板2'), mk('c', '棚板1')]
     const dims = { parts: [], errors: [] }
     const out = sortParts(parts, dims as never, 'name', 'asc')

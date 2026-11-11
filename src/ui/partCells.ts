@@ -22,7 +22,8 @@ export function isNumberOnly(expr: string): boolean {
 export function dimCell(part: Part, dims: PartDimensions | undefined, axis: Axis, tab: PartsTab, adjusts: readonly Adjust[]): DimCell {
   const expr = part.expr[axis]
   const formula = expr.trim() === '' ? null : formulaText(expr, adjusts)
-  const errors = dims?.errors.filter((e) => e.axis === axis) ?? []
+  // ［仕上がり］のタブは仕上がりの欄のエラーだけ（調整の欄のエラーは出さない。第2.1版）
+  const errors = dims?.errors.filter((e) => e.axis === axis && (tab !== 'finished' || e.field === 'finished')) ?? []
   const value = tab === 'finished' ? dims?.finishedByAxis[axis] : dims?.cutByAxis[axis]
   if (errors.length > 0 || value === undefined) {
     const messages = [...new Set(errors.map((e) => e.message))]

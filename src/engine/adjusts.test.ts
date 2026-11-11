@@ -95,20 +95,20 @@ describe('adjustConflict（表示名が同じになる行）', () => {
 })
 
 describe('書きかけの行を使っている式', () => {
-  it('寸法を空にした調整寸法を使う式は「削除した調整寸法」と同じエラー・表示', () => {
+  it('寸法を空にした調整寸法を使う調整は「削除した調整寸法」と同じエラー・表示（第2.1版：棚板 W の調整 −メラミン1）', () => {
     const rows: AdjustRow[] = shelfAdjusts().map((a) => (a.id === MELAMINE_ID ? { ...a, value: null } : a))
     const job = shelfJob()
     const dims = computeDimensions(job, usableAdjusts(rows))
     const shelf = dims.parts.find((p) => p.name === '棚板')!
-    expect(shelf.errors.map((e) => e.kind)).toContain('unknownAdjust')
-    expect(formulaText(job.parts[3].expr.W, usableAdjusts(rows))).toBe('天板.W − 20 − （削除した調整寸法）')
+    expect(shelf.errors.map((e) => [e.field, e.kind])).toEqual([['adjust', 'unknownAdjust']])
+    expect(formulaText(job.parts[3].adjust.W, usableAdjusts(rows))).toBe('−（削除した調整寸法）')
   })
 
-  it('寸法を入れ直すと、同じ id なので式が元に戻る', () => {
+  it('寸法を入れ直すと、同じ id なので調整が元に戻る', () => {
     const rows: AdjustRow[] = shelfAdjusts()
     const shelf = computeDimensions(shelfJob(), usableAdjusts(rows)).parts.find((p) => p.name === '棚板')!
     expect(shelf.errors).toEqual([])
-    expect(shelf.finished?.W).toBe(379)
+    expect(shelf.adjusted?.W).toBe(379)
   })
 })
 
@@ -127,10 +127,10 @@ describe('changedAdjusts（値・名前が変わる・消える・書きかけ�
   })
 })
 
-describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.3）', () => {
+describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.3。第2.1版から「使っている」は調整の欄で数える：25.3）', () => {
   const other = (id: string, adjustId: string): Job => {
     const job = shelfJob(id, `仕事${id}`)
-    job.parts[2].expr.H = `700 - {n:${adjustId}}`
+    job.parts[2].adjust.H = `-{n:${adjustId}}`
     return job
   }
 
@@ -147,12 +147,21 @@ describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.
 
   it('今の仕事でしか使っていなければ確認はいらない（changed が空）', () => {
     const jobs = [shelfJob('job-now', '今'), shelfJob('job-b', 'b')]
-    jobs[1].parts[3].expr.W = '天板.W - 20'
+    jobs[1].parts[3].adjust.W = ''
     const before = shelfAdjusts()
     const after = before.filter((a) => a.id !== MELAMINE_ID)
     const r = adjustChangeUsages(jobs, before, after, 'job-now')
     expect(r.changed).toEqual([])
     expect(r.otherJobCount).toBe(0)
+  })
+
+  it('ほかの仕事の仕上がりの式に残っている調整寸法（読み込みで置き換えなかったもの）は数えない', () => {
+    const b = shelfJob('job-b', 'b')
+    b.parts[3].adjust.W = ''
+    b.parts[2].expr.H = `700 - {n:${MELAMINE_ID}}`
+    const before = shelfAdjusts()
+    const after = before.map((a) => (a.id === MELAMINE_ID ? { ...a, value: 2 } : a))
+    expect(adjustChangeUsages([shelfJob('job-now', '今'), b], before, after, 'job-now').changed).toEqual([])
   })
 
   it('どこでも使っていない調整寸法を変えても確認はいらない', () => {

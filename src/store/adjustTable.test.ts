@@ -68,7 +68,7 @@ describe('保存データ', () => {
 describe('ファイル（共有・バックアップ・取り込み）', () => {
   it('共有・バックアップには書きかけの行を入れない（前の版でも読める形）', () => {
     const job = shelfJob()
-    job.parts[2].expr.H = '700 - {n:adjust-hozo}'
+    job.parts[2].adjust.H = '-{n:adjust-hozo}'
     expect(jobFile(job, draftRows()).adjusts.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(backupFile(data(draftRows())).adjusts.map((a) => a.id)).toEqual([MELAMINE_ID, SHEET_ID])
   })
@@ -135,7 +135,7 @@ describe('store：調整寸法の表の操作', () => {
     expect(s.data.adjusts.map((a) => a.id)).toEqual([SHEET_ID, MELAMINE_ID])
     expect(s.data.adjustClip?.cut).toBeUndefined()
     const job = s.data.jobs[0]
-    expect(formulaText(job.parts[3].expr.W, usableAdjusts(s.data.adjusts))).toBe('天板.W − 20 − メラミン1')
+    expect(formulaText(job.parts[3].adjust.W, usableAdjusts(s.data.adjusts))).toBe('−メラミン1')
   })
 
   it('オートフィル・クリア・行を上に挿入・行を削除', () => {
@@ -165,14 +165,14 @@ describe('store：調整寸法の表の操作', () => {
     expect(u.changed.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(u.otherJobCount).toBe(1)
     expect(u.jobCount).toBe(2)
-    // 確認のあとで当てる。全部の仕事の式の値がついてくる
+    // 確認のあとで当てる。全部の仕事の調整後の値がついてくる（棚板 W の調整 −メラミン1）
     const next = run(s, action).state
     for (const job of next.data.jobs) {
-      expect(computeDimensions(job, usableAdjusts(next.data.adjusts)).parts[3].finished?.W).toBe(378)
+      expect(computeDimensions(job, usableAdjusts(next.data.adjusts)).parts[3].adjusted?.W).toBe(378)
     }
   })
 
-  it('書きかけにした調整寸法を使う式は「削除した調整寸法」のエラーになり、寸法を戻すと直る', () => {
+  it('書きかけにした調整寸法を使う調整は「削除した調整寸法」のエラーになり、寸法を戻すと直る（第2.1版：棚板 W の調整 −メラミン1）', () => {
     let s = run(start(), { type: 'clearAdjustCells', cells: [{ row: 0, col: 'value' }] }).state
     const kinds = computeDimensions(s.data.jobs[0], usableAdjusts(s.data.adjusts)).parts[3].errors.map((e) => e.kind)
     expect(kinds).toContain('unknownAdjust')

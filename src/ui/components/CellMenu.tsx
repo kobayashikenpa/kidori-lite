@@ -3,10 +3,12 @@
 // 回転と仕上がりは選んでいる行の部材全部に当て、押してもメニューは開いたまま（今の状態が見えるように）。ほかはメニューを閉じる。
 // 行を削除はいつも確かめる（ほかの部材の式が消す部材の寸法を使っていれば示す）。
 // 計算は store の reducer（engine/clipboard/cells.ts など）に任せる。押せる／押せないの判定も engine の selectedPartIds を使う
+// 第2.1版：［調整］のタブ（adjust）では 切り取り・コピー・貼り付け・クリア だけを出し、［調整］の欄の操作（partAdjustCells）を使う
+// （行の挿入・削除・複製・回転・仕上がりは［仕上がり］のタブだけ。仕様書 25.2）
 import { useState } from 'react'
 import { selectedPartIds } from '../../engine/clipboard/cells'
 import { partLabel, partLabelAt } from '../../engine/parts'
-import type { CellClip, CellRange, Job } from '../../engine/types'
+import type { Adjust, CellClip, CellRange, Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { clipText, flagState, pasteText } from '../cellSelect'
 import { referencingOthers } from '../partsTable'
@@ -24,16 +26,20 @@ interface Props {
   /** 操作のあとの知らせ（表の上に短く出す） */
   onNotice: (text: string) => void
   onError: (message: string | null) => void
-  /** 「行を上に挿入」：index の位置に空の行を入れて、名前の入力を始めてほしい（呼ぶ側） */
-  onInsertAbove: (index: number) => void
-  /** 行を削除したあと（選ぶ範囲を直してほしい） */
-  onRowsDeleted: () => void
+  /** 「行を上に挿入」：index の位置に空の行を入れて、名前の入力を始めてほしい（呼ぶ側。［仕上がり］だけ） */
+  onInsertAbove?: (index: number) => void
+  /** 行を削除したあと（選ぶ範囲を直してほしい。［仕上がり］だけ） */
+  onRowsDeleted?: () => void
+  /** ［調整］のタブのメニュー（切り取り・コピー・貼り付け・クリアだけ。W・H は調整の欄） */
+  adjust?: boolean
+  /** 調整寸法の一覧（コピー中の表示を × ÷ − の書き方にする。仕様書 25.8） */
+  adjusts?: readonly Adjust[]
 }
 
 type Rotate = 'fixed' | 'free' | 'some'
 type Done = 'open' | 'done' | 'some'
 
-export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted }: Props) {
+export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false, adjusts }: Props) {
   const [confirm, setConfirm] = useState(false)
   const ids = selectedPartIds(job, range)
   const parts = job.parts.filter((p) => ids.includes(p.id))
@@ -49,26 +55,38 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
   }
 
   const copy = (cut: boolean) => {
-    const r = run(cut ? { type: 'cutCells', range } : { type: 'copyCells', range })
+    const r = run(
+      adjust
+        ? cut
+          ? { type: 'cutPartAdjustCells', range }
+          : { type: 'copyPartAdjustCells', range }
+        : cut
+          ? { type: 'cutCells', range }
+          : { type: 'copyCells', range },
+    )
     if (!r.ok) return
     onNotice(cut ? '切り取りました。貼る所を長押し→貼り付け' : 'コピーしました。貼る所を長押し→貼り付け')
     onClose()
   }
   const paste = () => {
-    const r = run({ type: 'pasteCells', range })
-    if (!r.ok) return
+    const r = run(adjust ? { type: 'pastePartAdjustCells', range } : { type: 'pasteCells', range })
+    // 貼れないとき（［仕上がり］と［調整］をまたいだ など）も、理由が見えるようにメニューを閉じる
+    if (!r.ok) {
+      onClose()
+      return
+    }
     onNotice(r.paste ? pasteText(r.paste.pasted, r.paste.skipped, r.paste.renamed.length) : '貼りました')
     onClose()
   }
   const clear = () => {
-    if (!run({ type: 'clearCells', range }).ok) return
+    if (!run(adjust ? { type: 'clearPartAdjustCells', range } : { type: 'clearCells', range }).ok) return
     onNotice('クリアしました')
     onClose()
   }
   const insertAbove = () => {
     onError(null)
     onClose()
-    onInsertAbove(range.top)
+    onInsertAbove?.(range.top)
   }
   const duplicate = () => {
     let last: ReduceResult | null = null
@@ -91,7 +109,7 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
     const n = ids.length
     if (!run({ type: 'deleteRows', range }).ok) return
     onNotice(`${n}個の部材を削除しました`)
-    onRowsDeleted()
+    onRowsDeleted?.()
     onClose()
   }
   /** 回転・仕上がり：選んでいる行の部材全部に当てる（メニューは開いたまま） */
@@ -106,7 +124,7 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
   const rotation = flagState(parts.map((p) => p.rotatable))
   const done = flagState(parts.map((p) => p.finishedDone))
   const refs = confirm ? referencingOthers(job.parts, ids) : []
-  const clipNow = clipText(clip)
+  const clipNow = clipText(clip, adjusts)
 
   return (
     <Sheet title={title} onClose={onClose}>
@@ -155,6 +173,8 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
             </div>
             <p className="cm-clip">{clipNow ?? 'コピーしたものはありません'}</p>
           </div>
+          {!adjust && (
+          <>
           <div className="cm-keys two">
             <button type="button" className="btn" disabled={!canInsert} onClick={insertAbove}>
               行を上に挿入
@@ -190,6 +210,8 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
               onChange={(v) => updateAll({ finishedDone: v === 'done' })}
             />
           </fieldset>
+          </>
+          )}
         </>
       )}
     </Sheet>

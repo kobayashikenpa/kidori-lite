@@ -13,7 +13,7 @@ export type SortOrder = 'asc' | 'desc'
 
 const collator = new Intl.Collator('ja', { numeric: true }) // 名前の中の数字は大きさで比べる（棚板2 → 棚板10）
 
-/** 部材の比べる値。空・エラーなら null（一番下に置く） */
+/** 部材の比べる値。空・仕上がりのエラーなら null（一番下に置く）。調整の欄だけのエラーは見ない（仕様書 25.1：仕上がり寸法で比べる） */
 function sortValue(part: Part, dims: DimensionResult, key: SortKey): number | string | null {
   if (key === 'name') {
     const name = part.name.trim()
@@ -23,7 +23,7 @@ function sortValue(part: Part, dims: DimensionResult, key: SortKey): number | st
   const axis: Axis = key
   if (part.expr[axis].trim() === '') return null
   const d = dims.parts.find((x) => x.partId === part.id)
-  if (!d || d.errors.some((e) => e.axis === axis)) return null
+  if (!d || d.errors.some((e) => e.axis === axis && e.field === 'finished')) return null
   return d.finishedByAxis[axis] ?? null
 }
 

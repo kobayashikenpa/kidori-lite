@@ -24,27 +24,32 @@ describe('見本の仕事（仕様書 16.7・19.1）', () => {
     { id: 'a-sheet', name: 'シート', value: 0.5 },
   ]
 
-  it('名前は「見本 棚」、設定は初期値、部材は6章の棚から「全体」を除いた3つ', () => {
+  it('名前は「見本 棚」、設定は初期値、部材は6章の棚から「全体」を除いた3つ。棚板 W は 仕上がり 天板.W − 20・調整 −メラミン1（仕様書 25.4）', () => {
     const { job, adjusts: out } = sampleJob(adjusts, T, ids())
     expect(job.name).toBe(SAMPLE_NAME)
     expect(job.settings).toEqual(defaultSettings())
     expect(job.parts.map((p) => [p.name, p.expr.W, p.expr.H, p.quantity])).toEqual([
       ['天板', '400', '1800', 1],
       ['側板', '天板.W', '700', 2],
-      ['棚板', '天板.W - 20 - {n:a-mel}', '天板.H - 20 × 2', 3],
+      ['棚板', '天板.W - 20', '天板.H - 20 × 2', 3],
+    ])
+    expect(job.parts.map((p) => p.adjust)).toEqual([
+      { W: '', H: '' },
+      { W: '', H: '' },
+      { W: '-{n:a-mel}', H: '' },
     ])
     expect(out).toEqual(adjusts)
-    expect(formulaText(job.parts[2].expr.W, usableAdjusts(out))).toContain('メラミン1')
+    expect(formulaText(job.parts[2].adjust.W, usableAdjusts(out))).toBe('−メラミン1')
   })
 
   it('6章のテスト用の棚と同じ寸法・木取り（4×8・縦切り優先 2枚・57.2%）', () => {
     const { job, adjusts: out } = sampleJob(adjusts, T, ids())
     const dims = computeDimensions(job, usableAdjusts(out))
     expect(dims.errors).toEqual([])
-    expect(dims.parts.map((d) => [d.name, d.finished, d.cut])).toEqual([
-      ['天板', { W: 400, H: 1800 }, { W: 410, H: 1810 }],
-      ['側板', { W: 400, H: 700 }, { W: 410, H: 710 }],
-      ['棚板', { W: 379, H: 1760 }, { W: 389, H: 1770 }],
+    expect(dims.parts.map((d) => [d.name, d.finished, d.adjusted, d.cut])).toEqual([
+      ['天板', { W: 400, H: 1800 }, { W: 400, H: 1800 }, { W: 410, H: 1810 }],
+      ['側板', { W: 400, H: 700 }, { W: 400, H: 700 }, { W: 410, H: 710 }],
+      ['棚板', { W: 380, H: 1760 }, { W: 379, H: 1760 }, { W: 389, H: 1770 }],
     ])
     const fixture = computeDimensions(shelfJob(), [{ id: 'adjust-melamine', name: 'メラミン', value: 1 }])
     const r = packJob(job, dims)
@@ -73,7 +78,8 @@ describe('見本の仕事（仕様書 16.7・19.1）', () => {
     expect(out).toHaveLength(2)
     const mel = out[1]
     expect(mel).toMatchObject({ name: 'メラミン', value: 1 })
-    expect(job.parts[2].expr.W).toBe(`天板.W - 20 - {n:${mel.id}}`)
+    expect(job.parts[2].expr.W).toBe('天板.W - 20')
+    expect(job.parts[2].adjust.W).toBe(`-{n:${mel.id}}`)
     const r = packJob(job, computeDimensions(job, usableAdjusts(out)))
     expect(pct(r.yieldRate)).toBe(57.2)
   })

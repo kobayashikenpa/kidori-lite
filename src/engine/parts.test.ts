@@ -20,7 +20,7 @@ const adjusts = shelfAdjusts()
 const dimsOf = (job: Job) => computeDimensions(job, adjusts)
 
 function part(id: string, name: string, W: string, H: string, quantity: number | null, rotatable = false): Part {
-  return { id, name, expr: { W, H }, quantity, rotatable, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable, finishedDone: false }
 }
 
 /** 見本の棚の後ろに部材を足した写し */
@@ -125,7 +125,8 @@ describe('名前が空の部材', () => {
   })
 
   it('式で使っている部材の一覧（partsReferencing）・調整寸法を使っている部材（adjustUsages）も #行番号', () => {
-    const job = withParts(part('p5', '', '天板.W', `100 + {n:${adjusts[0].id}}`, 1))
+    // 調整寸法を使っているのは調整の欄（第2.1版）。見本の棚板 W と、名前の無い #5 の H
+    const job = withParts({ ...part('p5', '', '天板.W', '100', 1), adjust: { W: '', H: `+{n:${adjusts[0].id}}` } })
     expect(partsReferencing(job.parts, 'part-tenita').map((r) => r.name)).toContain('#5')
     const u = adjustUsages({ jobs: [job] }, adjusts[0].id)
     expect(u.map((x) => x.partName)).toEqual(['棚板', '#5'])

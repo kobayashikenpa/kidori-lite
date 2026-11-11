@@ -22,6 +22,16 @@ describe('backupFile・buildBackupFile', () => {
     expect(f.adjusts).toEqual(adjusts)
   })
 
+  it('部材の調整も入る。調整寸法は、どの調整の欄でも使っていないものも一覧ぜんぶ（第2.1版。仕様書 25.9）', () => {
+    const job = shelfJob()
+    job.parts[3].adjust.W = ''
+    const f = backupFile({ jobs: [job, shelfJob('job-b')], adjusts: shelfAdjusts() })
+    expect(f.jobs[1].parts[3].adjust).toEqual({ W: '-{n:adjust-melamine}', H: '' })
+    expect(f.adjusts.map((a) => a.name)).toEqual(['メラミン', 'シート'])
+    const g = backupFile({ jobs: [job], adjusts: shelfAdjusts() })
+    expect(g.adjusts.map((a) => a.name)).toEqual(['メラミン', 'シート'])
+  })
+
   it('仕事が無くても作れる', () => {
     expect(backupFile({ jobs: [], adjusts: [] })).toEqual({ app: 'kidori-lite', kind: 'backup', version: 1, jobs: [], adjusts: [] })
   })

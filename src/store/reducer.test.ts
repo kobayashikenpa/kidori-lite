@@ -82,7 +82,9 @@ describe('仕事の操作', () => {
     expect(sample.name).toBe('見本 棚')
     // メラミン1 はもうあるので、調整寸法は変わらない
     expect(usableAdjusts(r.state.data.adjusts)).toEqual(shelfAdjusts())
-    expect(sample.parts[2].expr.W).toBe(`天板.W - 20 - {n:${MELAMINE_ID}}`)
+    // 棚板 W は 仕上がり 天板.W − 20・調整 −メラミン1（仕様書 25.4）
+    expect(sample.parts[2].expr.W).toBe('天板.W - 20')
+    expect(sample.parts[2].adjust.W).toBe(`-{n:${MELAMINE_ID}}`)
     const p = packJob(sample, computeDimensions(sample, usableAdjusts(r.state.data.adjusts)))
     expect(p.sheets).toHaveLength(2)
     expect(Math.round(p.yieldRate * 1000) / 10).toBe(57.2)
@@ -94,7 +96,8 @@ describe('仕事の操作', () => {
     const mel = r.state.data.adjusts.find((a) => a.name === 'メラミン' && a.value === 1)
     expect(mel).toBeDefined()
     const sample = r.state.data.jobs[1]
-    expect(sample.parts[2].expr.W).toBe(`天板.W - 20 - {n:${mel?.id}}`)
+    expect(sample.parts[2].expr.W).toBe('天板.W - 20')
+    expect(sample.parts[2].adjust.W).toBe(`-{n:${mel?.id}}`)
     expect(computeDimensions(sample, usableAdjusts(r.state.data.adjusts)).errors).toEqual([])
   })
 
@@ -304,20 +307,25 @@ describe('調整寸法（アプリ全体）', () => {
     })
   })
 
-  it('寸法を変えると、使っている式の表示と値がついてくる', () => {
+  it('寸法を変えると、使っている調整の表示と調整後の値がついてくる（第2.1版：棚板 W の調整 −メラミン1）', () => {
     const s = run(start(), { type: 'updateAdjust', adjustId: MELAMINE_ID, name: 'メラミン', value: 2 }).state
     const job = currentJob(s)!
-    expect(formulaText(job.parts[3].expr.W, usableAdjusts(s.data.adjusts))).toBe('天板.W − 20 − メラミン2')
+    expect(formulaText(job.parts[3].adjust.W, usableAdjusts(s.data.adjusts))).toBe('−メラミン2')
     const tana = computeDimensions(job, usableAdjusts(s.data.adjusts)).parts[3]
-    expect(tana.finished?.W).toBe(378)
-    expect(adjustUsages(s.data, MELAMINE_ID).map((u) => u.partName)).toEqual(['棚板'])
+    expect(tana.finished?.W).toBe(380)
+    expect(tana.adjusted?.W).toBe(378)
+    expect(tana.cut?.W).toBe(388)
+    // 使っている所は調整の欄で数える（仕様書 25.3）
+    expect(adjustUsages(s.data, MELAMINE_ID).map((u) => [u.partName, u.axes])).toEqual([['棚板', ['W']]])
   })
 
-  it('使っている調整寸法を消すと、その式はエラーになる', () => {
+  it('使っている調整寸法を消すと、その調整はエラーになる（仕上がりは出し、調整後・木取りは出さない）', () => {
     const s = run(start(), { type: 'removeAdjusts', adjustIds: [MELAMINE_ID] }).state
     const tana = computeDimensions(currentJob(s)!, usableAdjusts(s.data.adjusts)).parts[3]
-    expect(tana.finished).toBeNull()
-    expect(tana.errors.some((e) => e.kind === 'unknownAdjust')).toBe(true)
+    expect(tana.finished).toEqual({ W: 380, H: 1760 })
+    expect(tana.adjusted).toBeNull()
+    expect(tana.cut).toBeNull()
+    expect(tana.errors.some((e) => e.kind === 'unknownAdjust' && e.field === 'adjust')).toBe(true)
   })
 })
 

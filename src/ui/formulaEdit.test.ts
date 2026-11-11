@@ -8,7 +8,7 @@ import {
   insertAt,
   moveLeft,
   moveRight,
-  opensAsFormula,
+  canInsertRef,
   refCellsOf,
   refColorsOf,
   REF_COLOR_COUNT,
@@ -170,19 +170,38 @@ describe('式を押してカーソルを動かす（仕様書 18.7）', () => {
   })
 })
 
-describe('「＝」で始める式（仕様書 20.2）', () => {
-  it('部材の寸法・調整寸法を使っている式は「＝」付きで開く。数字や計算だけなら付けない', () => {
-    expect(opensAsFormula('天板.W - 20')).toBe(true)
-    expect(opensAsFormula('全体.H - {n:adjust-1}')).toBe(true)
-    expect(opensAsFormula('{n:adjust-1}')).toBe(true)
-    expect(opensAsFormula('1800 - 40')).toBe(false)
-    expect(opensAsFormula('400')).toBe(false)
-    expect(opensAsFormula('')).toBe(false)
+describe('「＝」なしで式を打つ：セルを押して寸法を入れるか（仕様書 25.7）', () => {
+  const end = (t: string) => unitCount(t)
+  it('欄が空（空白だけ）なら入れる', () => {
+    expect(canInsertRef('', 0)).toBe(true)
+    expect(canInsertRef('  ', 0)).toBe(true)
   })
 
-  it('先頭に「＝」が付いたまま保存された式も「＝」付きで開く', () => {
-    expect(opensAsFormula('＝1800 - 40')).toBe(true)
-    expect(opensAsFormula('=5')).toBe(true)
+  it('カーソルのすぐ前が ＋ − × ÷ ( なら入れる（全角・× ÷ − も）', () => {
+    for (const t of ['天板.W -', '400 +', '2 *', '1800 /', '(', '－', '天板.W ×', '1800 ÷', '天板.W −', '（']) {
+      expect(canInsertRef(t, end(t)), t).toBe(true)
+    }
+    // 先頭の「−」（符号）の後ろも入れる（［調整］の −メラミン1 など）
+    expect(canInsertRef('-', 1)).toBe(true)
+  })
+
+  it('数字・寸法・) のすぐ後は入れない（入力を終えて押したセルを選ぶ）', () => {
+    for (const t of ['天板.W - 20', '400', '天板.W', '(1800 - 40)', '{n:adjust-1}']) {
+      expect(canInsertRef(t, end(t)), t).toBe(false)
+    }
+  })
+
+  it('カーソルの位置で決める（式の途中の記号の後ろなら入れる・先頭で後ろに何かあるなら入れない）', () => {
+    // 「天板.W - 20」の「-」の後ろ（単位の番号 2）
+    expect(canInsertRef('天板.W - 20', 2)).toBe(true)
+    expect(canInsertRef('天板.W - 20', 1)).toBe(false)
+    expect(canInsertRef('天板.W - 20', 0)).toBe(false)
+  })
+
+  it('「＝」で始まる古い式は「＝」を外した形で見る', () => {
+    expect(canInsertRef('=天板.W -', 2)).toBe(true)
+    expect(canInsertRef('＝400', 3)).toBe(false)
+    expect(canInsertRef('=', 0)).toBe(true)
   })
 
   it('セルを押して入れた寸法は、カーソルの位置に入る（天板.W のあとに − 2 0）', () => {

@@ -43,6 +43,25 @@ const OP_LABELS: Readonly<Record<Operator, string>> = { '+': '+', '-': '−', '*
 /** 空の式のエラーの文 */
 export const EMPTY_FORMULA_MESSAGE = '数値か式を入れてください'
 
+/** 調整の式に部材の寸法を書いたときのエラーの文（第2.1版。仕様書 25.2・25.9） */
+export const REF_IN_ADJUST_MESSAGE = '調整には部材の寸法は使えません'
+
+/** 仕上がりの式に調整寸法を書いたときのエラーの文（第2.1版。仕様書 25.4・25.9） */
+export const ADJUST_IN_FINISHED_MESSAGE = '仕上がりの式では調整寸法は使えません'
+
+/**
+ * 式の種類（第2.1版）。
+ * - any：区別しない（第2.0版までと同じ。部材の寸法も調整寸法も使える）
+ * - finished：［仕上がり］の W・H（仕様書 25.4）。調整寸法は使えない（削除した調整寸法も同じエラー）
+ * - adjust：部材の調整（仕様書 25.2）。部材の寸法は使えない。先頭の「+」を読む（足す）。終わりが記号のときの案内は「数値か調整寸法」
+ */
+export type FormulaKind = 'any' | 'finished' | 'adjust'
+
+export interface ParseOptions {
+  /** 式の種類（省略で any） */
+  kind?: FormulaKind
+}
+
 /**
  * 字句の、画面に見えている書き方（第1.4版。仕様書 18.6）。
  * 数値はそろえた数字、参照は「全体.W」、調整寸法は表示名（メラミン1）、記号は + − × ÷ ( )。
@@ -68,11 +87,12 @@ export function tokenLabel(tok: Token, expr: string, adjusts?: readonly Adjust[]
 }
 
 /**
- * 式の文字列を構文木にする。例外は投げず、結果の型で返す。
+ * 式の文字列を構文木にする。例外は投げず、結果の型で返す。options.kind で式の種類（仕上がり・調整。第2.1版）を分ける。
  * エラーの文は画面に見えている言葉で書く（調整寸法の表示名は adjusts から。第1.4版。仕様書 18.6）。
  * 入れている途中の形（空・終わりが記号や「(」・かっこが閉じていない・「1.」）のエラーには incomplete を付ける（仕様書 18.5）
  */
-export function parse(expr: string, adjusts?: readonly Adjust[]): ParseResult {
+export function parse(expr: string, adjusts?: readonly Adjust[], options: ParseOptions = {}): ParseResult {
+  const kind = options.kind ?? 'any'
   const t = tokenize(expr)
   if (!t.ok) {
     return { ok: false, error: { kind: 'syntax', message: t.message, start: t.start, end: t.end, ...(t.incomplete ? { incomplete: true } : {}) } }
@@ -80,7 +100,9 @@ export function parse(expr: string, adjusts?: readonly Adjust[]): ParseResult {
   if (t.tokens.length === 0) return { ok: false, error: { kind: 'syntax', message: EMPTY_FORMULA_MESSAGE, incomplete: true } }
 
   const tokens = t.tokens
-  let pos = 0
+  // 調整の式は先頭の「+」を読む（足す。仕様書 25.2）。そのほかの式では今までどおり式の始めに置けない
+  let pos = kind === 'adjust' && tokens[0].type === '+' ? 1 : 0
+  const nextHint = kind === 'adjust' ? '数値か調整寸法' : '数値か部材の寸法'
   const peek = (): Token | undefined => tokens[pos]
   const label = (tok: Token): string => tokenLabel(tok, expr, adjusts)
   const fail = (message: string, tok: Token | undefined, incomplete = false): never => {
@@ -122,7 +144,7 @@ export function parse(expr: string, adjusts?: readonly Adjust[]): ParseResult {
   function parseFactor(): Expr {
     const tok = peek()
     // 式の終わりが記号か「(」：入れている途中
-    if (!tok) return fail(`式が「${label(tokens[tokens.length - 1])}」で終わっています（後ろに数値か部材の寸法を入れてください）`, tok, true)
+    if (!tok) return fail(`式が「${label(tokens[tokens.length - 1])}」で終わっています（後ろに${nextHint}を入れてください）`, tok, true)
     switch (tok.type) {
       case '-':
         pos++
@@ -131,9 +153,13 @@ export function parse(expr: string, adjusts?: readonly Adjust[]): ParseResult {
         pos++
         return { type: 'number', value: tok.value }
       case 'ref':
+        // 調整の式では部材の寸法は使えない（仕様書 25.2）
+        if (kind === 'adjust') return fail(REF_IN_ADJUST_MESSAGE, tok)
         pos++
         return { type: 'ref', part: tok.part, axis: tok.axis }
       case 'adjust':
+        // 仕上がりの式では調整寸法は使えない（仕様書 25.4）
+        if (kind === 'finished') return fail(ADJUST_IN_FINISHED_MESSAGE, tok)
         pos++
         return { type: 'adjust', adjustId: tok.adjustId }
       case '(': {

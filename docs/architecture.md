@@ -634,3 +634,163 @@ export interface AdjustClip { rows: number; cols: number; cells: string[][]; cut
 - `moveParts(parts, from, count, to)`：続いた行を、元の並びの `to` 行目の上（`to` が部材の数なら一番下）へ動かす。動かす行の中・すぐ上・すぐ下なら変わらない。`movedTop(length, from, count, to)` は動かしたあとの一番上の行。`sameOrder(a, b)` は同じ並びか
 - store：`jobs.ts` の `sortJobParts`・`moveJobParts`（並びが変わらなければ同じ仕事を返す＝updatedAt を付けない）。reducer に `{ type: 'sortParts', key, order }`（W・H は `usableAdjusts(data.adjusts)` で計算）と `{ type: 'moveParts', from, count, to }`
 - 画面：`PartsTable` の見出しは `HeadButton`（`useLongPress`。押すと列全体、長押しで並べ替えのシート）。番号を引く指の動きは `useGrid` の `moveRowsFrom`・`onMoveRows`（選んでいる行全体の番号だけ。その番号は CSS で `touch-action: none`）。動かす先の線は `GridOverlay` の `moveLine`。左上の丸い取っ手が番号に重なる所は、番号として扱う
+
+## 14. 第2.1版の変更（仕様書 25章）
+
+### 14.1 部材の調整の型・読み込み・調整の式（E-18。spec 25.1・25.2）
+
+```ts
+// types.ts
+export interface Part {
+  id: string
+  name: string
+  expr: Record<Axis, string>    // 仕上がり寸法の入力（数値または式）
+  adjust: Record<Axis, string>  // 調整の式（第2.1版）。仕上がりに足し引きする値。空の文字は「調整なし（0）」
+  quantity: number | null
+  rotatable: boolean
+  finishedDone: boolean
+}
+```
+
+- フィールド名は **`adjust`**（W・H それぞれの文字）。式で `part.expr.W`（仕上がり）と `part.adjust.W`（調整）を並べて読めるように。アプリ全体の調整寸法の一覧 `AppData.adjusts`（`AdjustRow[]`）とは別物
+- **読み込み**（`shape.ts`）：`isPart` は `adjust`（`{ W: string, H: string }`）を要る。第2.0版までの部材（`adjust` が無い）は `readJob` で `{ W: '', H: '' }` を足してから確かめる（保存データ `parseAppData`・共有とバックアップのファイル `readTransferFile` の両方が `readJob`／`readJobs` を通る）。`adjust` があって形が違う部材は読めない（仕事ごと読めない＝今までと同じ考え方）
+- `store/jobs.ts` の `newPart` は調整を空で作る。表の空の行に貼って作る部材（`clipboard/cells.ts`）も空
+- **調整の式**（`formula/adjustExpr.ts`）：
+  - `parseAdjustExpr(expr, adjusts?)` → `ParseResult`（空・空白だけは 0）。`evaluateAdjustExpr(expr, adjusts)` → `EvalResult`（足し引きする値。`adjusts` は `usableAdjusts(data.adjusts)`）。`isBlankAdjustExpr(expr)`
+  - 中では `parse(expr, adjusts, { kind: 'adjust' })`（`formula/parse.ts` に `ParseOptions`・`FormulaKind` を足した）。`kind: 'adjust'` の違い：先頭の「+」を読む（足す）／部材の寸法はエラー `REF_IN_ADJUST_MESSAGE`「調整には部材の寸法は使えません」（kind は `syntax`。位置 start・end つき）／終わりが記号のときの案内は「後ろに数値か調整寸法を入れてください」
+  - 先頭の「−」は今の式と同じく符号（`−{n:メラミン}×2` ＝ −2）。全角の記号・× ÷ − は今の式と同じく読む。「＝」は付けない形だが、付いていれば今の式と同じく読み飛ばす
+  - 一覧に無い id（削除した調整寸法・書きかけの行）は `unknownAdjust`「削除した調整寸法を使っています」。「−」だけ・「＋」だけ・終わりが記号は `incomplete`（入れている途中）
+
+### 14.2 寸法の計算に調整後を足す・見本（E-19。spec 25.1・25.2・25.4・25.5）
+
+```ts
+// types.ts
+export type DimensionField = 'finished' | 'adjust'   // エラーの欄：［仕上がり］の式か、［調整］の調整の式か
+export interface DimensionError { partId; axis; field: DimensionField; kind; message; refs?; incomplete?; from? }
+export interface PartDimensions {
+  partId; name; quantity
+  finished: Record<Axis, number> | null        // 仕上がり（式の計算結果）
+  adjusted: Record<Axis, number> | null        // 調整後（仕上がり ＋ 調整）。第2.1版
+  cut: Record<Axis, number> | null             // 木取り（調整後 ＋ 切り代）。第2.1版から調整後に足す
+  finishedByAxis: Partial<Record<Axis, number>>
+  adjustByAxis: Partial<Record<Axis, number>>   // 調整の値（足し引きする値。空は 0）。調整の式が計算できた軸だけ
+  adjustedByAxis: Partial<Record<Axis, number>> // 調整後。仕上がりと調整の両方が計算でき、0 より大きい軸だけ
+  cutByAxis: Partial<Record<Axis, number>>
+  errors: DimensionError[]                      // 仕上がりの欄と調整の欄のエラー（軸ごとに 仕上がり → 調整 の順）
+}
+```
+
+- `computeDimensions(job, adjusts)`：仕上がり → 調整後（`evaluateAdjustExpr(part.adjust[axis], adjusts)` を足す）→ 木取り（＋ `settings.allowance`）
+  - 式の参照（`天板.W`）は今までどおり仕上がり寸法（`resolve.ts` は変えていない）。調整のエラーはほかの部材に伝わらない
+  - 調整の欄のエラー（`field: 'adjust'`）：調整の式が読めない（syntax。「−」だけなら incomplete）・部材の寸法を使っている（syntax「調整には部材の寸法は使えません」）・削除した調整寸法（unknownAdjust）・0 で割る（divideByZero）・調整後が 0 以下（nonPositive「調整後の寸法が 0 以下になります（−5）」。小数第1位に丸めて比べる）
+  - 仕上がりがエラーの軸は、調整後・木取りを出さない。このとき調整の欄のエラーは **足さない**（調整の式そのものがおかしいときだけ足す）。画面の［調整］のタブは、その軸のエラー（仕上がりのものも）を出せばよい
+  - 仕上がりの欄のエラーは `field: 'finished'`（`resolve.ts` のエラー・参照先から伝わったエラーも）
+- **画面の出し分け**：［仕上がり］のタブは `field === 'finished'` のエラーだけ、［調整］［木取り］のタブはその軸のエラー全部。`ui/partCells.ts` の `dimCell` は［仕上がり］のタブのとき `field === 'finished'` だけを見るように直した（最小限の直し。調整のエラーで［仕上がり］の欄が赤くならないように）
+- 木取りの計算（`packing/`）・お知らせ（`hints/saving.ts`）・比べ（`packing/sizes.ts`）・固定した1枚の drift（`progress/frozen.ts`）は `cut`／`cutByAxis` を使っているので、そのまま調整後の木取り寸法についてくる（テストで確かめた）。並べ替え（`order.ts`）は今までどおり `finishedByAxis`（仕上がり）で比べる
+- テストの見本 `fixtures/shelf.ts` の `shelfJob()`：棚板 W を仕上がり `天板.W - 20`・調整 `-{n:adjust-melamine}` にした（仕上がり 380・調整後 379・木取り 389）。第2.0版までの形（仕上がりの式にメラミン1）は `legacyShelfJob()`（古いデータの読み込み・置き換えのテスト用）
+- 見本（`store/sample.ts` の `sampleJob`）：棚板 W は仕上がり `天板.W - 20`・調整 `-{n:メラミン1 の id}`（25.4）。4×8 2枚・57.2% は今と同じ
+
+### 14.3 仕上がりの式から調整寸法をなくす（E-20。spec 25.4・25.9）
+
+- **仕上がりの式では調整寸法を使えない**：`parse(expr, adjusts, { kind: 'finished' })` は調整寸法 `{n:id}` をエラー `ADJUST_IN_FINISHED_MESSAGE`「仕上がりの式では調整寸法は使えません」（kind は `syntax`、位置つき、`incomplete` なし）にする。`dimensions/resolve.ts` は仕上がりの式をこの種類で読む（`computeDimensions`・`partsReferencing` が通る）。削除した調整寸法の id も同じエラー（今までの `unknownAdjust` は、仕上がりの欄では出なくなった。調整の欄では今までどおり `unknownAdjust`）
+  - 記号が抜けている式（`全体.W {n:id}`）は、今までどおり「「全体.W」と「メラミン1」の間に…」の文（調整寸法を値として読む前に記号の抜けで止まるため）
+  - `parse` の初めの値（`kind` を省いたとき）は `any`（今までどおり両方使える）。`evaluateExpr`・`isIncompleteFormula` は `any` のまま
+- **数字に置き換える**（`src/engine/migrate/finishedAdjusts.ts`）
+  - `inlineAdjustsInExpr(expr, adjusts)`：式の `{n:id}`（全角も）を寸法の数字（`exactText`。丸めない）に置き換える。一覧に無い id（削除した調整寸法・書きかけの行）はそのまま。前後に数字・文字がくっついていれば空白をはさむ（`{n:x}5` → `1 5`。エラーの式を別の数にしない）
+  - `inlineJobAdjusts(job, adjusts)`：部材の仕上がりの式（`Part.expr`）だけ。調整の欄（`Part.adjust`）は置き換えない
+  - `inlineCellClipAdjusts(clip, adjusts)`：保存してあるコピーしたセル（名前には `{ }` を使えず、枚数は数字だけなので、`{n:id}` があるのは W・H のセルだけ）
+  - `inlineAppDataAdjusts(data)`：全部の仕事とコピーしたセルを、`usableAdjusts(data.adjusts)` で置き換える
+  - どれも、置き換えるものが無ければ同じオブジェクトを返す
+- **使う所**
+  - 保存データ：`store/storage.ts` の `parseAppData` の最後（アプリを開いたとき）
+  - 取り込み：`transfer/importFile.ts` の `importTransfer` で、ファイルの仕事を **ファイルの `adjusts` の寸法** で置き換えてから id をつけ替える（送った人の寸法のまま。受け取る人の一覧の寸法ではない）
+
+### 14.4 共有・バックアップ・調整寸法を使っている所（E-21。spec 25.3・25.5・25.9・21.3）
+
+- **「使っている」は調整の欄で数える**（`formula/usages.ts`）：`partsUsingAdjust(s)`・`adjustUsages`・`adjustUsagesOf` は `Part.adjust` の W・H だけを見る（`AdjustUsage.axes` は調整の欄の軸）。仕上がりの式に残っている `{n:id}`（削除した調整寸法など。エラーの式）は数えない。`adjustIdsInPart(part)`（調整の欄の id。W → H・重なりなし）を足した。`adjusts.ts` の `adjustChangeUsages`（21.3 の「◯件の仕事で使っています」）は `adjustUsagesOf` を使うので、そのまま調整の欄で数える
+- **共有**（`share.ts` の `jobFile`）：部材の調整も入れる（`adjust` は写し）。入れる調整寸法は **その仕事の調整の欄で使っているもの** だけ（アプリの一覧の並び。削除した・書きかけは入らない）
+- **バックアップ**（`backup.ts`）：形は変えない。仕事（調整も）と、調整寸法の一覧は今どおり **ぜんぶ**（式で使える行。仕様書 25.9）
+- **取り込み**（`importFile.ts` の `importTransfer`）
+  1. 仕上がりの式をファイルの寸法で数字に置き換える（14.3）
+  2. 一覧に足す調整寸法：共有は **置き換えたあとの仕事の調整の欄で使っているもの** だけ（第2.0版のファイルの、仕上がりで使っていた調整寸法は数字になったので足さない）（暫定）、バックアップはファイルの一覧ぜんぶ
+  3. `rekeyJob` で、仕上がりの式と調整の欄の両方の `{n:id}` をつけ替える（ファイルに無い id はそのまま）
+- 調整の無い古いファイルは `readJob` で調整なしとして読む（14.1）。ファイルの版（`TRANSFER_VERSION`）は 1 のまま（仕様書 25.9。前の版のアプリで読むと、調整なしとして読まれる）
+
+### 14.5 部材の行の操作・仕事のコピーで調整がついていく（E-22。spec 25.2・25.5・25.9）
+
+- `store/jobs.ts`
+  - `copyJob`：調整もコピーする（写し）
+  - `insertPart`：渡した部材の調整を写して入れる（`newPart` は調整なし）
+  - `updatePart(job, partId, patch: PartPatch)`：`PartPatch` は `expr`・`adjust` を **片方の軸だけ** 渡せる形（`Partial<Record<Axis, string>>`）。渡さない軸はそのまま。今までの `{ expr: { W, H } }` もそのまま使える
+  - `setPartAdjust(job, partId, axis, text)`：調整を1つの軸に入れる。同じ値なら同じ仕事（updatedAt を付けない）。読めない式でも入れる（計算のエラーとして出す。仕上がりと同じ）
+- `clipboard/copy.ts` の `duplicatePart`：調整も写す
+- 部材ごと動かす・消す操作（`order.ts` の `sortParts`・`moveParts`、`clipboard/cells.ts` の `deleteRows`・`clearCells`・`pasteCells`・`fillCells`、`removePart`）は部材のオブジェクトごと扱うので、調整はその部材についていく（削除では消える）。［仕上がり］の貼り付け・オートフィル・切り取りは仕上がりの欄（名前・W・H・枚数）だけを変え、調整は変えない。表の下に足す部材の調整は空
+- ［仕上がり］で名前・W・H・枚数をぜんぶ空にした行は、調整が入っていても外す（`parts.ts` の `isBlankPart` は調整を見ない。仕様書 25.9）
+- **store**（`reducer.ts`）：`{ type: 'setPartAdjust', partId, axis, text }`（`jobId` を省くと開いている仕事）。`updatePart` の `patch` も `PartPatch`（調整を渡せる）
+
+### 14.6 ［調整］の欄のセル操作（E-23。spec 25.2・25.9。`src/engine/clipboard/partAdjustCells.ts`）
+
+```ts
+// types.ts
+export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source?: 'adjust' }
+// source：どのタブの欄から写したか。'adjust'＝［調整］（W・H は調整の式）。無ければ［仕上がり］（第2.0版までの保存データも無い）
+```
+
+- コピーしたセルは今までどおり `AppData.cellClip` の1つだけ（［仕上がり］と［調整］で同じクリップを使い、`source` で見分ける）。［仕上がり］と［調整］をまたいだ貼り付けは断る：
+  - ［調整］のものを［仕上がり］に：`pasteCells` が `{ ok: false, message: ADJUST_CLIP_TO_FINISHED_MESSAGE }`「［調整］でコピーしたものは［仕上がり］には貼れません」
+  - ［仕上がり］のものを［調整］に：`pastePartAdjustCells` が `FINISHED_CLIP_TO_ADJUST_MESSAGE`「［仕上がり］でコピーしたものは［調整］には貼れません」
+  - オートフィルはクリップを使わないので、どちらの表もそのタブの中だけ
+- **保存データ**：`shape.ts` の `isCellClip` は `source` が無いか `'adjust'` だけを通す（ほかの値なら読めない＝`readCellClip` は null）。`inlineAppDataAdjusts`（14.3）は `source: 'adjust'` のクリップを置き換えない
+
+| 関数 | 内容 |
+|---|---|
+| `partAdjustCellText(job, pos)` | W・H は調整の式、名前・枚数は `cellText` と同じ。空の行は '' |
+| `copyPartAdjustCells(job, sel)`・`cutPartAdjustCells(job, sel)` | `CopyCellsResult`（`clip.source = 'adjust'`。切り取りは `clip.cut = { jobId, range }`）。名前・枚数のセルも選んでコピーできる |
+| `pastePartAdjustCells(job, clip, sel)` | `{ ok: true, job, pasted, skipped: [], renamed: [], cutClear }`／`{ ok: false, message }`。W・H の調整だけ書く。名前・枚数に当たる所・部材の無い行（空の行）は貼らず数えない（部材も作らない）。1つのセルは選んだセル全部へ、範囲は左上から同じ形 |
+| `clearPartAdjustCutSource(job, clip, cells)` | 切り取りをほかの仕事に貼ったあと、元の仕事の W・H を空にする（書き換えたセルは空にしない） |
+| `fillPartAdjustCells(job, from, to)` | オートフィル（`fillCells` と同じくり返し）。W・H だけ。部材のある行まで |
+| `clearPartAdjustCells(job, sel)` | W・H の調整を空にする。名前・枚数・仕上がりは変えず、部材も消さない。変わらなければ同じ仕事 |
+
+- 切り取り：元の W・H だけを空にする（名前・枚数は消さない）。貼る先と重なるセル・切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で、違う仕事なら `cutClear` で
+- `cells.ts` に `selectionCells(sel)`（選んだセルをそろえた配列。四角なら `rangeCells` と同じ）を外に出した
+- **store**（`reducer.ts`）。どれも `SelectionArg`（`cells` か `range`）、`jobId` を省くと開いている仕事
+  - `{ type: 'copyPartAdjustCells' }`・`{ type: 'cutPartAdjustCells' }`：`cellClip` を置き換える（仕事は変えない）
+  - `{ type: 'pastePartAdjustCells' }`：結果の `paste: { pasted, skipped: [], renamed: [] }`。切り取りなら元を空にし（ほかの仕事でも。updatedAt を付ける）、1つでも貼れたら `cellClip` から `cut` を外す。コピーが無ければ「コピーしたセルがありません」
+  - `{ type: 'fillPartAdjustCells', from, to }`：結果の `paste`
+  - `{ type: 'clearPartAdjustCells' }`：変わらなければ updatedAt を付けない
+
+### 14.7 タブを3つに・［調整］の表（U-26。spec 25.1・25.2・25.3・25.5・25.6）
+
+- `ui/partsTab.ts`：`PartsTab = 'finished' | 'adjust' | 'cut'`。並びは ［仕上がり］［調整］［木取り］。覚えるキーは今までどおり `kidori-lite.ui` の `partsTab`（第2.0版の 'finished'・'cut' はそのまま読める）
+- `ui/partsTable.ts` の `adjustDimCell(part, dims, axis, adjusts)`：［調整］の W・H の欄。`empty`（仕上がりも調整も空）／`finished`（調整が空。仕上がり寸法を薄く）／`adjusted`（`label` は `formulaText` の書き方「−メラミン1 × 2」・`value` は `adjustedByAxis`）／`error`（その軸のエラー全部。仕上がりのものも）。読み上げの文は `adjustCellLabel`
+- `components/PartAdjustTable.tsx`：［調整］の表（U-26 では見るだけ。U-28 で入力できるようにする）。部材のある行だけ。W・H の欄は375px に収めるため2段（上に調整の値を小さく緑、下に調整後の寸法）（暫定）
+- `screens/PartsScreen.tsx`：3つのタブ。タブの色は 仕上がり＝青（`fin`）・調整＝緑（`adjust`。調整寸法の色 `--ok`）・木取り＝橙（`cut`）。調整寸法の表（`AdjustTable`）は［調整］の表の下に移した（`PartsTable` の中から外した。［仕上がり］の入力中に調整寸法の行を押して `{n:id}` が入ることは無くなった）
+- 見出しは「W」「H」の1段（`PartsTable` の `AXIS_SIDE` と `.pt-h2` をなくした。並べ替えのシートの題も「W で並べ替え」）。［木取り］のタブの ⓘ と題は「調整後 ＋ 切り代」
+
+### 14.8 「＝」なしで式を打つ（U-27。spec 25.7）
+
+- `ui/formulaEdit.ts` の **`canInsertRef(text, cursor)`**：入力中にほかのセルを押したとき寸法を入れるか。欄が空（空白だけ）か、カーソルのすぐ前の単位が記号（`op`。先頭の符号の「−」も）か「(」なら true。数字・寸法・「)」の後ろ、カーソルが先頭で後ろに何かあるときは false（暫定）。先頭の「＝」（古い式）は外した形で見る。`opensAsFormula` はなくした
+- `FormulaKeys`：「＝」のキー（`eq`）と `equals`・`onEquals` をなくした。一番上の段は ＋ − × ÷ の4つ（キーの並びを 20 等分にし、ふつうのキーは 4、一番上の段は 5、「0」は 8 ずつ）。`FormulaView` の `equals` もなくした
+- `PartsTable`：「＝」の状態（`equals`）をなくした。W・H の入力中に押したセルが **部材のある行の W・H で、`canInsertRef` が true** なら寸法を入れる（名前の無い部材は入れずに知らせ、入力は続ける）。それ以外（数字の後・名前・枚数・部材の無い空の行）は入力を終えて押したセルを選ぶ。同じ部材のもう一方の軸（天板.W の入力中に天板.H）も入れる（今までどおり。暫定）。長押しのメニューは、寸法が入るときだけ出さない（`formulaPicking`）
+- 古い「＝」付きの式：開くときは「＝」を外した形で編集し、入れ直すと「＝」の無い形で保存する（入れ直さなければそのまま。engine は今までどおり読む）
+
+### 14.9 ［調整］のタブの入力と操作（U-28。spec 25.2・25.3・25.7・25.9）
+
+- `components/PartAdjustTable.tsx`：［調整］の表を入力できる表にした（`useGrid`・`GridOverlay`・`CellMenu` を使う）。行は部材の数だけ（`rowCount = parts.length`）。入力している欄は `{ partId, axis }`（W・H だけ）。名前・枚数のセルは選べる（コピーもできる）が、もう一度押しても入力しない
+  - キーを押すたびに `setPartAdjust` で保存（読めない式も入れ、計算のエラーとして出す）。入力中のセルは、打っている途中のエラー（`errorsWhileEditing` で出さないもの）だけなら赤くせず調整の値だけ出す
+  - 入力中に表のほかのセル（ほかの部材の W・H も）を押したら、入れずに入力を終えてそのセルを選ぶ。番号・見出しは行全体・列全体（`rowRange`・`columnRange`）。見出しの長押しの並べ替え・番号を引いての移動は無い
+  - 「次へ」は `ui/partsTable.ts` の `nextAdjustTabCell`：W → H → 次の部材の W。最後の部材の H の次は入力を終える（暫定）
+  - オートフィルは `fillPartAdjustCells`、長押しのメニューは `CellMenu` の `adjust`（切り取り・コピー・貼り付け・クリアだけ。`copyPartAdjustCells` など）。入力中は長押しのメニューを出さない
+  - 切り取った元の点線は、`clip.source` が `'adjust'` のときだけ［調整］の表に出す（`PartsTable` は `'adjust'` でないときだけ）
+- 調整寸法の表（`AdjustTable`）は `PartAdjustTable` の下に置く（`PartsScreen` からは `PartAdjustTable` だけ）。`picking: ((row) => boolean) | null` は、入力中で `canInsertRef`（14.8）が true の間だけ渡す。押した行が式で使える行なら `{n:id}` を入れて true、書きかけの行は「名前と寸法をそろえると使えます」と出して true。false・空の行・番号・見出しは、調整寸法の表がふつうにそのセルを選び（`claimOpen('cellRange')` で［調整］の表の範囲が外れ）、入力が終わる
+- 寸法を変える・消すときの確認（21.3）は今の `AdjustTable` のまま（`adjustChangeUsages` が調整の欄で数える。14.4）
+- `CellMenu`：貼れなかったとき（［仕上がり］と［調整］をまたいだ など）もメニューを閉じて理由を出す（［仕上がり］も同じ。暫定）
+
+### 14.10 タブのすぐ下の式の欄（U-29。spec 25.8）
+
+- `screens/PartsScreen.tsx`：タブと式の欄の置き場所（`.fx-slot`）を `.parts-sticky`（`position: sticky`。`top` は上の仕事の名前の帯 `.topbar` の高さを測った値）に入れて画面の上に止める。表は選んでいるセルの中身をこの置き場所へ `createPortal` で出す（置き場所の要素は state で持ち、各表に `barSlot` で渡す）。置き場所が空のときは CSS（`:empty::before`）で同じ高さの点線の空の欄を出す（表の位置がずれない）
+- `components/FormulaBar.tsx`：式の欄。中身は `ui/fxBar.ts` の `BarContent`（`expr`＝式を `FormulaView` の塊つきで、`text`＝枚数・調整寸法の寸法）。選んでいるだけのときは押すと `onPress`（入力を始める）、入力中はカーソル（式を押すとその位置。`caretFromTap`）と右の「✓」（`onDone`）、`onPress` が無ければ見るだけ。エラーの理由は欄のすぐ下に重ねて出す（`.fx-err`。表を押し下げない）。計算した寸法は欄に出さない（セルに出ている）
+- `ui/fxBar.ts`（テストつき）：`barField(range)`（範囲の左上が W・H・枚数ならその列）、`partBar(parts, range, tab)`（［仕上がり］［木取り］は仕上がりの式（「＝」は外す）、［調整］は調整の式、枚数は枚数。部材の無い空の行は空の中身）、`adjustRowBar(rows, range)`（調整寸法の表の寸法のセル）、`barErrors(errors, axis, tab, editing)`（［仕上がり］は仕上がりの欄のエラーだけ、ほかはその軸全部。入力中は `errorsWhileEditing`）
+- 各表：`PartsTable`・`PartAdjustTable`・`AdjustTable` は、キーの上の行（`ExprKeys`・`QtyKeys` の `.pt-show`）をなくし、キーだけを画面の下に出す。入力中は欄も「中」とみなす（`useOutsideEnd` の inside に `barSlot`）。`CutTable` は W・H・枚数のセルを押すと選んだ印（`.picked`）を付け、欄に見るだけで出す（もう一度押すか外を押すと外す）。［調整］の枚数のセルは見るだけ（欄を押しても入力しない）
+- `useGrid.ts` の `stickyBottom()`：画面の上に止めてあるもの（`.topbar`・`.parts-sticky`）の下の端。入力している行を見せるスクロール（`useRevealRow`）と、取っ手を引いたときの端のスクロール（`edgeDelta`）がこの下を上の端とみなす
+- コピー中の表示：`cellSelect.ts` の `clipText(clip, adjusts?)` は、adjusts を渡すと1つのセルの中身を `formulaText`（× ÷ −・メラミン1）で出す（部材の表・［調整］の表・長押しのメニュー）

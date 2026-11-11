@@ -25,7 +25,7 @@ export interface Resolution {
   nodes: Map<string, DimNode>
   /** すべての寸法の計算順。参照先が先に並ぶ（循環している寸法も含む） */
   order: DimRef[]
-  /** 式そのもののエラー（syntax・unknownRef・cycle）。部材の並び順 → W・H の順 */
+  /** 式そのもののエラー（syntax・unknownRef・cycle。仕上がりの欄なので field はいつも finished）。部材の並び順 → W・H の順 */
   errors: DimensionError[]
 }
 
@@ -57,10 +57,11 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
 
   for (const p of parts) {
     for (const axis of AXES) {
-      const parsed = parse(p.expr[axis], adjusts)
+      // 仕上がりの式（調整寸法は使えない。第2.1版 仕様書 25.4）
+      const parsed = parse(p.expr[axis], adjusts, { kind: 'finished' })
       if (!parsed.ok) {
         nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: null, deps: [] })
-        addError({ partId: p.id, axis, kind: 'syntax', message: parsed.error.message, ...(parsed.error.incomplete ? { incomplete: true } : {}) })
+        addError({ partId: p.id, axis, field: 'finished', kind: 'syntax', message: parsed.error.message, ...(parsed.error.incomplete ? { incomplete: true } : {}) })
         continue
       }
       const deps: DimRef[] = []
@@ -75,6 +76,7 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
         addError({
           partId: p.id,
           axis,
+          field: 'finished',
           kind: 'unknownRef',
           message: unknown.map((n) => `「${n}」という部材はありません`).join('。'),
           refs: unknown,
@@ -159,6 +161,7 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
       addError({
         partId: n.partId,
         axis: n.axis,
+        field: 'finished',
         kind: 'cycle',
         message: `循環参照になっています（${path.map(label).join(' → ')}）`,
         refs: names,

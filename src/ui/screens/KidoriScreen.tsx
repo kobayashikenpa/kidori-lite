@@ -23,7 +23,7 @@ import { SavingHint } from '../components/SavingHint'
 import { SheetChecklist } from '../components/SheetChecklist'
 import { SheetDiagram } from '../components/SheetDiagram'
 import { fmt } from '../format'
-import { pct, scrapLabel } from '../kidoriView'
+import { pct, scrapLabel, skippedErrorPlace } from '../kidoriView'
 import { cutModeLabel, sheetLabel } from '../settings'
 
 /** 画面に出す1枚（固定した1枚、または計算した1枚） */
@@ -151,7 +151,7 @@ export function KidoriScreen() {
     <section>
       <h2>
         <Help title="木取り">
-          部材の木取り寸法（仕上がり寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方・切り代は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブでも変えられ、同じ値です）。
+          部材の木取り寸法（調整後の寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方・切り代は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブでも変えられ、同じ値です）。
           部材は右（端切りをした側）の上から詰め、端材は左下に残ります。
           部材を切ったら、配置図の下の切り出しチェックを押します。1つ目のチェックで、その1枚の並べ方を固定します（部材や設定を変えても、その1枚は変わりません）。
           全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。
@@ -203,14 +203,15 @@ export function KidoriScreen() {
       {result.skipped.length > 0 && (
         <div className="card kd-issues warn" role="alert">
           <h4>計算から外した部材（寸法のエラー）</h4>
-          <p className="band-note">部材の画面で式を直すと、木取りに入ります。</p>
+          <p className="band-note">部材の画面の［仕上がり］か［調整］で直すと、木取りに入ります。</p>
           <ul>
             {result.skipped.map((k) => {
-              const msg = dims.parts.find((d) => d.partId === k.partId)?.errors[0]?.message
+              const e = dims.parts.find((d) => d.partId === k.partId)?.errors[0]
+              const msg = e && `${skippedErrorPlace(e)}：${e.message}`
               return (
                 <li key={k.partId}>
                   <b>{k.name}</b>
-                  {msg && `：${msg}`}
+                  {msg && `　${msg}`}
                 </li>
               )
             })}

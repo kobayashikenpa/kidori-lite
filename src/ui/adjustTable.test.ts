@@ -17,10 +17,11 @@ const rows: AdjustRow[] = [
   { id: 'a2', name: 'シート', value: 0.5 },
 ]
 
-const job = (id: string, name: string, exprW: string): Pick<Job, 'id' | 'name' | 'parts'> => ({
+/** 棚板1つの仕事。adjustW は W の調整（第2.1版から、調整寸法を使うのは調整の欄） */
+const job = (id: string, name: string, adjustW: string): Pick<Job, 'id' | 'name' | 'parts'> => ({
   id,
   name,
-  parts: [{ id: `${id}-p`, name: '棚板', expr: { W: exprW, H: '300' }, quantity: 1, rotatable: false, finishedDone: false }],
+  parts: [{ id: `${id}-p`, name: '棚板', expr: { W: '400', H: '300' }, adjust: { W: adjustW, H: '' }, quantity: 1, rotatable: false, finishedDone: false }],
 })
 
 describe('調整寸法の表の行（仕様書 21.1）', () => {
@@ -59,7 +60,7 @@ describe('調整寸法の表の行（仕様書 21.1）', () => {
 })
 
 describe('変える・消すときの確認の文（仕様書 21.3）', () => {
-  const jobs = [job('j1', '本棚', '400 - {n:a1}'), job('j2', '台', '{n:a1} + 100'), job('j3', '棚', '{n:a2}')]
+  const jobs = [job('j1', '本棚', '-{n:a1}'), job('j2', '台', '+{n:a1}'), job('j3', '棚', '-{n:a2}')]
 
   it('ほかの仕事で使っている調整寸法の寸法を変えると、仕事の数と名前を出す', () => {
     const after = rows.map((r) => (r.id === 'a1' ? { ...r, value: 2 } : r))

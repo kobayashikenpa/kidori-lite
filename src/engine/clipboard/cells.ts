@@ -12,6 +12,8 @@ import { CELL_COLS, type CellClip, type CellCol, type CellPos, type CellRange, t
 export const COPY_SHAPE_MESSAGE = 'コピーは1つのセルか、四角い範囲を選んでください'
 export const NOT_QUANTITY_MESSAGE = '枚数には 0 以上の整数だけ貼れます'
 export const FILL_RANGE_MESSAGE = '引く元の範囲を選んでください'
+/** ［調整］のタブでコピーしたセルを［仕上がり］に貼ろうとしたとき（第2.1版。仕様書 25.2） */
+export const ADJUST_CLIP_TO_FINISHED_MESSAGE = '［調整］でコピーしたものは［仕上がり］には貼れません'
 
 /** 選んだセル：セルの配列か、四角い範囲（第1.3版。画面は四角で持つ） */
 export type CellSelection = CellRange | readonly CellPos[]
@@ -71,6 +73,11 @@ function normalizeSelection(selected: CellSelection): CellPos[] {
     out.push({ row: s.row, col: s.col })
   }
   return out.sort((a, b) => a.row - b.row || colIndex(a.col) - colIndex(b.col))
+}
+
+/** 選んだセルを、表の中のセルの配列にする（重なりを外し、上から・左から。四角なら rangeCells と同じ。第2.1版で外に出した） */
+export function selectionCells(selected: CellSelection): CellPos[] {
+  return normalizeSelection(selected)
 }
 
 /** 選んだセルが 何も無い／1つか四角い範囲／それ以外（離れたセル・欠けた四角） のどれか */
@@ -198,6 +205,16 @@ interface CutCell {
   src: number
 }
 
+/**
+ * 行をまるごと（名前・W・H・枚数）切り取って同じ仕事に貼るとき、調整（Part.adjust）も動かす行の組（第2.1版）。
+ * from は切り取った元の行、to は貼る先の表の行、srcs はその行のクリップの位置（4つ）
+ */
+interface AdjustMove {
+  from: number
+  to: number
+  srcs: number[]
+}
+
 function setCellEmpty(p: Part, col: CellCol): void {
   if (col === 'name') p.name = ''
   else if (col === 'qty') p.quantity = null
@@ -226,13 +243,19 @@ interface Applied {
  *   そのクリップの位置が1つも貼れなかったセルは元に戻す
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
  */
-function applyTargets(job: Job, targets: Target[], newId: (prefix: string) => string, cutFirst: CutCell[]): Applied {
+function applyTargets(
+  job: Job,
+  targets: Target[],
+  newId: (prefix: string) => string,
+  cutFirst: CutCell[],
+  adjustMoves: AdjustMove[] = [],
+): Applied {
   const count = job.parts.length
   const newRows = [...new Set(targets.filter((t) => t.row >= count).map((t) => t.row))].sort((a, b) => a - b)
   const indexOfRow = new Map(newRows.map((r, k) => [r, count + k]))
   const parts: Part[] = job.parts.map((p) => ({ ...p, expr: { ...p.expr } }))
   for (let k = 0; k < newRows.length; k++) {
-    parts.push({ id: newId('part'), name: '', expr: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false })
+    parts.push({ id: newId('part'), name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false })
   }
   const writes: Write[] = targets.map((t) => ({
     cell: { row: t.row, col: CELL_COLS[t.col] },
@@ -284,6 +307,17 @@ function applyTargets(job: Job, targets: Target[], newId: (prefix: string) => st
   for (const c of cutFirst) {
     if (filled.has(c.src)) touched.add(c.row)
     else copyCell(parts[c.row], job.parts[c.row], c.col)
+  }
+  // 行をまるごと切り取って貼ったときは、調整も貼った行へ動かす（4つの欄が全部貼れた行だけ）。
+  // 元の調整を先に読んでから元を空にし、そのあと貼った先に入れる（元と先が重なっても入れ違わないように）
+  const moves = adjustMoves
+    .filter((m) => m.from !== m.to && m.srcs.every((src) => filled.has(src)))
+    .map((m) => ({ ...m, adjust: { ...job.parts[m.from].adjust } }))
+  for (const m of moves) parts[m.from] = { ...parts[m.from], adjust: { W: '', H: '' } }
+  for (const m of moves) {
+    const index = m.to < count ? m.to : indexOfRow.get(m.to)!
+    parts[index] = { ...parts[index], adjust: m.adjust }
+    touched.add(index)
   }
   const kept = parts.filter((p, i) => !(touched.has(i) || i >= count) || !isBlankPart(p))
   return { job: { ...job, parts: kept }, pasted, skipped, renamed, filled }
@@ -403,11 +437,14 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  *   ほかの式の参照は書き換えない
  * - 枚数：0 以上の整数だけ（空は空にする）。W・H：文字のまま式として入れる
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
+ * - ［調整］でコピーしたもの（clip.source が 'adjust'）は貼れない（第2.1版）
  * - 切り取り（clip.cut）：元のセルを空にする（第1.3版）。貼る先と重なるセル・1つも貼れなかったクリップの位置・
  *   切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で空にし（名前は空にしたあとで重なりを比べる）、
  *   違う仕事なら cutClear で返す。クリップをふつうのコピーに変えるのは store の側
  */
 export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, newId: (prefix: string) => string): PasteCellsResult {
+  // ［調整］でコピーしたものは貼れない（第2.1版。［調整］の欄どうしは partAdjustCells.ts）
+  if (clip.source === 'adjust') return { ok: false, message: ADJUST_CLIP_TO_FINISHED_MESSAGE }
   const cells = normalizeSelection(selected)
   if (cells.length === 0) return { ok: false, message: '貼るセルを選んでください' }
 
@@ -440,7 +477,22 @@ export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, ne
     }
   }
 
-  const r = applyTargets(job, targets, newId, cutFirst)
+  // 行をまるごと切り取って、同じ仕事の表の左の端（名前の列）から貼るときは、調整も動かす（第2.1版）
+  const adjustMoves: AdjustMove[] = []
+  const fullRows = clip.cols === CELL_COLS.length && cut?.range.left === 0 && cut.range.cols === CELL_COLS.length
+  if (sameJob && fullRows && !(clip.rows === 1 && clip.cols === 1)) {
+    const top = Math.min(...cells.map((s) => s.row))
+    const left = Math.min(...cells.map((s) => colIndex(s.col)))
+    if (left === 0) {
+      for (let i = 0; i < clip.rows; i++) {
+        const from = cut.range.top + i
+        if (from >= job.parts.length) continue
+        adjustMoves.push({ from, to: top + i, srcs: CELL_COLS.map((_, j) => i * clip.cols + j) })
+      }
+    }
+  }
+
+  const r = applyTargets(job, targets, newId, cutFirst, adjustMoves)
   let cutClear: { jobId: string; cells: CellPos[] } | null = null
   if (cut && !sameJob && r.pasted > 0) {
     const srcCells = [...r.filled]

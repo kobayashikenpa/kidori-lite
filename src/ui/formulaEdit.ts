@@ -2,7 +2,7 @@
 // kidori の ui/formulaEdit.ts をもとに、材料の厚み {t:…} を外し、逃げ {n:…} を調整寸法にしたもの。
 // カーソルは「単位の番号」（0〜単位の数。k は k 番目の単位の前）で持つ。
 // 部材の参照（全体.W）・調整寸法 {n:…} は1つの単位なので、1回の ◀ ▶・1字消す で塊ごと動く・消える
-import { parseRefText, splitLeadingEquals } from '../engine/formula/tokenize'
+import { normalizeFormulaText, parseRefText, splitLeadingEquals } from '../engine/formula/tokenize'
 import { formulaUnits, type Unit, type UnitKind } from '../engine/formula/units'
 
 export interface Edit {
@@ -120,12 +120,19 @@ export function caretFromTap(boxes: readonly UnitBox[], x: number, y: number): n
 }
 
 /**
- * もう一度入力するとき「＝」で始まった形で開くか（仕様書 20.2）：部材の寸法・調整寸法を使っている式、
- * または先頭に「＝」が付いたまま保存された式。数字や計算（1800 − 40）だけなら「＝」なしで開く
+ * 入力中にほかのセル（部材の W・H、［調整］なら調整寸法の行）を押したとき、その寸法を式に入れるか（第2.1版。仕様書 25.7）：
+ * 入力している欄が空（空白だけ）か、カーソルのすぐ前が ＋ − × ÷ (（全角も）なら入れる（true）。
+ * それ以外（数字・寸法・) のすぐ後、カーソルが先頭で後ろに何かあるとき）は入れない（false。呼ぶ側は入力を終えて押したセルを選ぶ）。
+ * 先頭の「＝」（第1.6版までの式）は無いものとして見る
  */
-export function opensAsFormula(text: string): boolean {
-  if (splitLeadingEquals(text).equals) return true
-  return formulaUnits(text).some((u) => u.kind === 'partRef' || u.kind === 'adjust')
+export function canInsertRef(text: string, cursor: number): boolean {
+  // 「＝」付きの古い式は「＝」を外した形で見る（画面も「＝」を外した形で編集する。カーソルはその単位の番号）
+  const units = formulaUnits(splitLeadingEquals(text).rest)
+  if (units.length === 0) return true
+  const k = clamp(cursor, units.length)
+  if (k === 0) return false
+  const prev = units[k - 1]
+  return prev.kind === 'op' || (prev.kind === 'paren' && normalizeFormulaText(prev.text) === '(')
 }
 
 /** 色の枠の色の数（index.css の .refc-0 〜 .refc-4） */

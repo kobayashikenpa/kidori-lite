@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { createJob } from '../defaults'
 import { computeDimensions } from '../dimensions'
-import { MELAMINE_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
+import { shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import type { Job, Part } from '../types'
 import { duplicateName, duplicatePart } from './copy'
 
@@ -17,7 +17,7 @@ function emptyJob(): Job {
 }
 
 function part(id: string, name: string, W = '100', H = '200', quantity = 1): Part {
-  return { id, name, expr: { W, H }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
 }
 
 describe('duplicateName（複製の名前）', () => {
@@ -44,7 +44,7 @@ describe('duplicateName（複製の名前）', () => {
 })
 
 describe('duplicatePart（部材の複製）', () => {
-  it('式・枚数・回転を写し、名前は「棚板のコピー」、元の部材のすぐ後ろに足す', () => {
+  it('式・調整・枚数・回転を写し、名前は「棚板のコピー」、元の部材のすぐ後ろに足す', () => {
     const job = shelfJob()
     job.parts[3].rotatable = true
     job.parts[3].finishedDone = true
@@ -55,7 +55,8 @@ describe('duplicatePart（部材の複製）', () => {
     expect(r.job.parts[4]).toEqual({
       id: 'part-new1',
       name: '棚板のコピー',
-      expr: { W: `天板.W - 20 - {n:${MELAMINE_ID}}`, H: '天板.H - 20 × 2' },
+      expr: { W: '天板.W - 20', H: '天板.H - 20 × 2' },
+      adjust: { W: '-{n:adjust-melamine}', H: '' },
       quantity: 3,
       rotatable: true,
       finishedDone: false,
