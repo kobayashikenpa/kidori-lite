@@ -727,3 +727,34 @@ export interface PartDimensions {
 - 部材ごと動かす・消す操作（`order.ts` の `sortParts`・`moveParts`、`clipboard/cells.ts` の `deleteRows`・`clearCells`・`pasteCells`・`fillCells`、`removePart`）は部材のオブジェクトごと扱うので、調整はその部材についていく（削除では消える）。［仕上がり］の貼り付け・オートフィル・切り取りは仕上がりの欄（名前・W・H・枚数）だけを変え、調整は変えない。表の下に足す部材の調整は空
 - ［仕上がり］で名前・W・H・枚数をぜんぶ空にした行は、調整が入っていても外す（`parts.ts` の `isBlankPart` は調整を見ない。仕様書 25.9）
 - **store**（`reducer.ts`）：`{ type: 'setPartAdjust', partId, axis, text }`（`jobId` を省くと開いている仕事）。`updatePart` の `patch` も `PartPatch`（調整を渡せる）
+
+### 14.6 ［調整］の欄のセル操作（E-23。spec 25.2・25.9。`src/engine/clipboard/partAdjustCells.ts`）
+
+```ts
+// types.ts
+export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source?: 'adjust' }
+// source：どのタブの欄から写したか。'adjust'＝［調整］（W・H は調整の式）。無ければ［仕上がり］（第2.0版までの保存データも無い）
+```
+
+- コピーしたセルは今までどおり `AppData.cellClip` の1つだけ（［仕上がり］と［調整］で同じクリップを使い、`source` で見分ける）。［仕上がり］と［調整］をまたいだ貼り付けは断る：
+  - ［調整］のものを［仕上がり］に：`pasteCells` が `{ ok: false, message: ADJUST_CLIP_TO_FINISHED_MESSAGE }`「［調整］でコピーしたものは［仕上がり］には貼れません」
+  - ［仕上がり］のものを［調整］に：`pastePartAdjustCells` が `FINISHED_CLIP_TO_ADJUST_MESSAGE`「［仕上がり］でコピーしたものは［調整］には貼れません」
+  - オートフィルはクリップを使わないので、どちらの表もそのタブの中だけ
+- **保存データ**：`shape.ts` の `isCellClip` は `source` が無いか `'adjust'` だけを通す（ほかの値なら読めない＝`readCellClip` は null）。`inlineAppDataAdjusts`（14.3）は `source: 'adjust'` のクリップを置き換えない
+
+| 関数 | 内容 |
+|---|---|
+| `partAdjustCellText(job, pos)` | W・H は調整の式、名前・枚数は `cellText` と同じ。空の行は '' |
+| `copyPartAdjustCells(job, sel)`・`cutPartAdjustCells(job, sel)` | `CopyCellsResult`（`clip.source = 'adjust'`。切り取りは `clip.cut = { jobId, range }`）。名前・枚数のセルも選んでコピーできる |
+| `pastePartAdjustCells(job, clip, sel)` | `{ ok: true, job, pasted, skipped: [], renamed: [], cutClear }`／`{ ok: false, message }`。W・H の調整だけ書く。名前・枚数に当たる所・部材の無い行（空の行）は貼らず数えない（部材も作らない）。1つのセルは選んだセル全部へ、範囲は左上から同じ形 |
+| `clearPartAdjustCutSource(job, clip, cells)` | 切り取りをほかの仕事に貼ったあと、元の仕事の W・H を空にする（書き換えたセルは空にしない） |
+| `fillPartAdjustCells(job, from, to)` | オートフィル（`fillCells` と同じくり返し）。W・H だけ。部材のある行まで |
+| `clearPartAdjustCells(job, sel)` | W・H の調整を空にする。名前・枚数・仕上がりは変えず、部材も消さない。変わらなければ同じ仕事 |
+
+- 切り取り：元の W・H だけを空にする（名前・枚数は消さない）。貼る先と重なるセル・切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で、違う仕事なら `cutClear` で
+- `cells.ts` に `selectionCells(sel)`（選んだセルをそろえた配列。四角なら `rangeCells` と同じ）を外に出した
+- **store**（`reducer.ts`）。どれも `SelectionArg`（`cells` か `range`）、`jobId` を省くと開いている仕事
+  - `{ type: 'copyPartAdjustCells' }`・`{ type: 'cutPartAdjustCells' }`：`cellClip` を置き換える（仕事は変えない）
+  - `{ type: 'pastePartAdjustCells' }`：結果の `paste: { pasted, skipped: [], renamed: [] }`。切り取りなら元を空にし（ほかの仕事でも。updatedAt を付ける）、1つでも貼れたら `cellClip` から `cut` を外す。コピーが無ければ「コピーしたセルがありません」
+  - `{ type: 'fillPartAdjustCells', from, to }`：結果の `paste`
+  - `{ type: 'clearPartAdjustCells' }`：変わらなければ updatedAt を付けない

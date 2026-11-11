@@ -83,7 +83,8 @@ export function inlineAppDataAdjusts(data: AppData): AppData {
     if (next !== j) changed = true
     return next
   })
-  const cellClip = data.cellClip ? inlineCellClipAdjusts(data.cellClip, adjusts) : null
+  // ［調整］でコピーしたセル（source: adjust）は調整の式なので置き換えない
+  const cellClip = data.cellClip && data.cellClip.source !== 'adjust' ? inlineCellClipAdjusts(data.cellClip, adjusts) : data.cellClip
   if (cellClip !== data.cellClip) changed = true
   return changed ? { ...data, jobs, cellClip } : data
 }

@@ -585,7 +585,7 @@ E-18 → E-19 → E-20・E-21・E-22（E-18 のあとは並行できる）→ E-
   - `src/store/reducer.ts`：部材の調整を入れる操作（action）を足す。`insertPart`・`sortParts`・`moveParts`・`duplicatePart`・`copyJob`・`removePart`・`deleteRows` で調整がついていく
   - 完了の条件：調整のある部材を 上に挿入した行の下へずらす・番号を引いて動かす・W の大きい順に並べ替える・複製する・削除する・仕事をコピーする、のそれぞれで調整がその部材についていく（削除では消える）、のテストが通る（`reducer.test.ts`・`jobs.test.ts`）
 
-- [ ] **E-23 ［調整］の欄のセル操作**（engine-dev。依存 E-22。spec 25.2）
+- [x] **E-23 ［調整］の欄のセル操作**（engine-dev。依存 E-22。spec 25.2）
   - ［調整］のタブの W・H の欄の コピー・切り取り・貼り付け・クリア・オートフィル（`src/engine/clipboard/cells.ts` と同じ考え方。範囲は同じ `CellRange`）。同じ調整をまとめて何行にも貼れる
   - ［仕上がり］と［調整］をまたいだ貼り付けはしない：コピーしたセルにどちらの欄から写したかを持たせる（`CellClip`（`src/engine/types.ts`）に印を足すか、別に持つ）。保存データの形を変えるときは `src/engine/shape.ts`（`readCellClip`）で今のデータが読めること
   - 名前・枚数の列は見るだけなので変えない。部材の無い空の行の扱いは未決事項 4 の答えに合わせる

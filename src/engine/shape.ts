@@ -71,6 +71,8 @@ export function isCellClip(v: unknown): v is CellClip {
   const cols = v.cols as number
   if (rows < 1 || cols < 1 || cols > CELL_COLS.length) return false
   if (v.cut !== undefined && !isCellCut(v.cut, rows, cols)) return false
+  // どのタブから写したか（第2.1版）：無い（［仕上がり］）か 'adjust'（［調整］）
+  if (v.source !== undefined && v.source !== 'adjust') return false
   return (
     Array.isArray(v.cells) &&
     v.cells.length === rows &&

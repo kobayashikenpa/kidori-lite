@@ -219,6 +219,16 @@ describe('保存と読み込み', () => {
     expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual({ rows: 1, cols: 2, cells: [['棚板', '天板.W - 20 - 1']] })
   })
 
+  it('［調整］でコピーしたセル（source: adjust。第2.1版）を保存して読み戻せる。調整寸法は置き換えない。印の形が違えば捨てる', () => {
+    const data = sample()
+    data.cellClip = { rows: 1, cols: 2, cells: [[`-{n:${MELAMINE_ID}}`, '-1']], source: 'adjust', cut: { jobId: 'job-shelf', range: { top: 3, left: 1, rows: 1, cols: 2 } } }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+    st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: { ...data.cellClip, source: 'finished' } }))
+    expect(loadSaved(st, ids(), NOW).data.cellClip).toBeNull()
+  })
+
   it('開いていた仕事が無ければ開いていない状態', () => {
     const st = new MemoryStorage()
     saveSaved(st, sample(), null)

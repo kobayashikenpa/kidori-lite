@@ -12,6 +12,8 @@ import { CELL_COLS, type CellClip, type CellCol, type CellPos, type CellRange, t
 export const COPY_SHAPE_MESSAGE = 'コピーは1つのセルか、四角い範囲を選んでください'
 export const NOT_QUANTITY_MESSAGE = '枚数には 0 以上の整数だけ貼れます'
 export const FILL_RANGE_MESSAGE = '引く元の範囲を選んでください'
+/** ［調整］のタブでコピーしたセルを［仕上がり］に貼ろうとしたとき（第2.1版。仕様書 25.2） */
+export const ADJUST_CLIP_TO_FINISHED_MESSAGE = '［調整］でコピーしたものは［仕上がり］には貼れません'
 
 /** 選んだセル：セルの配列か、四角い範囲（第1.3版。画面は四角で持つ） */
 export type CellSelection = CellRange | readonly CellPos[]
@@ -71,6 +73,11 @@ function normalizeSelection(selected: CellSelection): CellPos[] {
     out.push({ row: s.row, col: s.col })
   }
   return out.sort((a, b) => a.row - b.row || colIndex(a.col) - colIndex(b.col))
+}
+
+/** 選んだセルを、表の中のセルの配列にする（重なりを外し、上から・左から。四角なら rangeCells と同じ。第2.1版で外に出した） */
+export function selectionCells(selected: CellSelection): CellPos[] {
+  return normalizeSelection(selected)
 }
 
 /** 選んだセルが 何も無い／1つか四角い範囲／それ以外（離れたセル・欠けた四角） のどれか */
@@ -403,11 +410,14 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  *   ほかの式の参照は書き換えない
  * - 枚数：0 以上の整数だけ（空は空にする）。W・H：文字のまま式として入れる
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
+ * - ［調整］でコピーしたもの（clip.source が 'adjust'）は貼れない（第2.1版）
  * - 切り取り（clip.cut）：元のセルを空にする（第1.3版）。貼る先と重なるセル・1つも貼れなかったクリップの位置・
  *   切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で空にし（名前は空にしたあとで重なりを比べる）、
  *   違う仕事なら cutClear で返す。クリップをふつうのコピーに変えるのは store の側
  */
 export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, newId: (prefix: string) => string): PasteCellsResult {
+  // ［調整］でコピーしたものは貼れない（第2.1版。［調整］の欄どうしは partAdjustCells.ts）
+  if (clip.source === 'adjust') return { ok: false, message: ADJUST_CLIP_TO_FINISHED_MESSAGE }
   const cells = normalizeSelection(selected)
   if (cells.length === 0) return { ok: false, message: '貼るセルを選んでください' }
 

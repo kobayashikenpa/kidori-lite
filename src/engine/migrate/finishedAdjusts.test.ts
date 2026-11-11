@@ -99,6 +99,13 @@ describe('inlineAppDataAdjusts（保存データ全体）', () => {
     expect(inlineAppDataAdjusts(d).cellClip).toEqual({ rows: 1, cols: 3, cells: [['棚板', '天板.W - 20 - 1', '0.5 × 2']] })
   })
 
+  it('［調整］でコピーしたセル（source: adjust）の調整寸法は置き換えない（調整では使えるため）', () => {
+    const d = data()
+    d.jobs = [shelfJob('b')]
+    d.cellClip = { rows: 1, cols: 1, cells: [[`-${M}`]], source: 'adjust' }
+    expect(inlineAppDataAdjusts(d)).toBe(d)
+  })
+
   it('置き換えるものが無ければ同じデータ（同じオブジェクト）を返す', () => {
     const d: AppData = { ...data(), jobs: [shelfJob('b')], cellClip: { rows: 1, cols: 1, cells: [['天板.W']] } }
     expect(inlineAppDataAdjusts(d)).toBe(d)

@@ -27,6 +27,14 @@ import {
   type AdjustRenamed,
   type AdjustSelection,
 } from '../engine/clipboard/adjustCells'
+import {
+  clearPartAdjustCells,
+  clearPartAdjustCutSource,
+  copyPartAdjustCells,
+  cutPartAdjustCells,
+  fillPartAdjustCells,
+  pastePartAdjustCells,
+} from '../engine/clipboard/partAdjustCells'
 import { usableAdjusts } from '../engine/adjusts'
 import { duplicatePart } from '../engine/clipboard/copy'
 import { computeDimensions } from '../engine/dimensions'
@@ -176,6 +184,22 @@ export type StoreAction =
   | ({ type: 'clearCells' } & SelectionArg & OnJob)
   /** 選んだセルのある行の部材をまとめて消す（式で使われているかの確認は画面の側で先に行う） */
   | ({ type: 'deleteRows' } & SelectionArg & OnJob)
+  /**
+   * ［調整］のタブでセルをコピーする（第2.1版。仕様書 25.2）。cellClip を置き換え、source: 'adjust' の印を付ける。名前・枚数のセルもコピーできる。
+   * 仕事は変えない
+   */
+  | ({ type: 'copyPartAdjustCells' } & SelectionArg & OnJob)
+  /** ［調整］のタブでセルを切り取る（cellClip.cut に元）。仕事はまだ変えない */
+  | ({ type: 'cutPartAdjustCells' } & SelectionArg & OnJob)
+  /**
+   * ［調整］のタブでコピーしたセルを貼る（W・H の調整だけ変わる。部材のある行だけ）。［仕上がり］でコピーしたものは断る。
+   * 切り取りなら元の W・H を空にし（元がほかの仕事でも）、1つでも貼れたら cellClip をふつうのコピーに変える。結果の paste に貼った数
+   */
+  | ({ type: 'pastePartAdjustCells' } & SelectionArg & OnJob)
+  /** ［調整］のタブのオートフィル（W・H の調整だけ。部材のある行まで）。結果の paste に貼った数 */
+  | ({ type: 'fillPartAdjustCells'; from: CellRange; to: CellRange } & OnJob)
+  /** ［調整］のタブのクリア（W・H の調整を空にする。名前・枚数は変えず、部材も消さない） */
+  | ({ type: 'clearPartAdjustCells' } & SelectionArg & OnJob)
   /** 切り出しチェック（その1枚の、ある部材の片をまとめて付け外し） */
   | ({ type: 'setPartCheck'; target: SheetTarget; partId: string; done: boolean } & OnJob)
   /** 切り出しチェック（片1つ） */
@@ -424,6 +448,52 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
         const next = deleteRows(j, selectionOf(action))
         return next === j ? { ok: false, message: '削除する行を選んでください' } : { ok: true, job: next }
       })
+    case 'copyPartAdjustCells':
+    case 'cutPartAdjustCells': {
+      const job = state.data.jobs.find((j) => j.id === (action.jobId ?? state.currentJobId))
+      if (!job) return fail('仕事が開かれていません')
+      const sel = selectionOf(action)
+      const r = action.type === 'cutPartAdjustCells' ? cutPartAdjustCells(job, sel) : copyPartAdjustCells(job, sel)
+      if (!r.ok) return fail(r.message)
+      return done({ ...state, data: { ...state.data, cellClip: r.clip } })
+    }
+    case 'pastePartAdjustCells': {
+      const clip = state.data.cellClip
+      if (!clip) return fail('コピーしたセルがありません')
+      let paste: PasteSummary | undefined
+      let cutClear: { jobId: string; cells: CellPos[] } | null = null
+      const r = onJob(state, action.jobId, env, (j) => {
+        const p = pastePartAdjustCells(j, clip, selectionOf(action))
+        if (!p.ok) return p
+        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        cutClear = p.cutClear
+        return { ok: true, job: p.job }
+      })
+      if (!r.ok || !paste) return r
+      const summary: PasteSummary = paste
+      if (!clip.cut || summary.pasted === 0) return { ...r, paste: summary }
+      // 切り取り：元がほかの仕事なら、その仕事の元の W・H を空にする。クリップはふつうのコピーに変える
+      let next = r.state
+      const clear = cutClear as { jobId: string; cells: CellPos[] } | null
+      if (clear) {
+        const after = onJob(next, clear.jobId, env, (j) => ({ ok: true, job: clearPartAdjustCutSource(j, clip, clear.cells) }))
+        if (after.ok) next = after.state
+      }
+      const { cut: _cut, ...copy } = clip
+      return { ok: true, state: { ...next, data: { ...next.data, cellClip: copy } }, paste: summary }
+    }
+    case 'fillPartAdjustCells': {
+      let paste: PasteSummary | undefined
+      const r = onJob(state, action.jobId, env, (j) => {
+        const p = fillPartAdjustCells(j, action.from, action.to)
+        if (!p.ok) return p
+        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        return { ok: true, job: p.job }
+      })
+      return r.ok && paste ? { ...r, paste } : r
+    }
+    case 'clearPartAdjustCells':
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: clearPartAdjustCells(j, selectionOf(action)) }))
     case 'setPartCheck':
       return onJob(state, action.jobId, env, (j) =>
         setPartCheck(j, action.target, action.partId, action.done, env.now, env.newId('frozen')),
