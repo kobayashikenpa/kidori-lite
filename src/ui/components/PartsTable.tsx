@@ -563,7 +563,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, ref }:
 
   // 取っ手と点線の印（オートフィルで新しく入れる所＝引いている間、切り取った元＝同じ仕事のとき）の位置
   const fillExt = dragging === 'fill' && fillTo && shown ? fillExtension(shown, fillTo) : null
-  const cutKey = rangeKey(clip?.cut && clip.cut.jobId === job.id ? clampRange(clip.cut.range, rowCount) : null)
+  // 切り取った元の点線は、［仕上がり］で切り取ったものだけ（［調整］の切り取りは［調整］の表に出す）
+  const cutKey = rangeKey(clip?.cut && clip.source !== 'adjust' && clip.cut.jobId === job.id ? clampRange(clip.cut.range, rowCount) : null)
   const clipNow = clipText(clip)
   const { handleAt, fillBox, cutBox } = useGridBoxes(tableRef, rowEls, headEls, shown, rangeKey(fillExt), cutKey)
 

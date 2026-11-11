@@ -9,6 +9,7 @@ import {
   cutDimCell,
   cutQuantityText,
   inputRow,
+  nextAdjustTabCell,
   isBlankPart,
   nextCell,
   quantityFromText,
@@ -190,6 +191,14 @@ describe('［調整］のタブの W・H の欄（仕様書 25.2）', () => {
     // 仕上がりがエラー（存在しない部材）なら、調整が空でも調整後もエラー
     job.parts[2] = { ...job.parts[2], expr: { W: '無い.W', H: '700' } }
     expect(at(job, '側板', 'W')).toMatchObject({ kind: 'error', label: null })
+  })
+})
+
+describe('［調整］のタブの「次へ」', () => {
+  it('W → H → 次の部材の W。最後の部材の H の次は無い（入力を終える）', () => {
+    expect(nextAdjustTabCell({ row: 0, axis: 'W' }, 3)).toEqual({ row: 0, axis: 'H' })
+    expect(nextAdjustTabCell({ row: 0, axis: 'H' }, 3)).toEqual({ row: 1, axis: 'W' })
+    expect(nextAdjustTabCell({ row: 2, axis: 'H' }, 3)).toBeNull()
   })
 })
 

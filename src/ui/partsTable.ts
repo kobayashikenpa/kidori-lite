@@ -73,6 +73,15 @@ export function nextCell(cell: TableCell, partCount: number): TableCell {
   }
 }
 
+/**
+ * ［調整］のタブの「次へ」の行き先（第2.1版）：入れられるのは W・H だけなので W → H → 次の部材の W。
+ * 最後の部材の H の次は無い（null。入力を終える。［調整］の表に空の行は無い。仕様書 25.9）
+ */
+export function nextAdjustTabCell(cell: { row: number; axis: Axis }, partCount: number): { row: number; axis: Axis } | null {
+  if (cell.axis === 'W') return { row: cell.row, axis: 'H' }
+  return cell.row + 1 < partCount ? { row: cell.row + 1, axis: 'W' } : null
+}
+
 /** 枚数の欄の文字（空は ''） */
 export function quantityText(q: number | null): string {
   return q === null ? '' : String(q)

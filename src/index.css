@@ -2209,6 +2209,9 @@ h3 > .help {
 .pa-err {
   font-size: 14px;
 }
-.pt.adjtab .pt-cell {
-  cursor: default;
+.pt-show-name b.adj-ink {
+  color: var(--ok);
+}
+.pt.pt-edit.adjtab .pt-item:last-child .pt-no {
+  border-bottom-left-radius: 9px;
 }

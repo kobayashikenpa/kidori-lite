@@ -1,6 +1,6 @@
 // 部材の画面（仕様書 5.1・5.2・9・15.1・16・21・25）：［仕上がり］［調整］［木取り］のタブと部材の表。
 // ［仕上がり］は入力できる表（押して選ぶ・もう一度押して入力。仕様書 17.1）。
-// ［調整］は部材ごとの調整の表（PartAdjustTable。仕様書 25.2）と、その下に調整寸法の表（AdjustTable。仕様書 25.3 で［仕上がり］から移した）。
+// ［調整］は部材ごとの調整の表（PartAdjustTable。仕様書 25.2）。その下に調整寸法の表（AdjustTable。仕様書 25.3 で［仕上がり］から移した）を PartAdjustTable が置く。
 // ［木取り］のタブのときだけ、表の上に切り代（数字キーで変える。仕様書 16.4）。［木取り］は同じ形の表を見るだけ。
 // 寸法の計算は engine（computeDimensions）、切り出しの進み具合は engine（partCutProgress）に任せる
 import { usableAdjusts } from '../../engine/adjusts'
@@ -9,7 +9,6 @@ import { computeDimensions } from '../../engine/dimensions'
 import { partCutProgress } from '../../engine/progress/partProgress'
 import { browserStorage } from '../../store/storage'
 import { useJobStore } from '../../store/useJobStore'
-import { AdjustTable } from '../components/AdjustTable'
 import { CutTable } from '../components/CutTable'
 import { Help } from '../components/Help'
 import { PartAdjustTable } from '../components/PartAdjustTable'
@@ -23,9 +22,6 @@ const ROTATION_TEXT = { all: 'オン', some: '一部', none: 'オフ' } as const
 
 /** タブの色の印（仕上がり＝青、調整＝緑、木取り＝橙） */
 const TAB_CLASS: Record<PartsTab, string> = { finished: 'fin', adjust: 'adjust', cut: 'cut' }
-
-/** 調整寸法の表の「式に入っている行」の印（［調整］の表が入力を持つまでは空） */
-const NO_REFS: ReadonlySet<string> = new Set()
 
 export function PartsScreen() {
   const { job, data, dispatch } = useJobStore()
@@ -83,7 +79,7 @@ export function PartsScreen() {
           </Help>
         ) : tab === 'adjust' ? (
           <Help title="調整（仕上がり寸法に足し引きする分）">
-            コバに貼るメラミン・シートの厚みや逃げなど、仕上がり寸法に足し引きする分を、部材ごとに W・H へ入れます。欄には、入れた値（例：−メラミン1）の下に調整後の寸法を出します。調整が空の欄は調整なしで、仕上がり寸法を薄く出します。調整後の寸法が 0 以下・式が読めない・削除した調整寸法を使っている、などは赤で「エラー」と出ます。仕上がり寸法がエラーのときは、調整後もエラーです。木取り寸法 ＝ 調整後の寸法 ＋ 切り代です。式の中の参照（天板.W）は、いつも仕上がり寸法を使います。表の下の調整寸法の表に、メラミン・シート・逃げなどの名前と寸法を入れておきます。
+            コバに貼るメラミン・シートの厚みや逃げなど、仕上がり寸法に足し引きする分を、部材ごとに W・H へ入れます。W・H のセルを1回押すと選び、もう一度押すと下にアプリのキーが出ます。「＝」は付けずに、先頭の − で引き、＋ か記号なしで足します（例：−メラミン1×2、−2）。調整寸法は、欄が空か ＋ − × ÷ ( のすぐ後で、下の調整寸法の表の行を押すと入ります。部材の寸法（天板.W）は使えません。入力中にほかの部材の W・H を押すと、入力を終えてそのセルを選びます。「次へ」で W → H → 次の部材の W と進みます。名前・枚数は見るだけです（入れるのは［仕上がり］のタブ）。取っ手で範囲を広げ、番号で行、見出しで列を選べます。長押しで切り取り・コピー・貼り付け・クリアのメニュー（同じ調整をまとめて何行にも貼れます。［仕上がり］でコピーしたものは貼れません）、右下の四角い取っ手を引くとオートフィル。欄には、入れた値（例：−メラミン1）の下に調整後の寸法を出します。調整が空の欄は調整なしで、仕上がり寸法を薄く出します。調整後の寸法が 0 以下・式が読めない・削除した調整寸法を使っている、などは赤で「エラー」と出ます。仕上がり寸法がエラーのときは、調整後もエラーです。木取り寸法 ＝ 調整後の寸法 ＋ 切り代です。式の中の参照（天板.W）は、いつも仕上がり寸法を使います。表の下の調整寸法の表に、メラミン・シート・逃げなどの名前と寸法を入れておきます。
           </Help>
         ) : (
           <Help title={`木取り寸法（調整後 ＋ 切り代 ${fmt(job.settings.allowance)}）`}>
@@ -114,10 +110,7 @@ export function PartsScreen() {
           <PartsTable job={job} dims={dims} adjusts={adjusts} clip={data.cellClip} dispatch={dispatch} onError={setError} />
         </>
       ) : tab === 'adjust' ? (
-        <>
-          <PartAdjustTable job={job} dims={dims} adjusts={adjusts} />
-          <AdjustTable picking={null} refIds={NO_REFS} onError={setError} />
-        </>
+        <PartAdjustTable job={job} dims={dims} adjusts={adjusts} clip={data.cellClip} dispatch={dispatch} onError={setError} />
       ) : (
         <>
           <div className="allowance-row">

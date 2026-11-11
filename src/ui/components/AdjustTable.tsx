@@ -4,7 +4,9 @@
 // 初めは5行、いちばん下に入れたら1行増え、「＋ 5行足す」で増やせる（足した行はアプリを開いている間だけ）。
 // 入力は確定したとき（次へ・閉じる・ほかを押したとき）に保存する。ほかの仕事で使っている調整寸法が変わる・消えるときは確かめてから
 // （store の adjustTableOutcome → engine の adjustChangeUsages）。
-// 部材の表で「＝」で入力している間（picking）は、行（名前か寸法のセル）を押すとその調整寸法を式に入れる（仕様書 21.2）
+// 第2.1版：［調整］のタブの表の下に置く（仕様書 25.3）。［調整］の W・H を入力していて、欄が空かカーソルのすぐ前が記号の間（picking）は、
+// 行（名前か寸法のセル）を押すとその調整寸法を調整の式に入れる（仕様書 25.7）。入れないとき（picking が false を返す・空の行）は、ふつうにそのセルを選ぶ
+// （選ぶと［調整］の表の範囲が外れ、向こうの入力が終わる）
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { adjustChangeUsages, adjustConflict, adjustValueText, duplicateAdjustMessage, isBlankAdjustRow, isUsableAdjust } from '../../engine/adjusts'
@@ -35,8 +37,11 @@ import { Help } from './Help'
 import { Sheet } from './Sheet'
 
 interface Props {
-  /** 部材の表で「＝」で入力している間：押した行の調整寸法を式に入れる（入れられるかは呼ぶ側が決める）。それ以外は null */
-  picking: ((row: AdjustRow) => void) | null
+  /**
+   * ［調整］の W・H を入力していて、押すと調整寸法が入る間：押した行の調整寸法を式に入れる（入れた・知らせたら true。
+   * false ならふつうにそのセルを選ぶ）。それ以外は null
+   */
+  picking: ((row: AdjustRow) => boolean) | null
   /** 入力中の式に入っている調整寸法（その行に色の枠） */
   refIds: ReadonlySet<string>
   onError: (message: string | null) => void
@@ -268,12 +273,11 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
   /** セルを押したとき：1回目は選ぶ、選んでいるセルをもう一度押すと入力（部材の表と同じ） */
   const pressCell = (row: number, colIndex: number) => {
     const col = ADJUST_COLS[colIndex]
-    // 部材の表で「＝」で入力している間は、押した行の調整寸法を式に入れる（空の行は何もしない）
+    // ［調整］の W・H の入力中は、押した行の調整寸法を式に入れる（入れないとき・空の行は、ふつうにそのセルを選ぶ）
     const pick = pickingRef.current
     if (pick) {
       const r = latestRows()[row] as AdjustRow | undefined
-      if (r) pick(r)
-      return
+      if (r && pick(r)) return
     }
     const p = { row, col: colIndex }
     const editing = curCell()
@@ -294,7 +298,6 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
 
   /** 番号を押すと行全体、見出しを押すと列全体（入力中なら入力を終える） */
   const pressRow = (row: number) => {
-    if (pickingRef.current) return
     leave(() => {
       endInput()
       onError(null)
@@ -303,7 +306,6 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
     })
   }
   const pressColumn = (col: number) => {
-    if (pickingRef.current) return
     leave(() => {
       endInput()
       onError(null)
@@ -445,7 +447,7 @@ export function AdjustTable({ picking, refIds, onError }: Props) {
     <section className="adj" aria-label="調整寸法">
       <h2 className="adj-title">
         <Help title="調整寸法">
-          メラミン・シート・逃げ・ほぞ など、仕上がり寸法を伸ばしたり短くしたりする寸法です。どの仕事でも同じ表を使います。名前と寸法の両方を入れた行が、式で「メラミン1」のように使えます（寸法は 0 より大きい数）。操作は部材の表と同じで、セルを1回押すと選び、もう一度押すと入力できます（名前はスマホのキーボード、寸法はアプリのキー）。長押しでメニュー、右下の四角い取っ手でオートフィル。同じ名前と寸法になるときは、名前の後ろに ②③… を付けます。部材の W・H をキーの「＝」から入力している間に、この表の行を押すと、その調整寸法が式に入ります。ほかの仕事でも使っている調整寸法を変える・消すときは、確かめてから変えます。
+          メラミン・シート・逃げ・ほぞ など、仕上がり寸法を伸ばしたり短くしたりする寸法です。どの仕事でも同じ表を使います。名前と寸法の両方を入れた行が、［調整］の W・H で「メラミン1」のように使えます（寸法は 0 より大きい数）。操作は部材の表と同じで、セルを1回押すと選び、もう一度押すと入力できます（名前はスマホのキーボード、寸法はアプリのキー）。長押しでメニュー、右下の四角い取っ手でオートフィル。同じ名前と寸法になるときは、名前の後ろに ②③… を付けます。［調整］の W・H を入力している間、欄が空か、カーソルのすぐ前が ＋ − × ÷ ( のときにこの表の行を押すと、その調整寸法が入ります（そうでなければ入力を終えて、押した行を選びます）。寸法を変えると、使っている全部の仕事の調整後・木取り寸法が変わります。ほかの仕事でも使っている調整寸法を変える・消すときは、確かめてから変えます。
         </Help>
       </h2>
       {(notice || clipNow) && (

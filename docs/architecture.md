@@ -773,3 +773,15 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 - `FormulaKeys`：「＝」のキー（`eq`）と `equals`・`onEquals` をなくした。一番上の段は ＋ − × ÷ の4つ（キーの並びを 20 等分にし、ふつうのキーは 4、一番上の段は 5、「0」は 8 ずつ）。`FormulaView` の `equals` もなくした
 - `PartsTable`：「＝」の状態（`equals`）をなくした。W・H の入力中に押したセルが **部材のある行の W・H で、`canInsertRef` が true** なら寸法を入れる（名前の無い部材は入れずに知らせ、入力は続ける）。それ以外（数字の後・名前・枚数・部材の無い空の行）は入力を終えて押したセルを選ぶ。同じ部材のもう一方の軸（天板.W の入力中に天板.H）も入れる（今までどおり。暫定）。長押しのメニューは、寸法が入るときだけ出さない（`formulaPicking`）
 - 古い「＝」付きの式：開くときは「＝」を外した形で編集し、入れ直すと「＝」の無い形で保存する（入れ直さなければそのまま。engine は今までどおり読む）
+
+### 14.9 ［調整］のタブの入力と操作（U-28。spec 25.2・25.3・25.7・25.9）
+
+- `components/PartAdjustTable.tsx`：［調整］の表を入力できる表にした（`useGrid`・`GridOverlay`・`CellMenu` を使う）。行は部材の数だけ（`rowCount = parts.length`）。入力している欄は `{ partId, axis }`（W・H だけ）。名前・枚数のセルは選べる（コピーもできる）が、もう一度押しても入力しない
+  - キーを押すたびに `setPartAdjust` で保存（読めない式も入れ、計算のエラーとして出す）。入力中のセルは、打っている途中のエラー（`errorsWhileEditing` で出さないもの）だけなら赤くせず調整の値だけ出す
+  - 入力中に表のほかのセル（ほかの部材の W・H も）を押したら、入れずに入力を終えてそのセルを選ぶ。番号・見出しは行全体・列全体（`rowRange`・`columnRange`）。見出しの長押しの並べ替え・番号を引いての移動は無い
+  - 「次へ」は `ui/partsTable.ts` の `nextAdjustTabCell`：W → H → 次の部材の W。最後の部材の H の次は入力を終える（暫定）
+  - オートフィルは `fillPartAdjustCells`、長押しのメニューは `CellMenu` の `adjust`（切り取り・コピー・貼り付け・クリアだけ。`copyPartAdjustCells` など）。入力中は長押しのメニューを出さない
+  - 切り取った元の点線は、`clip.source` が `'adjust'` のときだけ［調整］の表に出す（`PartsTable` は `'adjust'` でないときだけ）
+- 調整寸法の表（`AdjustTable`）は `PartAdjustTable` の下に置く（`PartsScreen` からは `PartAdjustTable` だけ）。`picking: ((row) => boolean) | null` は、入力中で `canInsertRef`（14.8）が true の間だけ渡す。押した行が式で使える行なら `{n:id}` を入れて true、書きかけの行は「名前と寸法をそろえると使えます」と出して true。false・空の行・番号・見出しは、調整寸法の表がふつうにそのセルを選び（`claimOpen('cellRange')` で［調整］の表の範囲が外れ）、入力が終わる
+- 寸法を変える・消すときの確認（21.3）は今の `AdjustTable` のまま（`adjustChangeUsages` が調整の欄で数える。14.4）
+- `CellMenu`：貼れなかったとき（［仕上がり］と［調整］をまたいだ など）もメニューを閉じて理由を出す（［仕上がり］も同じ。暫定）
