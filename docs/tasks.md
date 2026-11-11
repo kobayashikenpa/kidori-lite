@@ -579,7 +579,7 @@ E-18 → E-19 → E-20・E-21・E-22（E-18 のあとは並行できる）→ E-
   - `src/engine/formula/usages.ts`（`adjustUsagesOf`・`partsUsingAdjust(s)`）と `src/engine/adjusts.ts`（`adjustChangeUsages`）：「使っている」を調整の欄で数える（21.3 の「◯件の仕事で使っています」）
   - 完了の条件：調整に メラミン1 を使った仕事を送って取り込むと、調整・調整後・木取り寸法が同じになる／使っていない調整寸法（シート0.5）はファイルに入らない／メラミン1 が両方にあれば増えない／古いファイルは調整なしで読める／ほかの仕事の調整の欄で使っているメラミン1 の寸法を変えると `adjustChangeUsages` の changed に入る、のテストが通る
 
-- [ ] **E-22 部材の行の操作・仕事のコピーで調整がついていく**（engine-dev。依存 E-18。spec 25.2・25.5）
+- [x] **E-22 部材の行の操作・仕事のコピーで調整がついていく**（engine-dev。依存 E-18。spec 25.2・25.5）
   - `src/store/jobs.ts`：`copyJob`（調整もコピー）・`insertPart`・`updatePart`（調整だけを変えられる）。`src/engine/clipboard/copy.ts`（`duplicatePart`。調整も写す）
   - `src/engine/order.ts`（`sortParts`・`moveParts`）と `src/engine/clipboard/cells.ts`（`deleteRows`・`clearCells`・`pasteCells`）は部材ごと動かす・消すので、調整がついていく・消えることをテストで確かめる。行が空になった部材の扱いは未決事項 2 の答えに合わせる（`src/engine/parts.ts` の `isBlankPart`）
   - `src/store/reducer.ts`：部材の調整を入れる操作（action）を足す。`insertPart`・`sortParts`・`moveParts`・`duplicatePart`・`copyJob`・`removePart`・`deleteRows` で調整がついていく

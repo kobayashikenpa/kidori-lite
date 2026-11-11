@@ -715,3 +715,15 @@ export interface PartDimensions {
   2. 一覧に足す調整寸法：共有は **置き換えたあとの仕事の調整の欄で使っているもの** だけ（第2.0版のファイルの、仕上がりで使っていた調整寸法は数字になったので足さない）（暫定）、バックアップはファイルの一覧ぜんぶ
   3. `rekeyJob` で、仕上がりの式と調整の欄の両方の `{n:id}` をつけ替える（ファイルに無い id はそのまま）
 - 調整の無い古いファイルは `readJob` で調整なしとして読む（14.1）。ファイルの版（`TRANSFER_VERSION`）は 1 のまま（仕様書 25.9。前の版のアプリで読むと、調整なしとして読まれる）
+
+### 14.5 部材の行の操作・仕事のコピーで調整がついていく（E-22。spec 25.2・25.5・25.9）
+
+- `store/jobs.ts`
+  - `copyJob`：調整もコピーする（写し）
+  - `insertPart`：渡した部材の調整を写して入れる（`newPart` は調整なし）
+  - `updatePart(job, partId, patch: PartPatch)`：`PartPatch` は `expr`・`adjust` を **片方の軸だけ** 渡せる形（`Partial<Record<Axis, string>>`）。渡さない軸はそのまま。今までの `{ expr: { W, H } }` もそのまま使える
+  - `setPartAdjust(job, partId, axis, text)`：調整を1つの軸に入れる。同じ値なら同じ仕事（updatedAt を付けない）。読めない式でも入れる（計算のエラーとして出す。仕上がりと同じ）
+- `clipboard/copy.ts` の `duplicatePart`：調整も写す
+- 部材ごと動かす・消す操作（`order.ts` の `sortParts`・`moveParts`、`clipboard/cells.ts` の `deleteRows`・`clearCells`・`pasteCells`・`fillCells`、`removePart`）は部材のオブジェクトごと扱うので、調整はその部材についていく（削除では消える）。［仕上がり］の貼り付け・オートフィル・切り取りは仕上がりの欄（名前・W・H・枚数）だけを変え、調整は変えない。表の下に足す部材の調整は空
+- ［仕上がり］で名前・W・H・枚数をぜんぶ空にした行は、調整が入っていても外す（`parts.ts` の `isBlankPart` は調整を見ない。仕様書 25.9）
+- **store**（`reducer.ts`）：`{ type: 'setPartAdjust', partId, axis, text }`（`jobId` を省くと開いている仕事）。`updatePart` の `patch` も `PartPatch`（調整を渡せる）

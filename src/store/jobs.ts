@@ -6,7 +6,15 @@ import { createJob, normalizeSheet } from '../engine/defaults'
 import { renamePart } from '../engine/formula/rename'
 import { validatePartName } from '../engine/formula/tokenize'
 import { moveParts, sameOrder, sortParts, type SortKey, type SortOrder } from '../engine/order'
-import { BOARD_SIZES, type AdjustRow, type CutMode, type DimensionResult, type Job, type Part, type Settings, type Sheet } from '../engine/types'
+import { BOARD_SIZES, type AdjustRow, type Axis, type CutMode, type DimensionResult, type Job, type Part, type Settings, type Sheet } from '../engine/types'
+
+/**
+ * 部材を変える中身（updatePart）。仕上がりの式（expr）と調整（adjust。第2.1版）は、片方の軸だけでも渡せる（渡さない軸はそのまま）
+ */
+export type PartPatch = Partial<Omit<Part, 'id' | 'expr' | 'adjust'>> & {
+  expr?: Partial<Record<Axis, string>>
+  adjust?: Partial<Record<Axis, string>>
+}
 
 /** 仕事への操作の結果。失敗したときは画面にそのまま出せる日本語の理由 */
 export type OpResult = { ok: true; job: Job } | { ok: false; message: string }
@@ -50,7 +58,7 @@ export function copyJobName(name: string): string {
 }
 
 /**
- * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式のまま写し、id は新しくする。
+ * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式・調整（第2.1版。仕様書 25.5）のまま写し、id は新しくする。
  * 切った記録（固定した1枚）と仕上がりの完了のチェックは写さない（暫定。kidori と同じく切った記録は写さない）。
  * 元の仕事は書き換えない
  */
@@ -60,7 +68,7 @@ export function copyJob(job: Job, now: Date, id: string, makeId: (prefix: string
     id: makeId('part'),
     name: p.name,
     expr: { W: p.expr.W, H: p.expr.H },
-    adjust: { W: '', H: '' },
+    adjust: { W: p.adjust.W, H: p.adjust.H },
     quantity: p.quantity,
     rotatable: p.rotatable,
     finishedDone: false,
@@ -143,7 +151,7 @@ export function insertPart(job: Job, index: number, part: Part): OpResult {
     job.parts.map((p) => p.name),
   )
   if (invalid) return fail(invalid)
-  const p: Part = { ...part, name, expr: { W: part.expr.W, H: part.expr.H } }
+  const p: Part = { ...part, name, expr: { W: part.expr.W, H: part.expr.H }, adjust: { W: part.adjust.W, H: part.adjust.H } }
   const err = validatePartFields(p)
   if (err) return fail(err)
   const i = Number.isInteger(index) && index >= 0 && index <= job.parts.length ? index : job.parts.length
@@ -152,9 +160,9 @@ export function insertPart(job: Job, index: number, part: Part): OpResult {
 
 /**
  * 部材を変える。名前を変えたときは、ほかの部材の式の参照（旧名.W など）も新しい名前につけ替える（formula/rename）。
- * 使えない名前・同じ名前の部材があれば断る
+ * 仕上がりの式・調整は、渡した軸だけ変える。使えない名前・同じ名前の部材があれば断る
  */
-export function updatePart(job: Job, partId: string, patch: Partial<Omit<Part, 'id'>>): OpResult {
+export function updatePart(job: Job, partId: string, patch: PartPatch): OpResult {
   const cur = job.parts.find((p) => p.id === partId)
   if (!cur) return fail('部材が見つかりません')
   const next: Part = {
@@ -163,6 +171,7 @@ export function updatePart(job: Job, partId: string, patch: Partial<Omit<Part, '
     id: partId,
     name: (patch.name ?? cur.name).trim(),
     expr: { W: patch.expr?.W ?? cur.expr.W, H: patch.expr?.H ?? cur.expr.H },
+    adjust: { W: patch.adjust?.W ?? cur.adjust.W, H: patch.adjust?.H ?? cur.adjust.H },
   }
   const err = validatePartFields(next)
   if (err) return fail(err)
@@ -172,6 +181,17 @@ export function updatePart(job: Job, partId: string, patch: Partial<Omit<Part, '
   const renamed = renamePart(replaced, partId, next.name)
   if (!renamed.ok) return fail(renamed.message)
   return ok({ ...job, parts: renamed.parts })
+}
+
+/**
+ * 部材の調整（［調整］のタブの W・H。第2.1版。仕様書 25.2）を入れる。text は調整の式（空は調整なし）。
+ * 同じ値なら同じ仕事を返す（updatedAt を付けない）。式が読めなくても入れる（計算のエラーとして出す。仕上がりの式と同じ）
+ */
+export function setPartAdjust(job: Job, partId: string, axis: Axis, text: string): OpResult {
+  const cur = job.parts.find((p) => p.id === partId)
+  if (!cur) return fail('部材が見つかりません')
+  if (cur.adjust[axis] === text) return ok(job)
+  return ok({ ...job, parts: job.parts.map((p) => (p.id === partId ? { ...p, adjust: { ...p.adjust, [axis]: text } } : p)) })
 }
 
 /** 部材を消す */

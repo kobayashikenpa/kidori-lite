@@ -32,7 +32,7 @@ import { duplicatePart } from '../engine/clipboard/copy'
 import { computeDimensions } from '../engine/dimensions'
 import type { SortKey, SortOrder } from '../engine/order'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
-import type { AdjustCellPos, AdjustRow, AppData, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
+import type { AdjustCellPos, AdjustRow, AppData, Axis, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -46,6 +46,7 @@ import {
   removePart,
   renameJob,
   setAllRotatable,
+  setPartAdjust,
   setSheet,
   sortJobParts,
   updateAdjust,
@@ -54,6 +55,7 @@ import {
   type AdjustDraft,
   type AdjustsResult,
   type OpResult,
+  type PartPatch,
 } from './jobs'
 import { sampleJob } from './sample'
 import type { LoadResult } from './storage'
@@ -132,7 +134,10 @@ export type StoreAction =
   | ({ type: 'setSheet'; sheet: Sheet } & OnJob)
   /** 部材を最後に足す（id は作る） */
   | ({ type: 'addPart'; part: Partial<Omit<Part, 'id'>> } & OnJob)
-  | ({ type: 'updatePart'; partId: string; patch: Partial<Omit<Part, 'id'>> } & OnJob)
+  /** 部材を変える。仕上がりの式（expr）・調整（adjust。第2.1版）は渡した軸だけ変える */
+  | ({ type: 'updatePart'; partId: string; patch: PartPatch } & OnJob)
+  /** 部材の調整（［調整］のタブの W・H。第2.1版。仕様書 25.2）を入れる。text は調整の式（空は調整なし）。同じ値なら updatedAt を付けない */
+  | ({ type: 'setPartAdjust'; partId: string; axis: Axis; text: string } & OnJob)
   | ({ type: 'removePart'; partId: string } & OnJob)
   /** 部材を index の位置（その部材の上）に入れる（id は作る。番号のメニューの「上に行を入れる」） */
   | ({ type: 'insertPart'; index: number; part: Partial<Omit<Part, 'id'>> } & OnJob)
@@ -342,6 +347,8 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
     }
     case 'updatePart':
       return onJob(state, action.jobId, env, (j) => updatePart(j, action.partId, action.patch))
+    case 'setPartAdjust':
+      return onJob(state, action.jobId, env, (j) => setPartAdjust(j, action.partId, action.axis, action.text))
     case 'removePart':
       return onJob(state, action.jobId, env, (j) => removePart(j, action.partId))
     case 'insertPart': {

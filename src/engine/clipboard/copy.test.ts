@@ -44,7 +44,7 @@ describe('duplicateName（複製の名前）', () => {
 })
 
 describe('duplicatePart（部材の複製）', () => {
-  it('式・枚数・回転を写し、名前は「棚板のコピー」、元の部材のすぐ後ろに足す', () => {
+  it('式・調整・枚数・回転を写し、名前は「棚板のコピー」、元の部材のすぐ後ろに足す', () => {
     const job = shelfJob()
     job.parts[3].rotatable = true
     job.parts[3].finishedDone = true
@@ -56,7 +56,7 @@ describe('duplicatePart（部材の複製）', () => {
       id: 'part-new1',
       name: '棚板のコピー',
       expr: { W: '天板.W - 20', H: '天板.H - 20 × 2' },
-      adjust: { W: '', H: '' },
+      adjust: { W: '-{n:adjust-melamine}', H: '' },
       quantity: 3,
       rotatable: true,
       finishedDone: false,
