@@ -17,7 +17,10 @@ export interface JobFile {
   kind: 'job'
   version: typeof TRANSFER_VERSION
   job: Job
-  /** その仕事の式で使っている調整寸法だけ */
+  /**
+   * その仕事の調整の欄で使っている調整寸法だけ（第2.1版。仕様書 25.5）。
+   * 第2.0版までのファイルは、仕上がりの式で使っている調整寸法（取り込むときに仕上がりの式を数字に置き換えるのに使う）
+   */
   adjusts: Adjust[]
 }
 

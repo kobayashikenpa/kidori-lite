@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { adjustChangeUsages, usableAdjusts } from '../engine/adjusts'
 import { computeDimensions } from '../engine/dimensions'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob, shelfJob } from '../engine/fixtures/shelf'
+import { MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
 import { formulaText } from '../engine/formula/display'
 import { backupFile } from '../engine/transfer/backup'
 import { importTransfer } from '../engine/transfer/importFile'
@@ -23,7 +23,7 @@ function env(): Env {
 const draftRows = (): AdjustRow[] => [...shelfAdjusts(), { id: 'adjust-hozo', name: 'ほぞ', value: null }, { id: 'adjust-v', name: '', value: 12 }]
 
 function data(adjusts: AdjustRow[] = shelfAdjusts()): AppData {
-  return { version: 1, jobs: [legacyShelfJob(), legacyShelfJob('job-b', '別の棚')], adjusts, cellClip: null, adjustClip: null }
+  return { version: 1, jobs: [shelfJob(), shelfJob('job-b', '別の棚')], adjusts, cellClip: null, adjustClip: null }
 }
 
 function start(adjusts?: AdjustRow[]): StoreState {
@@ -38,7 +38,7 @@ function run(state: StoreState, action: StoreAction, e: Env = env()) {
 
 describe('保存データ', () => {
   it('第1.6版までの保存データ（adjustClip なし・調整寸法は全部そろった形）をそのまま読める', () => {
-    const old = JSON.parse(JSON.stringify({ version: 1, jobs: [legacyShelfJob()], adjusts: shelfAdjusts(), cellClip: null }))
+    const old = JSON.parse(JSON.stringify({ version: 1, jobs: [shelfJob()], adjusts: shelfAdjusts(), cellClip: null }))
     const d = parseAppData(old)
     expect(d?.adjusts).toEqual(shelfAdjusts())
     expect(d?.adjustClip).toBeNull()
@@ -67,15 +67,15 @@ describe('保存データ', () => {
 
 describe('ファイル（共有・バックアップ・取り込み）', () => {
   it('共有・バックアップには書きかけの行を入れない（前の版でも読める形）', () => {
-    const job = legacyShelfJob()
-    job.parts[2].expr.H = '700 - {n:adjust-hozo}'
+    const job = shelfJob()
+    job.parts[2].adjust.H = '-{n:adjust-hozo}'
     expect(jobFile(job, draftRows()).adjusts.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(backupFile(data(draftRows())).adjusts.map((a) => a.id)).toEqual([MELAMINE_ID, SHEET_ID])
   })
 
   it('取り込みは、今の表の書きかけの行とは合わせない（同じ名前でも新しく足す）', () => {
     const rows: AdjustRow[] = [{ id: 'mine', name: 'メラミン', value: null }, shelfAdjusts()[1]]
-    const file = jobFile(legacyShelfJob(), shelfAdjusts())
+    const file = jobFile(shelfJob(), shelfAdjusts())
     const r = importTransfer(data(rows), file, env().newId, T0)
     expect(r.addedAdjusts.map((a) => [a.name, a.value])).toEqual([['メラミン', 1]])
     expect(r.data.adjusts).toHaveLength(3)
@@ -135,7 +135,7 @@ describe('store：調整寸法の表の操作', () => {
     expect(s.data.adjusts.map((a) => a.id)).toEqual([SHEET_ID, MELAMINE_ID])
     expect(s.data.adjustClip?.cut).toBeUndefined()
     const job = s.data.jobs[0]
-    expect(formulaText(job.parts[3].expr.W, usableAdjusts(s.data.adjusts))).toBe('天板.W − 20 − メラミン1')
+    expect(formulaText(job.parts[3].adjust.W, usableAdjusts(s.data.adjusts))).toBe('−メラミン1')
   })
 
   it('オートフィル・クリア・行を上に挿入・行を削除', () => {
@@ -165,13 +165,15 @@ describe('store：調整寸法の表の操作', () => {
     expect(u.changed.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(u.otherJobCount).toBe(1)
     expect(u.jobCount).toBe(2)
-    // 確認のあとで当てる（値がついてくることは、調整の欄で数える形にしたときに確かめる：E-21）
-    expect(run(s, action).state.data.adjusts[0].value).toBe(2)
+    // 確認のあとで当てる。全部の仕事の調整後の値がついてくる（棚板 W の調整 −メラミン1）
+    const next = run(s, action).state
+    for (const job of next.data.jobs) {
+      expect(computeDimensions(job, usableAdjusts(next.data.adjusts)).parts[3].adjusted?.W).toBe(378)
+    }
   })
 
   it('書きかけにした調整寸法を使う調整は「削除した調整寸法」のエラーになり、寸法を戻すと直る（第2.1版：棚板 W の調整 −メラミン1）', () => {
-    const first = initialState({ status: 'ok', data: { ...data(), jobs: [shelfJob()] }, currentJobId: 'job-shelf', canSave: true })
-    let s = run(first, { type: 'clearAdjustCells', cells: [{ row: 0, col: 'value' }] }).state
+    let s = run(start(), { type: 'clearAdjustCells', cells: [{ row: 0, col: 'value' }] }).state
     const kinds = computeDimensions(s.data.jobs[0], usableAdjusts(s.data.adjusts)).parts[3].errors.map((e) => e.kind)
     expect(kinds).toContain('unknownAdjust')
     s = run(s, { type: 'setAdjustCell', pos: { row: 0, col: 'value' }, text: '1' }).state

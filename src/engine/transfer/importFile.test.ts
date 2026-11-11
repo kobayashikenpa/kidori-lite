@@ -1,10 +1,10 @@
 // ファイルから取り込む：今の保存データに足す（仕様書 15.3・15.4。kidori の importShared・importBackup を参考に作り直したもの）
+// 第2.1版：部材の調整（Part.adjust）の {n:id} もつけ替える。第2.0版までのファイルの仕上がりの式の調整寸法は数字に置き換える（仕様書 25.4・25.5）
 import { usableAdjusts } from '../adjusts'
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../dimensions'
 import { freezeAt } from '../fixtures/progress'
-import { inlineJobAdjusts } from '../migrate/finishedAdjusts'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob, shelfJob } from '../fixtures/shelf'
+import { legacyShelfJob, MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { packJob } from '../packing'
 import { partCutProgress } from '../progress/partProgress'
 import type { Adjust, AppData, Job } from '../types'
@@ -30,24 +30,24 @@ function readFile(text: string): TransferFile {
 
 /** 受け取る人の保存データ（調整寸法の id は送る人と違う） */
 function receiver(adjusts: Adjust[] = [{ id: 'r-mel', name: 'メラミン', value: 1 }, { id: 'r-sheet', name: 'シート', value: 0.5 }]): AppData {
-  return { version: 1, jobs: [legacyShelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null, adjustClip: null }
+  return { version: 1, jobs: [shelfJob('job-mine', '自分の仕事')], adjusts, cellClip: null, adjustClip: null }
 }
 
-/** 寸法の値（名前・仕上がり・木取り・エラーの種類）。調整寸法の id によらず比べられる */
+/** 寸法の値（名前・仕上がり・調整後・木取り・エラーの種類）。調整寸法の id によらず比べられる */
 const dimsOf = (job: Job, adjusts: readonly Adjust[]) =>
-  computeDimensions(job, adjusts).parts.map((d) => [d.name, d.finished, d.cut, d.errors.map((e) => e.kind)])
+  computeDimensions(job, adjusts).parts.map((d) => [d.name, d.finished, d.adjusted, d.cut, d.errors.map((e) => e.kind)])
 
-/** 第2.0版までの棚（legacyShelfJob）の、第2.0版での寸法の値（棚板 W は 天板.W − 20 − メラミン1 ＝ 379） */
+/** 第2.0版までの棚（legacyShelfJob）の、第2.0版での寸法の値（棚板 W は 天板.W − 20 − メラミン1 ＝ 379。調整なし） */
 const LEGACY_DIMS = [
-  ['全体', { W: 400, H: 1800 }, { W: 410, H: 1810 }, []],
-  ['天板', { W: 400, H: 1800 }, { W: 410, H: 1810 }, []],
-  ['側板', { W: 400, H: 700 }, { W: 410, H: 710 }, []],
-  ['棚板', { W: 379, H: 1760 }, { W: 389, H: 1770 }, []],
+  ['全体', { W: 400, H: 1800 }, { W: 400, H: 1800 }, { W: 410, H: 1810 }, []],
+  ['天板', { W: 400, H: 1800 }, { W: 400, H: 1800 }, { W: 410, H: 1810 }, []],
+  ['側板', { W: 400, H: 700 }, { W: 400, H: 700 }, { W: 410, H: 710 }, []],
+  ['棚板', { W: 379, H: 1760 }, { W: 379, H: 1760 }, { W: 389, H: 1770 }, []],
 ]
 
 describe('仕事1つのファイルを取り込む', () => {
-  it('送って取り込むと、部材・設定・式の値が同じ仕事がコピーとして足される（今ある仕事は変えない）', () => {
-    const src = legacyShelfJob()
+  it('送って取り込むと、部材・設定・調整・調整後・木取り寸法が同じ仕事がコピーとして足される（今ある仕事は変えない）', () => {
+    const src = shelfJob()
     src.settings = { ...src.settings, kerf: 4, allowance: 5, cutMode: 'horizontal' }
     const data = receiver()
     const before = JSON.parse(JSON.stringify(data))
@@ -59,18 +59,14 @@ describe('仕事1つのファイルを取り込む', () => {
     expect(r.jobIds).toEqual([got.id])
     expect(got.name).toBe('棚')
     expect(got.settings).toEqual(src.settings)
-    expect(got.parts.map((p) => [p.name, p.quantity, p.rotatable])).toEqual(src.parts.map((p) => [p.name, p.quantity, p.rotatable]))
-    // 第2.0版の仕上がりの式の調整寸法は数字に置き換わる（仕様書 25.4）。寸法は第2.0版と同じ
-    // 仕上がり（とエラーなし）は第2.0版と同じ。木取りはこのファイルの切り代 5 で
-    const finishedOf = (rows: unknown[][]) => rows.map((row) => [row[0], row[1], row[3]])
-    expect(finishedOf(dimsOf(got, usableAdjusts(r.data.adjusts)))).toEqual(finishedOf(LEGACY_DIMS))
-    expect(computeDimensions(got, usableAdjusts(r.data.adjusts)).parts[3].cut).toEqual({ W: 384, H: 1765 })
-    expect(packJob(got, computeDimensions(got, usableAdjusts(r.data.adjusts))).sheetCount).toBe(packJob(shelfJob(), computeDimensions(shelfJob(), shelfAdjusts())).sheetCount)
+    expect(got.parts.map((p) => [p.name, p.expr, p.quantity, p.rotatable])).toEqual(src.parts.map((p) => [p.name, p.expr, p.quantity, p.rotatable]))
+    expect(dimsOf(got, usableAdjusts(r.data.adjusts))).toEqual(dimsOf(src, shelfAdjusts()))
+    expect(packJob(got, computeDimensions(got, usableAdjusts(r.data.adjusts))).sheetCount).toBe(packJob(src, computeDimensions(src, shelfAdjusts())).sheetCount)
     expect(r.data.cellClip).toBeNull()
   })
 
   it('仕事と部材の id は新しくする。作った日・変えた日は取り込んだ時刻', () => {
-    const src = legacyShelfJob()
+    const src = shelfJob()
     const r = importTransfer(receiver(), readFile(buildJobFile(src, shelfAdjusts())), ids(), NOW)
     const got = r.data.jobs[1]
     expect(got.id).not.toBe(src.id)
@@ -79,28 +75,36 @@ describe('仕事1つのファイルを取り込む', () => {
     expect([got.createdAt, got.updatedAt]).toEqual([NOW.toISOString(), NOW.toISOString()])
   })
 
-  it('第2.0版のファイルの仕上がりの式の メラミン1 は数字 1 になる。メラミン1 が両方にあれば一覧は増えない', () => {
-    const r = importTransfer(receiver(), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW)
+  it('メラミン1 が両方にあれば増えない（受け取る人のメラミン1 を使う。調整の {n:id} をつけ替える）', () => {
+    const r = importTransfer(receiver(), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW)
     expect(r.data.adjusts.map((a) => a.id)).toEqual(['r-mel', 'r-sheet'])
     expect(r.addedAdjusts).toEqual([])
-    expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - 1')
+    expect(r.data.jobs[1].parts[3].adjust.W).toBe('-{n:r-mel}')
+    expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20')
   })
 
-  it('仕上がりの式は、受け取る人の寸法ではなく、ファイルの調整寸法の寸法で置き換える（送った人の寸法のまま）', () => {
-    const file = readFile(buildJobFile(legacyShelfJob(), [{ id: MELAMINE_ID, name: 'メラミン', value: 2 }]))
-    const r = importTransfer(receiver(), file, ids(), NOW)
-    expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - 2')
-    expect(computeDimensions(r.data.jobs[1], usableAdjusts(r.data.adjusts)).parts[3].finished).toEqual({ W: 378, H: 1760 })
+  it('メラミン1 が無ければ新しい id で足し、調整の {n:id} をつけ替える。調整後の寸法は同じ', () => {
+    const r = importTransfer(receiver([{ id: 'r-hozo', name: 'ほぞ', value: 15 }]), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW)
+    expect(r.data.adjusts.map((a) => [a.name, a.value])).toEqual([
+      ['ほぞ', 15],
+      ['メラミン', 1],
+    ])
+    const added = r.data.adjusts[1]
+    expect(added.id).not.toBe(MELAMINE_ID)
+    expect(r.addedAdjusts).toEqual([added])
+    expect(r.data.jobs[1].parts[3].adjust.W).toBe(`-{n:${added.id}}`)
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(dimsOf(shelfJob(), shelfAdjusts()))
   })
 
-  it('受け取る人にメラミン1 が無くても、第2.0版の仕上がりの式は数字になり、寸法は第2.0版と同じ', () => {
-    const r = importTransfer(receiver([{ id: 'r-hozo', name: 'ほぞ', value: 15 }]), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW)
-    expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - 1')
-    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(LEGACY_DIMS)
+  it('使っていない調整寸法（シート0.5）はファイルに入らないので、一覧に足さない', () => {
+    const file = readFile(buildJobFile(shelfJob(), shelfAdjusts()))
+    expect(file.adjusts.map((a) => a.id)).toEqual([MELAMINE_ID])
+    const r = importTransfer(receiver([]), file, ids(), NOW)
+    expect(r.data.adjusts.map((a) => a.name)).toEqual(['メラミン'])
   })
 
   it('名前が同じでも寸法が違えば別の調整寸法として足す（メラミン1.2 と メラミン1）', () => {
-    const r = importTransfer(receiver([{ id: 'r-mel', name: 'メラミン', value: 1.2 }]), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW)
+    const r = importTransfer(receiver([{ id: 'r-mel', name: 'メラミン', value: 1.2 }]), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW)
     expect(r.data.adjusts.map((a) => [a.name, a.value])).toEqual([
       ['メラミン', 1.2],
       ['メラミン', 1],
@@ -110,22 +114,20 @@ describe('仕事1つのファイルを取り込む', () => {
   it('表示名の比べは全角・半角と前後の空白をそろえる（adjustNameKey）', () => {
     const r = importTransfer(receiver([{ id: 'r-x', name: 'ｍｍ ', value: 1 }]), readFile(buildJobFile(oneAdjustJob(), [{ id: 's-x', name: 'mm', value: 1 }])), ids(), NOW)
     expect(r.data.adjusts.map((a) => a.id)).toEqual(['r-x'])
-    // 仕上がりの式の調整寸法は数字になる
-    expect(r.data.jobs[1].parts[0].expr.W).toBe('100 + 1')
+    expect(r.data.jobs[1].parts[0].adjust.W).toBe('+{n:r-x}')
   })
 
-  it('削除した調整寸法（ファイルに無い id）を使っている式はそのまま（取り込んだあともエラー）', () => {
-    const src = legacyShelfJob()
-    src.parts[2].expr.H = '700 - {n:gone}'
+  it('削除した調整寸法（ファイルに無い id）を使っている調整はそのまま（取り込んだあともエラー）', () => {
+    const src = shelfJob()
+    src.parts[2].adjust.H = '-{n:gone}'
     const r = importTransfer(receiver(), readFile(buildJobFile(src, shelfAdjusts())), ids(), NOW)
-    expect(r.data.jobs[1].parts[2].expr.H).toBe('700 - {n:gone}')
-    // 仕上がりの式では調整寸法を使えないのでエラー（第2.1版）
-    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))[2][3]).toEqual(['syntax'])
+    expect(r.data.jobs[1].parts[2].adjust.H).toBe('-{n:gone}')
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))[2][4]).toEqual(['unknownAdjust'])
   })
 
   it('同じ名前の仕事があれば「棚のコピー」、それもあれば「棚のコピー2」', () => {
-    const text = buildJobFile(legacyShelfJob(), shelfAdjusts())
-    let data: AppData = { ...receiver(), jobs: [legacyShelfJob('x', '棚')] }
+    const text = buildJobFile(shelfJob(), shelfAdjusts())
+    let data: AppData = { ...receiver(), jobs: [shelfJob('x', '棚')] }
     data = importTransfer(data, readFile(text), ids(), NOW).data
     expect(data.jobs.map((j) => j.name)).toEqual(['棚', '棚のコピー'])
     data = importTransfer(data, readFile(text), ids(), NOW).data
@@ -133,7 +135,7 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('切り出しチェックと仕上がりの完了は入らない（ファイルに入っていても外す）', () => {
-    const used = freezeAt(legacyShelfJob(), 0, { partId: 'part-gawaita', n: 1 })
+    const used = freezeAt(shelfJob(), 0, { partId: 'part-gawaita', n: 1 })
     used.parts[1] = { ...used.parts[1], finishedDone: true }
     const file: TransferFile = { app: 'kidori-lite', kind: 'job', version: 1, job: used, adjusts: shelfAdjusts() }
     const got = importTransfer(receiver(), file, ids(), NOW).data.jobs[1]
@@ -142,20 +144,54 @@ describe('仕事1つのファイルを取り込む', () => {
   })
 
   it('知らせの文：「棚」を取り込みました', () => {
-    expect(importTransfer(receiver(), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts())), ids(), NOW).message).toBe('「棚」を取り込みました')
+    expect(importTransfer(receiver(), readFile(buildJobFile(shelfJob(), shelfAdjusts())), ids(), NOW).message).toBe('「棚」を取り込みました')
+  })
+})
+
+describe('第2.0版までのファイル（仕上がりの式に調整寸法・調整なし）を取り込む', () => {
+  it('調整の無い古いファイルは、調整なしで読む', () => {
+    const r = importTransfer(receiver(), readFile(buildJobFile(legacyShelfJob(), shelfAdjusts()).replaceAll(',"adjust":{"W":"","H":""}', '')), ids(), NOW)
+    expect(r.data.jobs[1].parts.every((p) => p.adjust.W === '' && p.adjust.H === '')).toBe(true)
+  })
+
+  it('仕上がりの式の メラミン1 は数字 1 になり、寸法は第2.0版と同じ', () => {
+    const r = importTransfer(receiver(), legacyFile(), ids(), NOW)
+    expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - 1')
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(LEGACY_DIMS)
+  })
+
+  it('仕上がりの式は、受け取る人の寸法ではなく、ファイルの調整寸法の寸法で置き換える（送った人の寸法のまま）', () => {
+    const old = legacyFile([{ id: MELAMINE_ID, name: 'メラミン', value: 2 }])
+    const r = importTransfer(receiver(), old, ids(), NOW)
+    expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - 2')
+    expect(computeDimensions(r.data.jobs[1], usableAdjusts(r.data.adjusts)).parts[3].finished).toEqual({ W: 378, H: 1760 })
+  })
+
+  it('仕上がりで使っていた調整寸法は数字になるので、一覧には足さない（調整の欄で使っていないため）', () => {
+    const r = importTransfer(receiver([{ id: 'r-hozo', name: 'ほぞ', value: 15 }]), legacyFile(), ids(), NOW)
+    expect(r.data.adjusts.map((a) => a.name)).toEqual(['ほぞ'])
+    expect(r.addedAdjusts).toEqual([])
+  })
+
+  it('削除した調整寸法（ファイルに無い id）を使っていた仕上がりの式はそのまま（エラー）', () => {
+    const src = legacyShelfJob()
+    src.parts[2].expr.H = '700 - {n:gone}'
+    const r = importTransfer(receiver(), legacyFile(undefined, src), ids(), NOW)
+    expect(r.data.jobs[1].parts[2].expr.H).toBe('700 - {n:gone}')
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))[2][4]).toEqual(['syntax'])
   })
 })
 
 describe('バックアップを取り込む', () => {
-  /** 送る人の保存データ：使いかけの棚（チェックあり・完了あり）と、まだの棚 */
+  /** 送る人の保存データ：使いかけの棚（チェックあり・完了あり・側板 H の調整 −シート0.5）と、まだの棚 */
   function sender(): AppData {
-    const used = freezeAt(legacyShelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 2 })
+    const used = freezeAt(shelfJob('job-a', '棚A'), 0, { partId: 'part-gawaita', n: 2 })
     used.parts[1] = { ...used.parts[1], finishedDone: true }
-    used.parts[2].expr.H = `700 - {n:${SHEET_ID}}`
-    return { version: 1, jobs: [used, legacyShelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    used.parts[2] = { ...used.parts[2], adjust: { W: '', H: `-{n:${SHEET_ID}}` } }
+    return { version: 1, jobs: [used, shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
   }
 
-  it('全部の仕事がコピーとして足され、切り出しチェック・仕上がりの完了も戻る', () => {
+  it('全部の仕事がコピーとして足され、切り出しチェック・仕上がりの完了・調整も戻る', () => {
     const src = sender()
     const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
     expect(r.data.jobs.map((j) => j.name)).toEqual(['自分の仕事', '棚A', '棚B'])
@@ -166,13 +202,10 @@ describe('バックアップを取り込む', () => {
     expect(a.frozenSheets).toHaveLength(1)
     expect(a.frozenSheets[0].checked).toHaveLength(2)
     expect(a.frozenSheets[0].completedAt).toBe(orig.frozenSheets[0].completedAt)
-    // 進み具合・必要な枚数も同じ
+    // 進み具合・必要な枚数・寸法も同じ
     expect(partCutProgress(a).map((p) => [p.name, p.done, p.total])).toEqual(partCutProgress(orig).map((p) => [p.name, p.done, p.total]))
-    // 仕上がりの式の調整寸法は数字になり（側板 H は 700 − シート0.5 ＝ 699.5）、寸法は第2.0版と同じ
-    const legacy = LEGACY_DIMS.map((row) => (row[0] === '側板' ? ['側板', { W: 400, H: 699.5 }, { W: 410, H: 709.5 }, []] : row))
-    expect(dimsOf(a, usableAdjusts(r.data.adjusts))).toEqual(legacy)
-    const inlined = inlineJobAdjusts(orig, usableAdjusts(src.adjusts))
-    expect(packJob(a, computeDimensions(a, usableAdjusts(r.data.adjusts))).sheetCount).toBe(packJob(inlined, computeDimensions(inlined, usableAdjusts(src.adjusts))).sheetCount)
+    expect(packJob(a, computeDimensions(a, usableAdjusts(r.data.adjusts))).sheetCount).toBe(packJob(orig, computeDimensions(orig, usableAdjusts(src.adjusts))).sheetCount)
+    expect(dimsOf(a, usableAdjusts(r.data.adjusts))).toEqual(dimsOf(orig, usableAdjusts(src.adjusts)))
     expect(r.message).toBe('2件の仕事を追加しました')
   })
 
@@ -191,7 +224,7 @@ describe('バックアップを取り込む', () => {
     expect(orig.frozenSheets[0].layout.placements[0].partId.startsWith('part-')).toBe(true)
   })
 
-  it('調整寸法は表示名が同じならそれを使い、無ければ足す（全部の仕事で同じつけ替え）', () => {
+  it('調整寸法は表示名が同じならそれを使い、無ければ足す（全部の仕事の調整で同じつけ替え）', () => {
     const r = importTransfer(receiver([{ id: 'r-mel', name: 'メラミン', value: 1 }]), readFile(buildBackupFile(sender())), ids(), NOW)
     expect(r.data.adjusts.map((a) => [a.name, a.value])).toEqual([
       ['メラミン', 1],
@@ -199,10 +232,22 @@ describe('バックアップを取り込む', () => {
     ])
     const sheetId = r.data.adjusts[1].id
     expect(r.addedAdjusts.map((a) => a.id)).toEqual([sheetId])
-    // 第2.0版の仕上がりの式の調整寸法は数字になる
-    expect(r.data.jobs[1].parts[2].expr.H).toBe('700 - 0.5')
+    expect(r.data.jobs[1].parts[2].adjust.H).toBe(`-{n:${sheetId}}`)
+    expect(r.data.jobs[1].parts[3].adjust.W).toBe('-{n:r-mel}')
+    expect(r.data.jobs[2].parts[3].adjust.W).toBe('-{n:r-mel}')
+  })
+
+  it('バックアップの調整寸法は、どの仕事でも使っていなくても足す（一覧ぜんぶを戻す。仕様書 25.9）', () => {
+    const src: AppData = { ...sender(), jobs: [shelfJob('job-a', '棚A')], adjusts: [...shelfAdjusts(), { id: 'adjust-hozo', name: 'ほぞ', value: 15 }] }
+    const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
+    expect(r.data.adjusts.map((a) => a.name)).toEqual(['メラミン', 'シート', 'ほぞ'])
+  })
+
+  it('第2.0版のバックアップの仕上がりの式の調整寸法は、数字に置き換える（寸法は第2.0版と同じ）', () => {
+    const src: AppData = { version: 1, jobs: [legacyShelfJob('job-a', '棚A')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
     expect(r.data.jobs[1].parts[3].expr.W).toBe('天板.W - 20 - 1')
-    expect(r.data.jobs[2].parts[3].expr.W).toBe('天板.W - 20 - 1')
+    expect(dimsOf(r.data.jobs[1], usableAdjusts(r.data.adjusts))).toEqual(LEGACY_DIMS)
   })
 
   it('同じバックアップを2回取り込んでも上書きせず、名前を変えて足す', () => {
@@ -217,15 +262,24 @@ describe('バックアップを取り込む', () => {
   })
 
   it('バックアップの中で同じ名前の仕事どうしも重ならない名前にする', () => {
-    const src: AppData = { version: 1, jobs: [legacyShelfJob('a', '棚'), legacyShelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    const src: AppData = { version: 1, jobs: [shelfJob('a', '棚'), shelfJob('b', '棚')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
     const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
     expect(r.data.jobs.map((j) => j.name)).toEqual(['自分の仕事', '棚', '棚のコピー'])
   })
 })
 
-/** 部材1つ（W に調整寸法 {n:s-x} を使う）の仕事 */
+/** 部材1つ（W の調整に調整寸法 {n:s-x} を足す）の仕事 */
 function oneAdjustJob(): Job {
-  const job = legacyShelfJob()
-  job.parts = [{ id: 'p1', name: '板', expr: { W: '100 + {n:s-x}', H: '200' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false }]
+  const job = shelfJob()
+  job.parts = [{ id: 'p1', name: '板', expr: { W: '100', H: '200' }, adjust: { W: '+{n:s-x}', H: '' }, quantity: 1, rotatable: false, finishedDone: false }]
   return job
+}
+
+/**
+ * 第2.0版のアプリで作った共有のファイル（仕上がりの式で使っている調整寸法を adjusts に入れていた。部材に調整は無い）。
+ * adjusts を省くと メラミン1
+ */
+function legacyFile(adjusts: Adjust[] = shelfAdjusts().slice(0, 1), job: Job = legacyShelfJob()): TransferFile {
+  const text = JSON.stringify({ app: 'kidori-lite', kind: 'job', version: 1, job, adjusts }).replaceAll(',"adjust":{"W":"","H":""}', '')
+  return readFile(text)
 }

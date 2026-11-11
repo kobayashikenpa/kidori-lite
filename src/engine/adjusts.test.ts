@@ -1,7 +1,7 @@
 // 調整寸法の表の行（書きかけを含む）と、式で使える調整寸法（第1.7版。仕様書 21.1・21.3）
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from './dimensions'
-import { MELAMINE_ID, SHEET_ID, shelfAdjusts, legacyShelfJob, shelfJob } from './fixtures/shelf'
+import { MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from './fixtures/shelf'
 import { formulaText } from './formula/display'
 import {
   adjustChangeUsages,
@@ -127,15 +127,15 @@ describe('changedAdjusts（値・名前が変わる・消える・書きかけ�
   })
 })
 
-describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.3）', () => {
+describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.3。第2.1版から「使っている」は調整の欄で数える：25.3）', () => {
   const other = (id: string, adjustId: string): Job => {
-    const job = legacyShelfJob(id, `仕事${id}`)
-    job.parts[2].expr.H = `700 - {n:${adjustId}}`
+    const job = shelfJob(id, `仕事${id}`)
+    job.parts[2].adjust.H = `-{n:${adjustId}}`
     return job
   }
 
   it('今の仕事以外で使っていれば、その調整寸法と使っている所', () => {
-    const jobs = [legacyShelfJob('job-now', '今'), other('job-b', MELAMINE_ID), other('job-c', MELAMINE_ID)]
+    const jobs = [shelfJob('job-now', '今'), other('job-b', MELAMINE_ID), other('job-c', MELAMINE_ID)]
     const before = shelfAdjusts()
     const after = before.map((a) => (a.id === MELAMINE_ID ? { ...a, value: 2 } : a))
     const r = adjustChangeUsages(jobs, before, after, 'job-now')
@@ -146,13 +146,22 @@ describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.
   })
 
   it('今の仕事でしか使っていなければ確認はいらない（changed が空）', () => {
-    const jobs = [legacyShelfJob('job-now', '今'), legacyShelfJob('job-b', 'b')]
-    jobs[1].parts[3].expr.W = '天板.W - 20'
+    const jobs = [shelfJob('job-now', '今'), shelfJob('job-b', 'b')]
+    jobs[1].parts[3].adjust.W = ''
     const before = shelfAdjusts()
     const after = before.filter((a) => a.id !== MELAMINE_ID)
     const r = adjustChangeUsages(jobs, before, after, 'job-now')
     expect(r.changed).toEqual([])
     expect(r.otherJobCount).toBe(0)
+  })
+
+  it('ほかの仕事の仕上がりの式に残っている調整寸法（読み込みで置き換えなかったもの）は数えない', () => {
+    const b = shelfJob('job-b', 'b')
+    b.parts[3].adjust.W = ''
+    b.parts[2].expr.H = `700 - {n:${MELAMINE_ID}}`
+    const before = shelfAdjusts()
+    const after = before.map((a) => (a.id === MELAMINE_ID ? { ...a, value: 2 } : a))
+    expect(adjustChangeUsages([shelfJob('job-now', '今'), b], before, after, 'job-now').changed).toEqual([])
   })
 
   it('どこでも使っていない調整寸法を変えても確認はいらない', () => {
@@ -164,7 +173,7 @@ describe('adjustChangeUsages（変える・消すときの確認。仕様書 21.
   it('開いている仕事が無ければ、全部の仕事を「ほか」とみなす', () => {
     const before = shelfAdjusts()
     const after = before.map((a) => (a.id === MELAMINE_ID ? { ...a, value: null } : a))
-    const r = adjustChangeUsages([legacyShelfJob('job-a', 'a')], before, after, null)
+    const r = adjustChangeUsages([shelfJob('job-a', 'a')], before, after, null)
     expect(r.changed.map((a) => a.id)).toEqual([MELAMINE_ID])
     expect(r.otherJobCount).toBe(1)
   })

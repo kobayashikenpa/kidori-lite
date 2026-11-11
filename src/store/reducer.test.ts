@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../engine/dimensions'
 import { MELAMINE_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
 import { formulaText } from '../engine/formula/display'
+import { adjustUsages } from '../engine/formula/usages'
 import { packJob } from '../engine/packing'
 import { importTransfer } from '../engine/transfer/importFile'
 import { readTransferFile } from '../engine/transfer/read'
@@ -314,6 +315,8 @@ describe('調整寸法（アプリ全体）', () => {
     expect(tana.finished?.W).toBe(380)
     expect(tana.adjusted?.W).toBe(378)
     expect(tana.cut?.W).toBe(388)
+    // 使っている所は調整の欄で数える（仕様書 25.3）
+    expect(adjustUsages(s.data, MELAMINE_ID).map((u) => [u.partName, u.axes])).toEqual([['棚板', ['W']]])
   })
 
   it('使っている調整寸法を消すと、その調整はエラーになる（仕上がりは出し、調整後・木取りは出さない）', () => {
