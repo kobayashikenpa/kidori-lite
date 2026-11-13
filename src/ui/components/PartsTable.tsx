@@ -26,7 +26,7 @@ import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/
 import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part, type RefAxis } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
-import { cellColor } from '../../engine/marks'
+import { cellColor, hasMemo } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import { canInsertRef, insertAt, refCellsOf, refColorsOf, refPiece, type Edit } from '../formulaEdit'
@@ -57,6 +57,7 @@ import { CellMenu } from './CellMenu'
 import { FormulaBar } from './FormulaBar'
 import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
+import { MemoSheet } from './MemoSheet'
 import { Sheet } from './Sheet'
 
 interface Props {
@@ -123,6 +124,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   const [menuOpen, setMenuOpen] = useState(false)
   // 長押しした所：番号なら行の色、セルならセルの色（仕様書 26.3）
   const [menuTarget, setMenuTarget] = useState<'row' | 'cell'>('cell')
+  // メモの欄を開いている部材（仕様書 26.3。開いていなければ null）
+  const [memoFor, setMemoFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // 見出しを長押しして開いた並べ替えのメニューの列（仕様書 24.1。開いていなければ null）
   const [sortCol, setSortCol] = useState<number | null>(null)
@@ -546,6 +549,17 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     navigator.vibrate?.(10)
   }
 
+  /** その部材のメモの欄を開く（入力中なら入力を終える。セルは選んだまま） */
+  const openMemo = (partId: string) => {
+    if (curCell()) selectCell(null)
+    setMemoFor(partId)
+  }
+  /** メモを保存する（空なら消す）。保存できなければ理由 */
+  const saveMemo = (partId: string, text: string): string | null => {
+    const r = dispatch({ type: 'setPartMemo', partId, text })
+    return r.ok ? null : r.message
+  }
+
   // ---------- 並べ替え・行の移動（仕様書 24） ----------
 
   /** 見出しを長押ししたとき：その列を選び、並べ替えのメニューを開く（入力中なら入力を終える） */
@@ -799,10 +813,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           ) : (
             <button
               type="button"
-              className={`pt-cell pt-name${mark('name')}${part && dupIds.has(part.id) ? ' dup' : ''}${rangeCls('name')}`}
+              className={`pt-cell pt-name${mark('name')}${part && dupIds.has(part.id) ? ' dup' : ''}${part && hasMemo(part) ? ' memo' : ''}${rangeCls('name')}`}
               data-row={i}
               data-col={0}
-              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}${part && dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}`}
+              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}${part && dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}${part && hasMemo(part) ? '（メモあり）' : ''}`}
               aria-selected={inRange('name')}
               onClick={cellPress('name')}
             >
@@ -918,10 +932,25 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           onNotice={setNotice}
           onError={onError}
           target={menuTarget}
+          onMemo={openMemo}
           onInsertAbove={insertAbove}
           onRowsDeleted={() => selectRange(singleRange({ row: shown.top, col: shown.left }))}
         />
       )}
+      {memoFor !== null &&
+        (() => {
+          const i = parts.findIndex((p) => p.id === memoFor)
+          if (i < 0) return null
+          return (
+            <MemoSheet
+              key={memoFor}
+              who={hasName(parts[i]) ? parts[i].name : `#${i + 1}`}
+              memo={parts[i].memo}
+              onSave={(text) => saveMemo(memoFor, text)}
+              onClose={() => setMemoFor(null)}
+            />
+          )
+        })()}
       {sortCol !== null && (
         <Sheet
           title={`${FIELD_LABEL[CELL_COLS[sortCol]]}で並べ替え`}
@@ -956,6 +985,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
         hint={barAt === 'qty' ? '枚数を入れる' : barAt === 'T' ? '厚みを入れる（空でもよい）' : '数字か式を入れる'}
         errors={barErrs}
         note={padOpen && sel?.field === 'qty' ? qtyNote(selPart?.quantity) : padOpen && sel?.field === 'T' ? 'mm' : undefined}
+        memo={barPart && hasMemo(barPart) ? barPart.memo : undefined}
+        onMemo={() => {
+          if (barPart) openMemo(barPart.id)
+        }}
       />
       {padOpen &&
         sel &&

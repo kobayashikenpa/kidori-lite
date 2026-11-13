@@ -53,11 +53,11 @@ function cellUnder(table: HTMLElement | null, x: number, y: number): PressAt | n
 
 /**
  * 画面の上に止めてあるもの（仕事の名前の帯・部材の画面のタブと式の欄。第2.1版 仕様書 25.8）の下の端（px）。
- * 表の行がこれより上に隠れないようにスクロールする
+ * 式の欄の下に重ねて出しているエラー・メモ（.fx-below。第2.2版）もその中に数える。表の行がこれより上に隠れないようにスクロールする
  */
 export function stickyBottom(): number {
   let bottom = 0
-  for (const sel of ['.topbar', '.parts-sticky']) {
+  for (const sel of ['.topbar', '.parts-sticky', '.parts-sticky .fx-below']) {
     const el = document.querySelector(sel)
     if (el) bottom = Math.max(bottom, el.getBoundingClientRect().bottom)
   }

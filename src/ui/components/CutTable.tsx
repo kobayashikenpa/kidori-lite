@@ -10,12 +10,13 @@ import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/
 import type { PartCutProgress } from '../../engine/progress/partProgress'
 import { CELL_COLS, type Adjust, type Axis, type DimensionResult, type Job } from '../../engine/types'
 import { CELL_COL_LABEL, markClass } from '../cellSelect'
-import { cellColor } from '../../engine/marks'
+import { cellColor, hasMemo } from '../../engine/marks'
 import { fmt } from '../format'
 import { barErrors, partBar } from '../fxBar'
 import { cutDimCell, cutQuantityText, thicknessText } from '../partsTable'
 import { useOutsideEnd } from '../useGrid'
 import { FormulaBar } from './FormulaBar'
+import { MemoSheet } from './MemoSheet'
 
 interface Props {
   job: Job
@@ -35,6 +36,8 @@ interface Picked {
 export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
   const parts = job.parts
   const [picked, setPicked] = useState<Picked | null>(null)
+  // メモの全文を見ている部材（見るだけ。仕様書 26.8）
+  const [memoFor, setMemoFor] = useState<string | null>(null)
   const tableRef = useRef<HTMLDivElement>(null)
   const barSlotRef = useRef(barSlot)
   useEffect(() => {
@@ -127,8 +130,8 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
                 <button
                   type="button"
                   role="cell"
-                  className={`pt-cell pt-name${mark('name')}${dupIds.has(part.id) ? ' dup' : ''}${isPicked('name') ? ' picked' : ''}`}
-                  aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}`}
+                  className={`pt-cell pt-name${mark('name')}${dupIds.has(part.id) ? ' dup' : ''}${hasMemo(part) ? ' memo' : ''}${isPicked('name') ? ' picked' : ''}`}
+                  aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}${hasMemo(part) ? '（メモあり）' : ''}`}
                   aria-pressed={isPicked('name')}
                   onClick={() => press(part.id, 'name')}
                 >
@@ -172,7 +175,17 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
         adjusts={adjusts}
         label={on ? `${barWho} の ${picked.field === 'W' || picked.field === 'H' ? `仕上がりの${CELL_COL_LABEL[picked.field]}` : CELL_COL_LABEL[picked.field]}` : ''}
         errors={errs}
+        memo={pickedPart && hasMemo(pickedPart) ? pickedPart.memo : undefined}
+        onMemo={() => {
+          if (pickedPart) setMemoFor(pickedPart.id)
+        }}
       />
+      {memoFor !== null &&
+        (() => {
+          const i = parts.findIndex((p) => p.id === memoFor)
+          if (i < 0) return null
+          return <MemoSheet who={hasName(parts[i]) ? parts[i].name : `#${i + 1}`} memo={parts[i].memo} readOnly onClose={() => setMemoFor(null)} />
+        })()}
     </>
   )
 }

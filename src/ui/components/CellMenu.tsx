@@ -6,12 +6,14 @@
 // 第2.1版：［調整］のタブ（adjust）では 切り取り・コピー・貼り付け・クリア だけを出し、［調整］の欄の操作（partAdjustCells）を使う
 // （行の挿入・削除・複製・回転・仕上がりは［仕上がり］のタブだけ。仕様書 25.2）
 // 第2.2版（仕様書 26.3）：「色」（赤・青・黄・なし）。番号を長押ししたときは選んでいる行の色、セルを長押ししたときは選んでいるセルの色。
-// ［仕上がり］［調整］の両方に出す。部材の無い行だけを選んでいるときは押せない
+// ［仕上がり］［調整］の両方に出す。部材の無い行だけを選んでいるときは押せない。
+// 「メモ」：1つの部材を選んでいるときだけ押せる（押すとメニューを閉じて、呼ぶ側がメモの欄を開く。仕様書 26.3・26.8）
 import { useState } from 'react'
 import { selectedPartIds, selectionCells } from '../../engine/clipboard/cells'
 import { partLabel, partLabelAt } from '../../engine/parts'
 import { PART_COLORS, type Adjust, type CellClip, type CellRange, type Job, type PartColor } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
+import { hasMemo } from '../../engine/marks'
 import { clipText, commonColor, flagState, markClass, PART_COLOR_LABEL, pasteText } from '../cellSelect'
 import { referencingOthers } from '../partsTable'
 import { Segmented } from './Segmented'
@@ -38,12 +40,14 @@ interface Props {
   adjusts?: readonly Adjust[]
   /** 長押しした所：番号（row）なら行の色、セル（cell）ならセルの色を付ける（仕様書 26.3・26.8） */
   target?: 'row' | 'cell'
+  /** 「メモ」：その部材のメモの欄を開いてほしい（呼ぶ側） */
+  onMemo?: (partId: string) => void
 }
 
 type Rotate = 'fixed' | 'free' | 'some'
 type Done = 'open' | 'done' | 'some'
 
-export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false, adjusts, target = 'cell' }: Props) {
+export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false, adjusts, target = 'cell', onMemo }: Props) {
   const [confirm, setConfirm] = useState(false)
   const ids = selectedPartIds(job, range)
   const parts = job.parts.filter((p) => ids.includes(p.id))
@@ -209,6 +213,20 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
               </button>
             </div>
           </fieldset>
+          {onMemo && (
+            <button
+              type="button"
+              className="btn wide cm-memo"
+              disabled={parts.length !== 1}
+              onClick={() => {
+                onClose()
+                onMemo(parts[0].id)
+              }}
+            >
+              {parts.length === 1 && hasMemo(parts[0]) ? 'メモを見る・直す' : 'メモ'}
+              {parts.length > 1 && <span className="cm-note">（1つの部材を選ぶと使えます）</span>}
+            </button>
+          )}
           {!adjust && (
           <>
           <div className="cm-keys two">

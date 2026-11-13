@@ -17,7 +17,7 @@ import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/
 import { CELL_COLS, type Adjust, type AdjustRow, type Axis, type CellClip, type CellRange, type DimensionResult, type Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
-import { cellColor } from '../../engine/marks'
+import { cellColor, hasMemo } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import { canInsertRef, insertAt, type Edit } from '../formulaEdit'
@@ -30,6 +30,7 @@ import { CellMenu } from './CellMenu'
 import { FormulaBar } from './FormulaBar'
 import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
+import { MemoSheet } from './MemoSheet'
 
 interface Props {
   job: Job
@@ -70,6 +71,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   const [menuOpen, setMenuOpen] = useState(false)
   // 長押しした所：番号なら行の色、セルならセルの色（仕様書 26.3）
   const [menuTarget, setMenuTarget] = useState<'row' | 'cell'>('cell')
+  // メモの欄を開いている部材（仕様書 26.3）
+  const [memoFor, setMemoFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [selS, setSelS] = useState<Sel | null>(null)
   const sel = cellOf(selS, job)
@@ -261,6 +264,12 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     navigator.vibrate?.(10)
   }
 
+  /** その部材のメモの欄を開く（入力中なら入力を終える） */
+  const openMemo = (partId: string) => {
+    if (curCell()) endInput()
+    setMemoFor(partId)
+  }
+
   const padOpen = sel !== null
   // 入力している間：表・キー・（押すと入るときは）調整寸法の表の外を押したら入力を終える
   useOutsideEnd(
@@ -434,10 +443,10 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   </button>
                   <button
                     type="button"
-                    className={`pt-cell pt-name${mark(0)}${dupIds.has(part.id) ? ' dup' : ''}${rangeCls(0)}`}
+                    className={`pt-cell pt-name${mark(0)}${dupIds.has(part.id) ? ' dup' : ''}${hasMemo(part) ? ' memo' : ''}${rangeCls(0)}`}
                     data-row={i}
                     data-col={0}
-                    aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}（見るだけ）`}
+                    aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}${hasMemo(part) ? '（メモあり）' : ''}（見るだけ）`}
                     aria-selected={inRange(0)}
                     onClick={() => pressCell(i, 0)}
                   >
@@ -498,6 +507,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
           onNotice={setNotice}
           onError={onError}
           target={menuTarget}
+          onMemo={openMemo}
           adjust
         />
       )}
@@ -522,7 +532,28 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
         onDone={endInput}
         hint="− と調整寸法の行で入れる（空は調整なし）"
         errors={barErrs}
+        memo={barPart && hasMemo(barPart) ? barPart.memo : undefined}
+        onMemo={() => {
+          if (barPart) openMemo(barPart.id)
+        }}
       />
+      {memoFor !== null &&
+        (() => {
+          const i = parts.findIndex((p) => p.id === memoFor)
+          if (i < 0) return null
+          return (
+            <MemoSheet
+              key={memoFor}
+              who={hasName(parts[i]) ? parts[i].name : `#${i + 1}`}
+              memo={parts[i].memo}
+              onSave={(text) => {
+                const r = dispatch({ type: 'setPartMemo', partId: memoFor, text })
+                return r.ok ? null : r.message
+              }}
+              onClose={() => setMemoFor(null)}
+            />
+          )
+        })()}
       {padOpen &&
         sel &&
         selPart &&

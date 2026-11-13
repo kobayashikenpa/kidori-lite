@@ -797,7 +797,7 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 
 ## 15. 第2.2版の変更（仕様書 26章）
 
-作業は `docs/tasks.md` の E-24〜E-28・U-30〜U-36。計算・保存の側（E-24〜E-28）は 15.1〜15.5 に実装に合わせて書いた（2026-11-13 engine-dev）。画面（U-30〜U-36）は ui-dev が節を足す。
+作業は `docs/tasks.md` の E-24〜E-28・U-30〜U-36。計算・保存の側（E-24〜E-28）は 15.1〜15.5 に実装に合わせて書いた（2026-11-13 engine-dev）。画面（U-30〜U-36）は 15.6〜15.12（2026-11-13 ui-dev）。
 
 - **厚み**（E-24・E-25・E-26）：`Part.thickness`（数か空）。部材の寸法の `Axis`（W・H。板に置く2つ）は変えず、式の参照の軸だけ W・H・T（`RefAxis`）。`.T` は参照先の部材の厚みの数字で、計算順・循環の辿り（`resolve.ts` の `deps`）には入らない。木取りの並べ方（`packing/`）は厚みを見ない（11章のまま）
 - **表の列**（E-26）：`CELL_COLS` は 名前・厚み・W・H・枚数（`left` 0〜4）。［仕上がり］［調整］［木取り］の3つの表が同じ列。［調整］では厚みも見るだけ
@@ -972,3 +972,11 @@ export interface Part {
 - 3つの表：各セルに `markClass(cellColor(part, 列))`（`.mk-red` など。engine の `cellColor` はセルの色 → 行の色）。番号のセルは行の色（`markClass(part.rowColor)`）。［木取り］の表も同じ class（見るだけ）。木取りの画面には出さない
 - `ui/cellSelect.ts`：`PART_COLOR_LABEL`（赤・青・黄）・`markClass(color)`・`commonColor(values)`（テストつき）
 - 色（`index.css`）：`--mark-red`・`--mark-blue`・`--mark-yellow`（ライトは淡い色、ダークは暗い色。字の色はそのまま）と、メニューのボタンの字の色 `--mark-*-ink`。`.pt-cell.mk-*` は `.pt-cell` のすぐ後ろに置き、選んだ範囲（`.rs`）・入力中（`.on`）・エラー（`.bad`）・選んだ行の番号（`.hl`）の色が上に重なるようにした（選んでいる間は選んだ色、外すと部材の色）
+
+### 15.12 メモ（U-35。spec 26.3・26.8）
+
+- `components/MemoSheet.tsx`：下から出るシート（`Sheet`）に、スマホのキーボードで打つ欄（`textarea`）と「やめる」「保存」。保存は `setPartMemo`（空白・改行だけなら engine がメモを消す）。`readOnly` のときは全文だけ（［木取り］の表）
+- `CellMenu`：「メモ」（メモがあれば「メモを見る・直す」）。1つの部材を選んでいるときだけ押せる。押すとメニューを閉じて `onMemo(partId)`（`PartsTable`・`PartAdjustTable` がメモの欄を開く。入力中なら入力を終える）
+- 名前のセルの右上の三角：`hasMemo(part)` のとき `.pt-name.memo::after`（`--warn` の色。3つの表）。読み上げに「（メモあり）」
+- `FormulaBar` の `memo`・`onMemo`：式の欄のすぐ下の `.fx-below`（表に重ねる）に、エラー（`.fx-err`）の下にメモ（`.fx-memo`。`-webkit-line-clamp: 2` で2行まで「…」）。押すとメモの欄。中身の無い欄（名前のセル）でもメモがあれば点線の空の欄とメモを出す。どの部材のメモかは式の欄と同じ（範囲の左上・入力中のセルの行。［木取り］は押したセルの行）
+- `useGrid.ts` の `stickyBottom()` は `.parts-sticky .fx-below` の下の端も数える（名前の入力中、行をメモ・エラーの下に見せる）
