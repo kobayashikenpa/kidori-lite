@@ -60,18 +60,22 @@ export function inputRow(row: number, partCount: number): number {
   return Math.max(0, Math.min(row, partCount))
 }
 
-/** 「次へ」の行き先：名前 → W → H → 枚数 → 次の行の名前（厚みは W へ） */
+/**
+ * 「次へ」の行き先（第2.2版。仕様書 26.2）：名前は次の行の名前、厚みは次の行の厚み（縦に進む）。
+ * W・H・枚数は W → H → 枚数 → 次の行の W（横に進み、名前・厚みの列には入らない）。最後の部材の次は空の行（inputRow）
+ */
 export function nextCell(cell: TableCell, partCount: number): TableCell {
+  const below = inputRow(cell.row + 1, partCount)
   switch (cell.field) {
     case 'name':
     case 'T':
-      return { row: cell.row, field: 'W' }
+      return { row: below, field: cell.field }
     case 'W':
       return { row: cell.row, field: 'H' }
     case 'H':
       return { row: cell.row, field: 'qty' }
     case 'qty':
-      return { row: inputRow(cell.row + 1, partCount), field: 'name' }
+      return { row: below, field: 'W' }
   }
 }
 

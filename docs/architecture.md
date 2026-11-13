@@ -936,3 +936,12 @@ export interface Part {
 - `ui/formulaEdit.ts` の `refPiece(name, col)`：押したセルから式に入れる寸法（W・H・T の列は `天板.W`・`天板.T`、名前・枚数は null）。入れてよいかは今までどおり `canInsertRef`（25.7 と同じ決まり）。`refColorsOf`・`refCellsOf` は `parseRefText` が T を読むので、そのまま `天板.T` も色の枠の部材に数える（テストつき）
 - `PartsTable` の `putRef`：W・H の入力中に、ほかの部材（同じ部材も）の厚みのセルを押したら `天板.T` を入れる。厚みのセルにも `refFrame`（色の点線の枠）。式の欄（`FormulaView`）では部材の寸法の塊として色つきで出る
 - 木取りの画面（`KidoriScreen`）：`ui/kidoriView.ts` の `thicknessTag(t)`（「t18」。空は ''）・`withThickness(name, t)`（「天板 t18」）。配置図（`SheetDiagram`）の部材名は `labelOf` に厚みを足し、切り出しチェック（`SheetChecklist`）は `tagOf` で名前の横に出す。厚みは `partId` から今の部材を引く（固定した1枚も今の厚み。部材が無くなっていれば出さない）。「部材ごとの進み具合」には出さない（26.1 は配置図・切り出しチェックだけ）
+
+### 15.8 「次へ」の進み方・名前を打つときのスクロール（U-32。spec 26.2・26.4）
+
+- `ui/partsTable.ts` の `nextCell`：名前 → 次の行の名前、厚み → 次の行の厚み、W → H → 枚数 → 次の行の W（次の行は `inputRow(row + 1, partCount)`。最後の部材の次は空の行、空の行のままなら同じ空の行）。［調整］の `nextAdjustTabCell` は変えていない
+- `PartsTable` の名前の欄の改行（`onNameKey`）：名前を確定してから `startInput(nextCell(...))`。次の行の名前の欄を描いて、押した操作の中で注目を移す（スマホのキーボードは出したまま。前の欄の `blur` はしない）
+- スクロール（`ui/scroll.ts`。テストつき）：`visibleRange(view, stickyBottom, padTop)`（見えている範囲：上は止めたタブ・式の欄の下と visualViewport の上の下のほう、下は visualViewport の下とアプリのキーの上の上のほう）、`revealDelta(rect, band, margin)`（行を範囲に入れるスクロールの量）
+- `useGrid.ts` の `useRevealRow`：選んだときに1回（なめらかに）、そのあとは visualViewport の `resize` のたび、選んでから 1.5 秒（`REVEAL_FOLLOW_MS`）の間は `scroll`（iPhone の Safari が見えている範囲を動かしたとき）のたびにも、すぐに合わせ直す
+- `useGrid.ts` の `useKeyboardHeight(active)`：`innerHeight − visualViewport.height`。名前の入力中は表の下にこの高さの余白（`.pt-spacer`）を足す（iPhone の Safari・最近の Android の Chrome はキーボードが出ても画面が縮まないので、いちばん下の行もキーボードの上まで上げられるように）。`useRevealRow` の4つ目の引数に渡して、余白が付いたあとにも合わせ直す
+- 厚み・W・H・枚数（アプリのキー）は今までどおり `usePadHeight`（キーの高さの余白）と `useRevealRow`（キーの上の端まで）

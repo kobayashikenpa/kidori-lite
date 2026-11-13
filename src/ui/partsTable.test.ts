@@ -69,15 +69,23 @@ describe('部材の表の行（仕様書 15.1）', () => {
     expect(inputRow(8, 4)).toBe(4)
   })
 
-  it('「次へ」は 名前 → W → H → 枚数 → 次の行の名前', () => {
-    expect(nextCell({ row: 0, field: 'name' }, 4)).toEqual({ row: 0, field: 'W' })
+  it('「次へ」：名前は次の行の名前、厚みは次の行の厚み（縦に進む。仕様書 26.2）', () => {
+    expect(nextCell({ row: 0, field: 'name' }, 4)).toEqual({ row: 1, field: 'name' })
+    expect(nextCell({ row: 0, field: 'T' }, 4)).toEqual({ row: 1, field: 'T' })
+    // 最後の部材の名前の次は空の行の名前
+    expect(nextCell({ row: 3, field: 'name' }, 4)).toEqual({ row: 4, field: 'name' })
+    expect(nextCell({ row: 3, field: 'T' }, 4)).toEqual({ row: 4, field: 'T' })
+    // 空の行のまま次へ：同じ空の行
+    expect(nextCell({ row: 4, field: 'name' }, 4)).toEqual({ row: 4, field: 'name' })
+  })
+
+  it('「次へ」：W → H → 枚数 → 次の行の W（名前・厚みには入らない）', () => {
     expect(nextCell({ row: 0, field: 'W' }, 4)).toEqual({ row: 0, field: 'H' })
     expect(nextCell({ row: 0, field: 'H' }, 4)).toEqual({ row: 0, field: 'qty' })
-    expect(nextCell({ row: 0, field: 'qty' }, 4)).toEqual({ row: 1, field: 'name' })
-    // 最後の部材の次は空の行
-    expect(nextCell({ row: 3, field: 'qty' }, 4)).toEqual({ row: 4, field: 'name' })
-    // 空の行のまま次へ：同じ空の行の名前
-    expect(nextCell({ row: 4, field: 'qty' }, 4)).toEqual({ row: 4, field: 'name' })
+    expect(nextCell({ row: 0, field: 'qty' }, 4)).toEqual({ row: 1, field: 'W' })
+    // 最後の部材の次は空の行の W
+    expect(nextCell({ row: 3, field: 'qty' }, 4)).toEqual({ row: 4, field: 'W' })
+    expect(nextCell({ row: 4, field: 'qty' }, 4)).toEqual({ row: 4, field: 'W' })
   })
 
   it('厚みの文字と厚み（第2.2版。空は null、0 より大きい数（小数可）、0・数でないものは入れられない）', () => {

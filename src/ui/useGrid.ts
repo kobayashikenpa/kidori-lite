@@ -15,10 +15,14 @@ import {
 import type { CellRange } from '../engine/types'
 import { fillTarget, fixedCorner, keepActive, spanRange, type GridPoint } from './cellSelect'
 import { claimOpen } from './exclusive'
+import { revealDelta, visibleRange } from './scroll'
 
 /** 取っ手を引いて表の上下の端に近づいたら、表を少しずつスクロールする（端からの距離 px と、1こまの最大の動き px） */
 const EDGE_ZONE = 48
 const EDGE_STEP = 18
+
+/** 入力するセルを選んだあと、見えている範囲（スマホのキーボード）が動くのに合わせて行を見せ直す時間（ms。仕様書 26.4） */
+const REVEAL_FOLLOW_MS = 1500
 
 /** 長押しでメニューを出すまでの時間（ms）と、取り消しにする指の動き（px） */
 export const LONG_PRESS_MS = 500
@@ -676,8 +680,10 @@ export function usePadHeight(padRef: RefObject<HTMLDivElement | null>, openKey: 
 }
 
 /**
- * 入力している行が、上の見出しとキー（名前のときはスマホのキーボード）の間に見えるようにスクロールする。
- * selKey は入力しているセルの鍵（"行:列"。入力していなければ ''）
+ * 入力している行が、上に止めたタブ・式の欄と、キー（名前のときはスマホのキーボード）の間に見えるようにスクロールする（仕様書 15.1・26.4）。
+ * selKey は入力しているセルの鍵（"行:列"。入力していなければ ''）。
+ * 名前の入力ではスマホのキーボードが少し遅れて出て、見えている範囲（visualViewport）が狭くなったり、iPhone の Safari が自分で画面を動かしたりする。
+ * そのため、選んだすぐあと（REVEAL_FOLLOW_MS の間）は visualViewport の大きさ・位置が変わるたびに合わせ直す（その後はキーボードの出し入れのときだけ）
  */
 export function useRevealRow(
   rowEls: RefObject<Map<number, HTMLDivElement>>,
@@ -688,33 +694,59 @@ export function useRevealRow(
   useEffect(() => {
     if (!selKey) return
     const row = Number(selKey.split(':')[0])
-    const reveal = () => {
+    const started = Date.now()
+    const reveal = (smooth: boolean) => {
       const rowEl = rowEls.current.get(row)
       if (!rowEl) return
       const vv = window.visualViewport
-      const viewTop = vv ? vv.offsetTop : 0
-      const viewBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
-      const head = stickyBottom()
-      const top = Math.max(viewTop, head)
-      const bottom = padRef.current ? Math.min(viewBottom, padRef.current.getBoundingClientRect().top) : viewBottom
+      const band = visibleRange(
+        vv ? { offsetTop: vv.offsetTop, height: vv.height } : { offsetTop: 0, height: window.innerHeight },
+        stickyBottom(),
+        padRef.current ? padRef.current.getBoundingClientRect().top : null,
+      )
       const r = rowEl.getBoundingClientRect()
-      const margin = 8
-      let delta = 0
-      if (r.bottom > bottom - margin) delta = r.bottom - (bottom - margin)
-      if (r.top - delta < top + margin) delta = r.top - (top + margin)
-      if (Math.abs(delta) < 1) return
+      const delta = revealDelta({ top: r.top, bottom: r.bottom }, band, 8)
+      if (delta === 0) return
       const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-      window.scrollBy({ top: delta, behavior: reduce ? 'auto' : 'smooth' })
+      // 合わせ直しはすぐに動かす（なめらかに動かしている途中で測ると、行き過ぎるため）
+      window.scrollBy({ top: delta, behavior: smooth && !reduce ? 'smooth' : 'auto' })
     }
-    const frame = requestAnimationFrame(reveal)
-    // 名前の欄：スマホのキーボードが出て見えている範囲が変わったら、もう一度合わせる
+    const frame = requestAnimationFrame(() => reveal(true))
+    let again = 0
+    const follow = (e: Event) => {
+      // 選んですぐの間は、見えている範囲が動くたび（キーボードが出る・Safari が動かす）に合わせ直す。その後はキーボードの出し入れ（resize）だけ
+      if (e.type === 'scroll' && Date.now() - started > REVEAL_FOLLOW_MS) return
+      cancelAnimationFrame(again)
+      again = requestAnimationFrame(() => reveal(false))
+    }
     const vv = window.visualViewport
-    vv?.addEventListener('resize', reveal)
+    vv?.addEventListener('resize', follow)
+    vv?.addEventListener('scroll', follow)
     return () => {
       cancelAnimationFrame(frame)
-      vv?.removeEventListener('resize', reveal)
+      cancelAnimationFrame(again)
+      vv?.removeEventListener('resize', follow)
+      vv?.removeEventListener('scroll', follow)
     }
   }, [rowEls, padRef, selKey, padH])
+}
+
+/**
+ * スマホのキーボードの高さ（px。第2.2版 仕様書 26.4）：画面の高さと、見えている範囲（visualViewport）の下の端の差。active でないとき・測れないときは 0。
+ * 名前の入力中、表の下にこの高さの余白を足して、いちばん下の行もキーボードの上まで上げられるようにする
+ * （iPhone の Safari・最近の Android の Chrome は、キーボードが出ても画面（レイアウト）が縮まないため）
+ */
+export function useKeyboardHeight(active: boolean): number {
+  const [h, setH] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!active || !vv) return
+    const measure = () => setH(Math.max(0, Math.round(window.innerHeight - vv.height)))
+    measure()
+    vv.addEventListener('resize', measure)
+    return () => vv.removeEventListener('resize', measure)
+  }, [active])
+  return active ? h : 0
 }
 
 /**

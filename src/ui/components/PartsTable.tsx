@@ -49,7 +49,7 @@ import {
 } from '../partsTable'
 import { barErrors, barField, partBar } from '../fxBar'
 import { useLongPress } from '../useLongPress'
-import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
+import { rangeKey, useKeyboardHeight, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
 import { CellMenu } from './CellMenu'
 import { FormulaBar } from './FormulaBar'
 import { FormulaKeys } from './FormulaKeys'
@@ -365,18 +365,20 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     return claimOpen('pad', () => selectRef.current(null))
   }, [padOpen])
 
-  // キーの高さ（表の下に同じだけ余白を足す）と、入力している行が見えるようにスクロールする
+  // キーの高さ（表の下に同じだけ余白を足す）と、入力している行が見えるようにスクロールする。
+  // 名前の入力中はスマホのキーボードの高さの余白を足す（いちばん下の行もキーボードの上に出せるように。仕様書 26.4）
   const padH = usePadHeight(padRef, padOpen ? sel.field : null)
-  useRevealRow(rowEls, padRef, selKey, padH)
+  const kbdH = useKeyboardHeight(sel?.field === 'name')
+  useRevealRow(rowEls, padRef, selKey, padOpen ? padH : kbdH)
 
   const onNameKey = (row: number, e: ReactKeyboardEvent<HTMLInputElement>) => {
     // 日本語の変換を確定する Enter は除く
     if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
     e.preventDefault()
     if (!commitName(row, nameDraftRef.current)) return
-    // キーボードの「次へ（改行）」：同じ行の W へ（アプリのキーを出す）
-    selectCell({ row, field: 'W' })
-    e.currentTarget.blur()
+    // キーボードの「次へ（改行）」：次の行の名前へ（第2.2版 仕様書 26.2。スマホのキーボードは出したまま。
+    // 押した操作の中で次の欄に注目を移す。見える位置へのスクロールは useRevealRow）
+    startInput(nextCell({ row, field: 'name' }, jobRef.current.parts.length))
   }
 
   const onNameBlur = (row: number) => {
@@ -433,7 +435,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     if (r.value !== part.thickness) run({ type: 'updatePart', partId: part.id, patch: { thickness: r.value } })
   }
 
-  /** 「次へ」：名前 → W → H → 枚数 → 次の行の名前（入力のまま）。名前に移るときはスマホのキーボードを出す */
+  /** 「次へ」（入力のまま。仕様書 26.2）：厚みは次の行の厚み、W → H → 枚数 → 次の行の W（nextCell） */
   const goNext = () => {
     const cur = curCell()
     if (!cur) return
@@ -868,6 +870,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       </button>
       {/* キーを出している間も、表を指でなぞっていちばん下の行までスクロールできるよう、キーの高さの余白を下に取る */}
       {padOpen && <div className="pt-spacer" style={{ height: padH }} aria-hidden="true" />}
+      {sel?.field === 'name' && kbdH > 0 && <div className="pt-spacer" style={{ height: kbdH }} aria-hidden="true" />}
       {menuOpen && shown && (
         <CellMenu
           job={job}
