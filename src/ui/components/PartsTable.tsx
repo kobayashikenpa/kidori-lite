@@ -22,7 +22,7 @@ import { normalizePartName, splitLeadingEquals, validatePartName } from '../../e
 import { formulaUnits } from '../../engine/formula/units'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
-import { hasName } from '../../engine/parts'
+import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part, type RefAxis } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
@@ -517,7 +517,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   const fillDone = (from: CellRange, to: CellRange) => {
     const r = run({ type: 'fillCells', from, to })
     if (!r.ok) return
-    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped, r.paste.renamed.length) : null)
+    // 名前も番号を振らずにそのまま入れる（仕様書 26.6）
+    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped) : null)
     // 入れたあとは、引いた先まで選ぶ（エクセルと同じ。起点はそのまま）
     const a = activeRef.current
     selectRange(to, a && rangeHas(to, a) ? a : { row: to.top, col: to.left })
@@ -607,6 +608,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   // ---------- 表示 ----------
 
   const dimsOf = (partId: string) => dims.parts.find((d) => d.partId === partId)
+  // 同じ名前の部材（貼り付け・オートフィルでできる。名前を赤で出し、選ぶと「同じ名前があります」。仕様書 26.6）
+  const dupIds = duplicateNameIds(parts)
   const selPart = sel ? parts[sel.row] : undefined
   const selLabel = sel ? (selPart && hasName(selPart) ? selPart.name : `#${sel.row + 1}`) : ''
   const liveNameError =
@@ -658,7 +661,9 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     ? [refMsg]
     : thickMsg && sel?.field === 'T'
       ? [thickMsg]
-      : barPart && (barAt === 'W' || barAt === 'H') && !(padOpen && barEmpty)
+      : barRange && barRange.left === 0 && sel?.field !== 'name' && barPart && dupIds.has(barPart.id)
+        ? [DUPLICATE_NAME_MESSAGE]
+        : barPart && (barAt === 'W' || barAt === 'H') && !(padOpen && barEmpty)
       ? barErrors(dimsOf(barPart.id)?.errors ?? [], barAt, 'finished', padOpen)
       : []
   const qtyNote = (q: number | null | undefined) => (q === null || q === undefined ? '空＝木取りに入れない' : q === 0 ? '寸法だけ（切らない）' : `${q}枚`)
@@ -788,10 +793,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           ) : (
             <button
               type="button"
-              className={`pt-cell pt-name${rangeCls('name')}`}
+              className={`pt-cell pt-name${part && dupIds.has(part.id) ? ' dup' : ''}${rangeCls('name')}`}
               data-row={i}
               data-col={0}
-              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}`}
+              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}${part && dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}`}
               aria-selected={inRange('name')}
               onClick={cellPress('name')}
             >

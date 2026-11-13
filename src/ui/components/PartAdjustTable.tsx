@@ -13,7 +13,7 @@ import { isUsableAdjust } from '../../engine/adjusts'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { formulaUnits } from '../../engine/formula/units'
 import { adjustIdsInExpr } from '../../engine/formula/usages'
-import { hasName } from '../../engine/parts'
+import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type AdjustRow, type Axis, type CellClip, type CellRange, type DimensionResult, type Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
@@ -278,6 +278,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   // ---------- 表示 ----------
 
   const dimsOf = (partId: string) => dims.parts.find((d) => d.partId === partId)
+  // 同じ名前の部材の名前は赤（選ぶと式の欄の下に「同じ名前があります」。仕様書 26.6）
+  const dupIds = duplicateNameIds(parts)
   const axisErrors = (partId: string, axis: Axis) => dimsOf(partId)?.errors.filter((x) => x.axis === axis) ?? []
   const selPart = sel ? parts[sel.row] : undefined
   const editingText = sel && selPart ? selPart.adjust[sel.axis] : ''
@@ -301,7 +303,9 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   const barWho = barPart && hasName(barPart) ? barPart.name : barRange ? `#${barRange.top + 1}` : ''
   const barErrs = refMsg
     ? [refMsg]
-    : barPart && (barAt === 'W' || barAt === 'H')
+    : barRange && barRange.left === 0 && barPart && dupIds.has(barPart.id)
+      ? [DUPLICATE_NAME_MESSAGE]
+      : barPart && (barAt === 'W' || barAt === 'H')
       ? barErrors(dimsOf(barPart.id)?.errors ?? [], barAt, 'adjust', padOpen)
       : []
 
@@ -424,10 +428,10 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   </button>
                   <button
                     type="button"
-                    className={`pt-cell pt-name${rangeCls(0)}`}
+                    className={`pt-cell pt-name${dupIds.has(part.id) ? ' dup' : ''}${rangeCls(0)}`}
                     data-row={i}
                     data-col={0}
-                    aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}（見るだけ）`}
+                    aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}（見るだけ）`}
                     aria-selected={inRange(0)}
                     onClick={() => pressCell(i, 0)}
                   >

@@ -78,14 +78,17 @@ export function clipText(clip: (Pick<CellClip, 'rows' | 'cols' | 'cells'> & { cu
   return `${head}：${clip.rows}行×${clip.cols}列`
 }
 
-/** 名前に番号を振ったときに足す一言（仕様書 18.3） */
+/**
+ * 名前に番号を振ったときに足す一言。第2.2版（仕様書 26.6）で部材の名前は番号を振らずにそのまま貼るので、部材の表では使わない。
+ * 調整寸法の表（仕様書 21.1 の丸つき数字「メラミン②」）だけが使う
+ */
 export const RENAMED_NOTE = '同じ名前にならないよう番号を振りました'
 
 const withRenamed = (text: string, renamed: number) => (renamed > 0 ? `${text}。${RENAMED_NOTE}` : text)
 
 /**
  * 貼り付けの知らせ：「3個のセルに貼りました（貼れなかったもの 1個：…）」。
- * 名前に番号を振ったセルがあれば（renamed は数）「。同じ名前にならないよう番号を振りました」を足す
+ * 調整寸法の表で名前に番号を振ったセルがあれば（renamed は数）「。同じ名前にならないよう番号を振りました」を足す（部材の表は渡さない）
  */
 export function pasteText(pasted: number, skipped: readonly Pick<PasteSkip, 'message'>[], renamed = 0): string {
   if (pasted === 0 && skipped.length === 0) return '貼れるセルがありませんでした'

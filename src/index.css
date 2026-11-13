@@ -1587,6 +1587,13 @@ h3 > .help {
   font-size: 14px;
   justify-content: center;
 }
+/* 同じ名前の部材の名前（第2.2版 仕様書 26.6）：赤字と下の赤い線。選ぶと式の欄の下に「同じ名前があります」 */
+.pt-name.dup {
+  color: var(--err);
+  text-decoration: underline wavy var(--err);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+}
 /* 選んでいる欄は枠を付ける */
 .pt-cell.on {
   box-shadow: inset 0 0 0 3px var(--accent);
@@ -3667,6 +3674,12 @@ h3 > .help {
 .fx-bar.editing {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+/* 中身の無い欄（名前のセルを選んで、欄の下に理由だけ出すとき）：何も選んでいないときと同じ点線の空の欄 */
+.fx-bar.blank {
+  border-style: dashed;
+  background: none;
+  cursor: default;
 }
 /* ［木取り］のタブの式の欄は見るだけ */
 .fx-bar.view {

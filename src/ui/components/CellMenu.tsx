@@ -75,7 +75,8 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
       onClose()
       return
     }
-    onNotice(r.paste ? pasteText(r.paste.pasted, r.paste.skipped, r.paste.renamed.length) : '貼りました')
+    // 部材の名前は番号を振らずにそのまま貼る（仕様書 26.6）ので、番号を振った知らせは出さない
+    onNotice(r.paste ? pasteText(r.paste.pasted, r.paste.skipped) : '貼りました')
     onClose()
   }
   const clear = () => {

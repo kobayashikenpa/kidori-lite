@@ -6,7 +6,7 @@
 // その部材の仕上がりの式（または数字。枚数は枚数）を見るだけで出す（欄を押しても入力しない・✓ は無い）。
 // もう一度押すか、ほかの所を押すと選ぶのをやめる
 import { useEffect, useRef, useState } from 'react'
-import { hasName } from '../../engine/parts'
+import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import type { PartCutProgress } from '../../engine/progress/partProgress'
 import { CELL_COLS, type Adjust, type Axis, type DimensionResult, type Job } from '../../engine/types'
 import { CELL_COL_LABEL } from '../cellSelect'
@@ -25,10 +25,10 @@ interface Props {
   barSlot: HTMLElement | null
 }
 
-/** 押して選んだセル（部材の id と 厚み・W・H・枚数） */
+/** 押して選んだセル（部材の id と 名前・厚み・W・H・枚数。名前は欄を空にし、同じ名前のときは理由だけ出す） */
 interface Picked {
   partId: string
-  field: Axis | 'T' | 'qty'
+  field: Axis | 'T' | 'qty' | 'name'
 }
 
 export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
@@ -54,7 +54,14 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
   const bar = partBar(parts, range, 'cut')
   const barWho = pickedPart ? (hasName(pickedPart) ? pickedPart.name : `#${pickedRow + 1}`) : ''
   const d0 = pickedPart ? dims.parts.find((x) => x.partId === pickedPart.id) : undefined
-  const errs = on && (picked.field === 'W' || picked.field === 'H') ? barErrors(d0?.errors ?? [], picked.field, 'cut', false) : []
+  // 同じ名前の部材の名前は赤（仕様書 26.6）
+  const dupIds = duplicateNameIds(parts)
+  const errs =
+    on && (picked.field === 'W' || picked.field === 'H')
+      ? barErrors(d0?.errors ?? [], picked.field, 'cut', false)
+      : on && picked.field === 'name' && dupIds.has(picked.partId)
+        ? [DUPLICATE_NAME_MESSAGE]
+        : []
 
   return (
     <>
@@ -114,9 +121,16 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
                     </span>
                   )}
                 </span>
-                <span role="cell" className="pt-cell pt-name">
+                <button
+                  type="button"
+                  role="cell"
+                  className={`pt-cell pt-name${dupIds.has(part.id) ? ' dup' : ''}${isPicked('name') ? ' picked' : ''}`}
+                  aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}`}
+                  aria-pressed={isPicked('name')}
+                  onClick={() => press(part.id, 'name')}
+                >
                   {named ? part.name : ''}
-                </span>
+                </button>
                 <button
                   type="button"
                   role="cell"
@@ -153,7 +167,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
         slot={barSlot}
         content={bar}
         adjusts={adjusts}
-        label={on ? `${barWho} の ${picked.field === 'qty' || picked.field === 'T' ? CELL_COL_LABEL[picked.field] : `仕上がりの${CELL_COL_LABEL[picked.field]}`}` : ''}
+        label={on ? `${barWho} の ${picked.field === 'W' || picked.field === 'H' ? `仕上がりの${CELL_COL_LABEL[picked.field]}` : CELL_COL_LABEL[picked.field]}` : ''}
         errors={errs}
       />
     </>
