@@ -25,7 +25,7 @@ const ROTATION_TEXT = { all: 'オン', some: '一部', none: 'オフ' } as const
 const TAB_CLASS: Record<PartsTab, string> = { finished: 'fin', adjust: 'adjust', cut: 'cut' }
 
 export function PartsScreen() {
-  const { job, data, dispatch } = useJobStore()
+  const { job, data, dispatch, historyRevision } = useJobStore()
   const [tab, setTabState] = useState<PartsTab>(() => loadPartsTab(browserStorage()))
   const [error, setError] = useState<string | null>(null)
   // 式の欄の置き場所（表が選んでいるセルの中身をここへ出す）
@@ -116,10 +116,10 @@ export function PartsScreen() {
               <span className="rot-text">{ROTATION_TEXT[rotation]}</span>
             </button>
           </div>
-          <PartsTable job={job} dims={dims} adjusts={adjusts} clip={data.cellClip} dispatch={dispatch} onError={setError} barSlot={barSlot} />
+          <PartsTable job={job} dims={dims} adjusts={adjusts} clip={data.cellClip} dispatch={dispatch} onError={setError} barSlot={barSlot} revision={historyRevision} />
         </>
       ) : tab === 'adjust' ? (
-        <PartAdjustTable job={job} dims={dims} adjusts={adjusts} clip={data.cellClip} dispatch={dispatch} onError={setError} barSlot={barSlot} />
+        <PartAdjustTable job={job} dims={dims} adjusts={adjusts} clip={data.cellClip} dispatch={dispatch} onError={setError} barSlot={barSlot} revision={historyRevision} />
       ) : (
         <>
           <div className="allowance-row">

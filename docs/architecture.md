@@ -1084,15 +1084,16 @@ export const canRedo = (h: History) => h.future.length > 0
 - `historyNotice(kind: 'undo' | 'redo', label)`：「戻しました：棚板 の W」／「進めました：棚板 の W」（未決事項 6）。名前が空なら「戻しました」だけ
 - `undoHistory`・`redoHistory` の結果に `label`（1回の名前）と `notice`（知らせる文）を入れる。画面は `notice` をそのまま出せばよい
 
-### 16.4 dispatch とまとまり（U-37）
+### 16.4 dispatch とまとまり（U-37。作った）
 
-- `JobStore.tsx`：`dispatch(action, opts?)` は `dispatchWithHistory` を呼ぶ（id・時刻は今どおりここで1回だけ作る）。`undo()`・`redo()` は `undoHistory`・`redoHistory` を当て、知らせる文を返す。`JobStoreValue` に `undo`・`redo`・`canUndo`・`canRedo`・`historyRevision` を足す
-- 「セルの入力を終えるまでが1回」（27.2）は、**入力を始めるたびに新しい印（`group`）を作って、その入力の中の dispatch 全部に渡す** やり方にする。「始める／終える」の action は作らない（終えるのを呼び忘れると、あとの操作が全部1回にまとまってしまうため。印なら、ほかの操作が間に入れば自然に切れる）
-  - `PartsTable`：`selectCell` で名前・厚み・W・H・枚数の入力を始めたとき（「次へ」で進んだときも）に新しい印。`editExpr`・`pressQty`・`pressThick`・`commitName`・`addFromEmpty`・厚みを入力を始めたときの値に戻す `updatePart` に渡す
-  - `PartAdjustTable`：`startInput` で新しい印。`editAdjust`（`putAdjust` も）に渡す
+- `JobStore.tsx`：`dispatch(action, opts?)` は `dispatchWithHistory` を呼ぶ（id・時刻は今どおりここで1回だけ作る）。`undo()`・`redo()` は `undoHistory`・`redoHistory` を当て、結果（`HistoryResult`。`notice` が知らせる文）を返す。`JobStoreValue` に `undo`・`redo`・`canUndo`・`canRedo`・`historyRevision` を足した。`dispatch` の型は `useJobStore.ts` の `Dispatch`（`(action, opts?: DispatchOptions) => ReduceResult`）で、`PartsTable`・`PartAdjustTable`・`CellMenu`・`BoardSettings` の Props もこれ
+- 「セルの入力を終えるまでが1回」（27.2）は、**入力を始めるたびに新しい印（`group`）を作って、その入力の中の dispatch 全部に渡す** やり方にした。「始める／終える」の action は作らない（終えるのを呼び忘れると、あとの操作が全部1回にまとまってしまうため。印なら、ほかの操作が間に入れば自然に切れる）
+  - `PartsTable`：`groupRef`。`selectCell` で新しいセルを選んだとき（「次へ」も）と `editName`（行を上に挿入した行の名前も）で `newId('group')`。前の入力の名前の確定・厚みを入力を始めたときの値に戻す `updatePart` は、新しい印を作る前（前の印のまま）。`editExpr`・`pressQty`・`pressThick`・`commitName`・`addFromEmpty` は `runInput`（今の印を渡す）。入力を終えたら印は null
+  - `PartAdjustTable`：`startInput` で新しい印、`endInput` で null。`editAdjust`（`putAdjust` も）に渡す
   - `CellMenu`：複数の部材の複製・回転・仕上がりのループは、押した1回ごとに新しい印
   - 何も入っていない行を外す後片付け（`PartsTable` の `removePart`、`AdjustTable` の `removeAdjusts`。どちらも useEffect）は `follow`
-  - 印は `newId('group')` などでよい（中身に意味は無い）
+  - `AdjustTable` の名前・寸法は入力を終えたときに1回だけ保存するので印は渡さない
+- 戻す・進むのあと（`historyRevision` が変わる）：3つの表（`PartsTable`・`PartAdjustTable`・`AdjustTable`）は、描くときに前の値と比べて、入力を終え（保存はしない）・長押しのメニュー・並べ替えのメニュー・メモ・表の上の知らせ・調整寸法の表の 21.3 の確認を閉じる。選んでいる範囲は `useGrid` の `resetKey`（`src/ui/undoRedo.ts` の `gridResetKey(jobId, revision)`。調整寸法の表は jobId なし）で外す。入力中に「戻る」を押したときは、ボタンを指で押した時点（pointerdown）で表の外を押したことになり（`useOutsideEnd`）、入力を確定してから click で戻す（未決事項 5）
 
 ### 16.5 ボタンと知らせる文（U-38）
 

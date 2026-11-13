@@ -16,6 +16,9 @@ import { adjustIdsInExpr } from '../../engine/formula/usages'
 import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type AdjustRow, type Axis, type CellClip, type CellRange, type DimensionResult, type Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
+import { newId } from '../../store/jobs'
+import type { Dispatch } from '../../store/useJobStore'
+import { gridResetKey } from '../undoRedo'
 import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
 import { cellColor, hasMemo } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
@@ -38,10 +41,12 @@ interface Props {
   adjusts: readonly Adjust[]
   /** 今コピー（切り取り）しているセル（アプリ全体で1つ。［仕上がり］のものは貼れない） */
   clip: CellClip | null
-  dispatch: (action: StoreAction) => ReduceResult
+  dispatch: Dispatch
   onError: (message: string | null) => void
   /** 式の欄の置き場所（PartsScreen のタブのすぐ下。仕様書 25.8） */
   barSlot: HTMLElement | null
+  /** 戻す・進むのたびに変わる数（変わったら入力を終えて、選んでいる範囲を外す。仕様書 27.4） */
+  revision: number
 }
 
 /** 入力している欄（部材の id と W・H） */
@@ -65,7 +70,7 @@ const colOf = (axis: Axis): number => CELL_COLS.indexOf(axis)
 const THICK_COL = CELL_COLS.indexOf('T')
 const QTY_COL = CELL_COLS.indexOf('qty')
 
-export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, barSlot }: Props) {
+export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, barSlot, revision }: Props) {
   const parts = job.parts
   const rowCount = parts.length
   const [menuOpen, setMenuOpen] = useState(false)
@@ -86,6 +91,18 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   }
   // 調整寸法の行を押して入れられなかった理由（式の欄のすぐ下に出す）
   const [refMsg, setRefMsg] = useState<string | null>(null)
+  // 今のセルの入力の印（仕様書 27.2。W・H の入力を始めるたびに新しくする）
+  const groupRef = useRef<string | null>(null)
+  // 戻す・進むのあと：入力を終え、メニュー・知らせを閉じる（範囲は useGrid の resetKey で外す。仕様書 27.4）
+  const [rev, setRev] = useState(revision)
+  if (rev !== revision) {
+    setRev(revision)
+    setSelS(null)
+    setRefMsg(null)
+    setMenuOpen(false)
+    setMemoFor(null)
+    setNotice(null)
+  }
 
   const jobRef = useRef(job)
   const selSRef = useRef(selS)
@@ -132,7 +149,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     onRelease: () => {
       if (curCell()) endRef.current()
     },
-    resetKey: job.id,
+    // 仕事を切り替えたら・戻す・進むのあとは、選んでいる範囲を外す（仕様書 27.4）
+    resetKey: gridResetKey(job.id, revision),
   })
   const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo } = grid
 
@@ -146,6 +164,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   // ---------- 入力 ----------
 
   const endInput = () => {
+    groupRef.current = null
     setSel(null)
     setRefMsg(null)
   }
@@ -164,6 +183,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     setRefMsg(null)
     selectRange(singleRange({ row: cell.row, col: colOf(cell.axis) }))
     setSel({ partId: part.id, axis: cell.axis })
+    // 新しいセルの入力を始める（「次へ」で進んだときも）：新しい印
+    groupRef.current = newId('group')
     setCursor(formulaUnits(part.adjust[cell.axis]).length)
   }
 
@@ -173,7 +194,10 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     setRefMsg(null)
     const part = jobRef.current.parts[row]
     if (!part || e.text === part.adjust[axis]) return
-    run({ type: 'setPartAdjust', partId: part.id, axis, text: e.text })
+    // 入力を終えるまでの保存は同じ印で「戻る」1回にまとめる（仕様書 27.2）
+    const r = dispatch({ type: 'setPartAdjust', partId: part.id, axis, text: e.text }, groupRef.current ? { group: groupRef.current } : undefined)
+    if (r.ok) jobRef.current = currentJob(r.state) ?? jobRef.current
+    else onError(r.message)
   }
 
   /**

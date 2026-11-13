@@ -38,6 +38,7 @@ import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
 import { Help } from './Help'
 import { Sheet } from './Sheet'
+import { gridResetKey } from '../undoRedo'
 
 interface Props {
   /**
@@ -79,7 +80,7 @@ interface Confirm {
 }
 
 export function AdjustTable({ picking, refIds, onError, barSlot }: Props) {
-  const { state, data, dispatch } = useJobStore()
+  const { state, data, dispatch, historyRevision } = useJobStore()
   const rows = data.adjusts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ。保存しない）
   const [minRows, setMinRows] = useState(sessionAdjustMinRows)
@@ -100,6 +101,16 @@ export function AdjustTable({ picking, refIds, onError, barSlot }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<Confirm | null>(null)
+  // 戻す・進むのあと：入力を終え、メニュー・知らせ・確認を閉じる（範囲は useGrid の resetKey で外す。仕様書 27.4）
+  const [rev, setRev] = useState(historyRevision)
+  if (rev !== historyRevision) {
+    setRev(historyRevision)
+    setSelS(null)
+    setMsg(null)
+    setMenuOpen(false)
+    setNotice(null)
+    setConfirm(null)
+  }
 
   // 同じ操作の中で続けて使えるよう、最新の保存データ・入力しているセル・書きかけを手元にも持つ
   const dataRef = useRef<AppData>(data)
@@ -153,6 +164,8 @@ export function AdjustTable({ picking, refIds, onError, barSlot }: Props) {
     onRelease: () => {
       if (curCell()) leaveRef.current(endInput)
     },
+    // 戻す・進むのあとは、選んでいる範囲を外す（仕様書 27.4。全部の仕事で共通の表なので仕事の id は見ない）
+    resetKey: gridResetKey(null, historyRevision),
   })
   const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo } = grid
 
@@ -362,7 +375,8 @@ export function AdjustTable({ picking, refIds, onError, barSlot }: Props) {
       .map((r, i) => ({ r, i }))
       .filter(({ r, i }) => isBlankAdjustRow(r) && r.id !== selRowId && !(i >= rangeTop && i < rangeTop + rangeRows))
     if (blank.length === 0) return
-    const res = dispatch({ type: 'removeAdjusts', adjustIds: blank.map(({ r }) => r.id) })
+    // 後片付け：直前の1回に含める（行を上に挿入して何も入れずに離れたときは、挿入ごと履歴に残らない。仕様書 27.4）
+    const res = dispatch({ type: 'removeAdjusts', adjustIds: blank.map(({ r }) => r.id) }, { follow: true })
     if (!res.ok) return
     dataRef.current = res.state.data
     const above = blank.filter(({ i }) => i < rangeTop).length

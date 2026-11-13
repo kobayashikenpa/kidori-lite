@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { customSheet } from '../../engine/defaults'
 import type { SizeComparison, SizeSummary, StandardSize } from '../../engine/packing/sizes'
 import { BOARD_SIZES, type CutMode, type Job, type PackingResult, type Settings } from '../../engine/types'
-import type { ReduceResult, StoreAction } from '../../store/reducer'
+import type { Dispatch } from '../../store/useJobStore'
 import { pct } from '../kidoriView'
 import { CUT_MODES, sheetSizeText } from '../settings'
 import { Help } from './Help'
@@ -19,7 +19,7 @@ interface Props {
   result: Pick<PackingResult, 'sheetCount' | 'yieldRate' | 'unplaced'>
   /** 切り出す部材が無いか（枚数・歩留まりを「―」にする） */
   empty: boolean
-  dispatch: (action: StoreAction) => ReduceResult
+  dispatch: Dispatch
 }
 
 const SIZE_LABEL: Record<StandardSize, string> = { saburoku: '3×6', shihachi: '4×8' }

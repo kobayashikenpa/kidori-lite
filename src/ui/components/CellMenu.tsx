@@ -13,6 +13,9 @@ import { selectedPartIds, selectionCells } from '../../engine/clipboard/cells'
 import { partLabel, partLabelAt } from '../../engine/parts'
 import { PART_COLORS, type Adjust, type CellClip, type CellRange, type Job, type PartColor } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
+import type { DispatchOptions } from '../../store/history'
+import { newId } from '../../store/jobs'
+import type { Dispatch } from '../../store/useJobStore'
 import { hasMemo } from '../../engine/marks'
 import { clipText, commonColor, flagState, markClass, PART_COLOR_LABEL, pasteText } from '../cellSelect'
 import { referencingOthers } from '../partsTable'
@@ -25,7 +28,7 @@ interface Props {
   /** 見出し（「天板 の W」「3行×2列（2〜4行目）」） */
   title: string
   clip: CellClip | null
-  dispatch: (action: StoreAction) => ReduceResult
+  dispatch: Dispatch
   onClose: () => void
   /** 操作のあとの知らせ（表の上に短く出す） */
   onNotice: (text: string) => void
@@ -56,8 +59,8 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
   const count = parts.length > 1 ? `（${parts.length}個の部材）` : ''
 
   /** 1回の操作。失敗したら理由を出して false */
-  const run = (action: StoreAction): ReduceResult => {
-    const r = dispatch(action)
+  const run = (action: StoreAction, opts?: DispatchOptions): ReduceResult => {
+    const r = dispatch(action, opts)
     onError(r.ok ? null : r.message)
     return r
   }
@@ -99,8 +102,10 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
   }
   const duplicate = () => {
     let last: ReduceResult | null = null
+    // 複数の部材の複製は「戻る」1回（仕様書 27.2。押した1回ごとに新しい印でまとめる）
+    const group = newId('group')
     for (const id of ids) {
-      last = run({ type: 'duplicatePart', partId: id })
+      last = run({ type: 'duplicatePart', partId: id }, { group })
       if (!last.ok) return
     }
     if (!last?.ok) return
@@ -141,10 +146,12 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
 
   /** 回転・仕上がり：選んでいる行の部材全部に当てる（メニューは開いたまま） */
   const updateAll = (patch: { rotatable?: boolean; finishedDone?: boolean }) => {
+    // 押すたびに「戻る」1回（何行に当てても。仕様書 27.4）
+    const group = newId('group')
     for (const p of parts) {
       const key = 'rotatable' in patch ? 'rotatable' : 'finishedDone'
       if (p[key] === patch[key]) continue
-      if (!run({ type: 'updatePart', partId: p.id, patch }).ok) return
+      if (!run({ type: 'updatePart', partId: p.id, patch }, { group }).ok) return
     }
   }
 
