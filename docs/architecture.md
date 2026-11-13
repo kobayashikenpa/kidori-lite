@@ -794,3 +794,13 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 - 各表：`PartsTable`・`PartAdjustTable`・`AdjustTable` は、キーの上の行（`ExprKeys`・`QtyKeys` の `.pt-show`）をなくし、キーだけを画面の下に出す。入力中は欄も「中」とみなす（`useOutsideEnd` の inside に `barSlot`）。`CutTable` は W・H・枚数のセルを押すと選んだ印（`.picked`）を付け、欄に見るだけで出す（もう一度押すか外を押すと外す）。［調整］の枚数のセルは見るだけ（欄を押しても入力しない）
 - `useGrid.ts` の `stickyBottom()`：画面の上に止めてあるもの（`.topbar`・`.parts-sticky`）の下の端。入力している行を見せるスクロール（`useRevealRow`）と、取っ手を引いたときの端のスクロール（`edgeDelta`）がこの下を上の端とみなす
 - コピー中の表示：`cellSelect.ts` の `clipText(clip, adjusts?)` は、adjusts を渡すと1つのセルの中身を `formulaText`（× ÷ −・メラミン1）で出す（部材の表・［調整］の表・長押しのメニュー）
+
+## 15. 第2.2版の変更（仕様書 26章）
+
+作業は `docs/tasks.md` の E-24〜E-28・U-30〜U-36。下は planner の下書き（2026-11-13）。名前・形は各作業で engine-dev / ui-dev が決め、決めたらこの節を書き直す。
+
+- **厚み**（E-24・E-25・E-26）：`Part` に厚み（数か空）を足す。部材の寸法の `Axis`（W・H。板に置く2つ）は変えず、式の参照の軸だけ W・H・T にする（`RefAxis` など）。`.T` は参照先の部材の厚みの数字で、計算順・循環の辿り（`resolve.ts` の `nodes`）には入らない。木取りの並べ方（`packing/`）は厚みを見ない（11章のまま）
+- **表の列**（E-26）：`CELL_COLS` を 名前・厚み・W・H・枚数（`left` 0〜4）にする。［仕上がり］［調整］［木取り］の3つの表が同じ列。［調整］では厚みも見るだけ
+- **名前の重なり**（E-27）：貼り付け・オートフィルでは同じ名前を許す（18.3 の番号を振る処理をなくす）。打って入れるとき（`validatePartName`）は今どおり断る。同じ名前の部材を参照している式はエラー（どちらか決まらない）
+- **色とメモ**（E-28）：`Part` に 行の色・列ごとのセルの色・メモ を足す。部材のオブジェクトごと動く操作（並べ替え・移動・複製・仕事のコピー・ファイル）はそのままついていく。行をまるごと切り取って同じ仕事に貼ったときは、第2.1版の調整と同じ所（`cells.ts` の `AdjustMove`）で動かす
+- **前の版のデータ**：厚み・色・メモの無い部材は `shape.ts` の `readJob` で「なし」を足してから読む（第2.1版の `adjust` と同じやり方）。ファイルの版（`TRANSFER_VERSION`）は 1 のまま（26.7）
