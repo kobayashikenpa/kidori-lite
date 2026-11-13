@@ -2241,6 +2241,102 @@ h3 > .help {
   background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
+/* 木取りの画面の見出し「木取り」ⓘ の行（第2.3版 仕様書 27.4）：部材の画面のタブと同じく上に止め、右に戻る・進む */
+.kd-sticky {
+  position: sticky;
+  z-index: 4;
+  margin: 12px -16px 10px;
+  padding: 4px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kd-sticky h2 {
+  margin: 0;
+  min-width: 0;
+}
+/* 止めた帯の中の説明は画面と一緒に動かないので、背の低い画面でも全部読めるよう、はみ出す分は中でスクロール */
+.kd-sticky .help-bubble {
+  max-height: calc(100dvh - 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* 部材の画面のタブの行：タブ3つ（残りの幅を分ける）＋ 右に戻る・進む（375px に収める） */
+.parts-top {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.parts-top .parts-tabs {
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+.parts-top .parts-tab {
+  min-width: 0;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+/* 戻る・進む（第2.3版 仕様書 27.1）：記号の下に小さく「戻る」「進む」の2段。1つ 48px 幅・高さ 44px 以上。押せないときは薄く */
+.ur {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.ur-btn {
+  appearance: none;
+  width: 48px;
+  min-height: 44px;
+  padding: 2px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.ur-btn:not(:disabled):active {
+  background: var(--sunk);
+}
+.ur-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ur-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.ur-text {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* 何を戻した／進めたかの知らせ：止めてある帯のすぐ下に、表に重ねて出す（押し下げない。指の操作は下の表へ通す） */
+.ur-notice {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
 /* 式の欄の置き場所：中身が無いとき（名前のセル・何も選んでいない）も同じ高さの空の欄を出す（表の位置がずれない） */
 .fx-slot {
   position: relative;

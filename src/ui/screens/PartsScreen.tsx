@@ -4,8 +4,9 @@
 // ［木取り］のタブのときだけ、表の上に切り代（数字キーで変える。仕様書 16.4）。［木取り］は同じ形の表を見るだけ。
 // タブのすぐ下に式の欄（FormulaBar の置き場所 slot。仕様書 25.8）。タブと式の欄は画面の上に止める（上の仕事の名前の下）。
 // 寸法の計算は engine（computeDimensions）、切り出しの進み具合は engine（partCutProgress）に任せる
+// 第2.3版（仕様書 27.1）：タブの右に「↶ 戻る」「↷ 進む」（UndoRedo）。知らせる文は止めてある帯のすぐ下に重ねて出す
 import { usableAdjusts } from '../../engine/adjusts'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
 import { partCutProgress } from '../../engine/progress/partProgress'
 import { browserStorage } from '../../store/storage'
@@ -15,6 +16,8 @@ import { Help } from '../components/Help'
 import { PartAdjustTable } from '../components/PartAdjustTable'
 import { PartsTable } from '../components/PartsTable'
 import { NumberField } from '../components/NumberField'
+import { UndoRedo } from '../components/UndoRedo'
+import { useTopbarHeight } from '../useTopbarHeight'
 import { fmt } from '../format'
 import { rotationState } from '../partsTable'
 import { loadPartsTab, PARTS_TABS, savePartsTab, type PartsTab } from '../partsTab'
@@ -58,24 +61,28 @@ export function PartsScreen() {
     <section>
       <h2>
         <Help title="部材">
-          部材の名前・厚み・W・H・枚数を、［仕上がり］のタブの表に仕上がり寸法で入れます（厚みは入れなくてもかまいません）。メラミン・シートの厚みや逃げなど、仕上がり寸法に足し引きする分は［調整］のタブに部材ごとに入れます。木取り寸法（調整後の寸法 ＋ 切り代）は［木取り］のタブで見られます。セルを1回押すと選び、タブのすぐ下の欄にそのセルの中身（式なら 天板.W − 20）が出ます。欄を押すか、選んでいるセルをもう一度押すと、その欄で入力できます（キーは画面の下。右の ✓ で入力を終えます）。エラーの理由は欄のすぐ下に赤で出ます。タブと欄は、表をスクロールしても画面の上に残ります。
+          部材の名前・厚み・W・H・枚数を、［仕上がり］のタブの表に仕上がり寸法で入れます（厚みは入れなくてもかまいません）。メラミン・シートの厚みや逃げなど、仕上がり寸法に足し引きする分は［調整］のタブに部材ごとに入れます。木取り寸法（調整後の寸法 ＋ 切り代）は［木取り］のタブで見られます。セルを1回押すと選び、タブのすぐ下の欄にそのセルの中身（式なら 天板.W − 20）が出ます。欄を押すか、選んでいるセルをもう一度押すと、その欄で入力できます（キーは画面の下。右の ✓ で入力を終えます）。エラーの理由は欄のすぐ下に赤で出ます。タブと欄は、表をスクロールしても画面の上に残ります。↶ 戻る・↷ 進む で、部材と木取りの画面の操作を1回ずつ戻せます（50回まで。アプリを閉じる・ほかの仕事を開くと消えます）。セルの入力は入力を終えるまでが1回。仕事の画面の操作は戻せません。
         </Help>
       </h2>
 
       <div className="parts-sticky" style={{ top: stickyTop }}>
-        <div className="parts-tabs" role="tablist" aria-label="仕上がり・調整・木取りの切り替え">
-          {PARTS_TABS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.value}
-              className={`parts-tab ${TAB_CLASS[t.value]}`}
-              onClick={() => setTab(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="parts-top">
+          <div className="parts-tabs" role="tablist" aria-label="仕上がり・調整・木取りの切り替え">
+            {PARTS_TABS.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.value}
+                className={`parts-tab ${TAB_CLASS[t.value]}`}
+                onClick={() => setTab(t.value)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {/* 戻る・進む（仕様書 27.1。タブの右） */}
+          <UndoRedo />
         </div>
         {/* 式の欄（仕様書 25.8）。何も選んでいない・名前のセルのときは空の欄（高さは変えない） */}
         <div className={`fx-slot ${TAB_CLASS[tab]}`} ref={setBarSlot} aria-label="選んだセルの中身" />
@@ -138,20 +145,4 @@ export function PartsScreen() {
       )}
     </section>
   )
-}
-
-/** 上の仕事の名前の帯（.topbar）の高さ（px）。測れないときは 0 */
-function useTopbarHeight(): number {
-  const [h, setH] = useState(0)
-  useEffect(() => {
-    const el = document.querySelector<HTMLElement>('.topbar')
-    if (!el) return
-    const measure = () => setH(el.getBoundingClientRect().height)
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return h
 }

@@ -1095,8 +1095,10 @@ export const canRedo = (h: History) => h.future.length > 0
   - `AdjustTable` の名前・寸法は入力を終えたときに1回だけ保存するので印は渡さない
 - 戻す・進むのあと（`historyRevision` が変わる）：3つの表（`PartsTable`・`PartAdjustTable`・`AdjustTable`）は、描くときに前の値と比べて、入力を終え（保存はしない）・長押しのメニュー・並べ替えのメニュー・メモ・表の上の知らせ・調整寸法の表の 21.3 の確認を閉じる。選んでいる範囲は `useGrid` の `resetKey`（`src/ui/undoRedo.ts` の `gridResetKey(jobId, revision)`。調整寸法の表は jobId なし）で外す。入力中に「戻る」を押したときは、ボタンを指で押した時点（pointerdown）で表の外を押したことになり（`useOutsideEnd`）、入力を確定してから click で戻す（未決事項 5）
 
-### 16.5 ボタンと知らせる文（U-38）
+### 16.5 ボタンと知らせる文（U-38。作った）
 
-- `components/UndoRedo.tsx`：「↶ 戻る」「↷ 進む」（44px 以上。`canUndo`・`canRedo` が false なら `disabled` で薄く）。押したら `undo()`・`redo()`、知らせる文をボタンの帯のすぐ下に重ねて出す（未決事項 6）
-- 部材の画面：`.parts-sticky` のタブの右（`.parts-tabs` と横に並べる。375px に収める＝未決事項 8）。木取りの画面：見出しの行を新しい止める帯（`position: sticky`。`top` は `.topbar` の高さ。`useTopbarHeight` は共通の所へ移す）にして右に置く
-- 戻す・進むのあと：`historyRevision` が変わったら、表は入力を終えて選んでいる範囲を外す（`useGrid` の `resetKey` に足す）。入力中に押したときは、ボタンを押した時点で表の外を押したことになり（`useOutsideEnd`）、入力を確定してから戻す（未決事項 5）
+- `components/UndoRedo.tsx`：「↶ 戻る」「↷ 進む」（`.ur-btn`。記号の下に小さく文字の2段、1つ 48px 幅・高さ 44px 以上。`canUndo`・`canRedo` が false なら `disabled` で薄く）。押したら `undo()`・`redo()` を呼び、結果を `src/ui/undoRedo.ts` の `historyNoticeText`（できたら `notice`、できなければ理由）で知らせる文にして、`HISTORY_NOTICE_MS`（3000ms）出す。知らせる文（`.ur-notice`）はボタンと同じ親（止めてある帯）の中に置き、`position: absolute; top: calc(100% + 4px)` で帯のすぐ下に表に重ねる（帯は `position: sticky` なので、その下に付く。`pointer-events: none` で下の表の操作を邪魔しない）。ほかの仕事を開いたら消す
+- 部材の画面：`.parts-sticky` の中に `.parts-top`（flex）を作り、`.parts-tabs`（残りの幅）と `UndoRedo` を横に並べる。375px で タブ1つ 約76px（文字は 15px のまま、横の余白を詰めた）
+- 木取りの画面：見出し「木取り」ⓘ の行を `.kd-sticky`（`position: sticky`。`top` は `.topbar` の高さ）にして右に `UndoRedo`。`useTopbarHeight` は `src/ui/useTopbarHeight.ts` へ移し、部材の画面と共通にした。止めた帯の中の ⓘ の吹き出しは、背の低い画面でも読めるよう高さを抑えて中でスクロール
+- 戻す・進むのあと・入力中に押したときの扱いは 16.4（U-37）のとおり
+- ⓘ（部材の画面の「部材」・木取りの画面の「木取り」）に、戻る・進むの説明を足した。用語集に「第2.3版で増えた言葉」
