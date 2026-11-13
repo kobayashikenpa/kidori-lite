@@ -172,7 +172,7 @@ describe('reducer：［調整］の欄のセル操作（E-23）', () => {
     expect(s.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [[M]], source: 'adjust', columns: 'name,T,W,H,qty' })
     const r = run(s, { type: 'pastePartAdjustCells', range: { top: 0, left: 2, rows: 3, cols: 1 } }, env(T1))
     s = r.state
-    expect(r.paste).toEqual({ pasted: 3, skipped: [], renamed: [] })
+    expect(r.paste).toEqual({ pasted: 3, skipped: [] })
     const j = currentJob(s)!
     expect(j.parts.map((p) => p.adjust.W)).toEqual([M, M, M, M])
     expect(j.updatedAt).toBe(T1.toISOString())
@@ -215,7 +215,7 @@ describe('reducer：［調整］の欄のセル操作（E-23）', () => {
 
   it('オートフィル：下の行へくり返す（部材のある行まで）', () => {
     const r = run(start(), { type: 'fillPartAdjustCells', from: { top: 3, left: 2, rows: 1, cols: 1 }, to: { top: 0, left: 2, rows: 6, cols: 1 } })
-    expect(r.paste).toEqual({ pasted: 3, skipped: [], renamed: [] })
+    expect(r.paste).toEqual({ pasted: 3, skipped: [] })
     expect(currentJob(r.state)!.parts.map((p) => p.adjust.W)).toEqual([M, M, M, M])
     expect(currentJob(r.state)!.parts).toHaveLength(4)
   })

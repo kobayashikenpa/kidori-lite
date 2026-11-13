@@ -179,7 +179,7 @@ describe('セルのコピーと貼り付け（第1.2版）', () => {
       ['天板', '全体.W'],
       ['側板', '全体.W'],
     ])
-    expect(r.paste).toEqual({ pasted: 6, skipped: [], renamed: [] })
+    expect(r.paste).toEqual({ pasted: 6, skipped: [] })
     expect(currentJob(r.state)!.updatedAt).toBe(T1.toISOString())
   })
 
@@ -220,7 +220,7 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
     expect(W(r.state)[1]).toBe('全体.W') // 切り取っただけでは変えない
     r = run(r.state, { type: 'pasteCells', range: { top: 0, left: 2, rows: 1, cols: 1 } }, env(T1))
     expect(W(r.state).slice(0, 2)).toEqual(['全体.W', ''])
-    expect(r.paste).toEqual({ pasted: 1, skipped: [], renamed: [] })
+    expect(r.paste).toEqual({ pasted: 1, skipped: [] })
     expect(r.state.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [['全体.W']], columns: 'name,T,W,H,qty' })
     // 2回目：元（天板の W）に入れ直しても、もう消さない
     r = run(r.state, { type: 'updatePart', partId: 'part-tenita', patch: { expr: { W: '全体.W', H: '全体.H' } } })
@@ -447,7 +447,7 @@ describe('厚みの列のセル操作（第2.2版。今の action のまま使�
     expect(s.data.cellClip?.cells).toEqual([['18']])
     let r = run(s, { type: 'pasteCells', range: { top: 2, left: 1, rows: 2, cols: 1 } }, env(T1))
     expect(T(r.state)).toEqual([null, 18, 18, 18])
-    expect(r.paste).toEqual({ pasted: 2, skipped: [], renamed: [] })
+    expect(r.paste).toEqual({ pasted: 2, skipped: [] })
     r = run(r.state, { type: 'clearCells', range: { top: 2, left: 1, rows: 2, cols: 1 } })
     expect(T(r.state)).toEqual([null, 18, null, null])
     r = run(r.state, { type: 'fillCells', from: { top: 1, left: 1, rows: 1, cols: 1 }, to: { top: 0, left: 1, rows: 4, cols: 1 } })

@@ -11,7 +11,6 @@ import {
   fillCells,
   pasteCells,
   type CellSelection,
-  type PasteRenamed,
   type PasteSkip,
 } from '../engine/clipboard/cells'
 import {
@@ -236,8 +235,6 @@ export type StoreAction =
 export interface PasteSummary {
   pasted: number
   skipped: PasteSkip[]
-  /** 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3） */
-  renamed: PasteRenamed[]
 }
 
 /** 調整寸法の表の貼り付け・オートフィルの結果（第1.7版） */
@@ -427,7 +424,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = pasteCells(j, clip, selectionOf(action), env.newId)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         cutClear = p.cutClear
         return { ok: true, job: p.job }
       })
@@ -449,7 +446,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = fillCells(j, action.from, action.to, env.newId)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         return { ok: true, job: p.job }
       })
       return r.ok && paste ? { ...r, paste } : r
@@ -478,7 +475,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = pastePartAdjustCells(j, clip, selectionOf(action))
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         cutClear = p.cutClear
         return { ok: true, job: p.job }
       })
@@ -500,7 +497,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = fillPartAdjustCells(j, action.from, action.to)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         return { ok: true, job: p.job }
       })
       return r.ok && paste ? { ...r, paste } : r

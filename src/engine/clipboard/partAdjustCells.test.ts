@@ -88,7 +88,6 @@ describe('pastePartAdjustCells（［調整］に貼る）', () => {
     // 調整後：900 − 2 ＝ 898
     expect(computeDimensions(r.job, shelfAdjusts()).parts.slice(0, 3).map((d) => d.adjustedByAxis.W)).toEqual([898, 898, 898])
     expect(r.skipped).toEqual([])
-    expect(r.renamed).toEqual([])
     expect(r.cutClear).toBeNull()
   })
 

@@ -15,6 +15,7 @@ import {
   quantityFromText,
   quantityText,
   thicknessFromText,
+  thicknessIncomplete,
   thicknessText,
   referencingOthers,
   rotationState,
@@ -102,6 +103,10 @@ describe('部材の表の行（仕様書 15.1）', () => {
     expect(thicknessFromText('0.')).toMatchObject({ ok: false })
     expect(thicknessFromText('0.0')).toMatchObject({ ok: false })
     expect(thicknessFromText('abc')).toMatchObject({ ok: false })
+  })
+  it('厚みの打っている途中の形（0・0.・.）は、続けて打てば入れられるので途中とみなす（第2.2版）', () => {
+    for (const t of ['0', '0.', '.', '0.0', '00']) expect(thicknessIncomplete(t)).toBe(true)
+    for (const t of ['', '18', '0.5', '2.', 'a', '-1']) expect(thicknessIncomplete(t)).toBe(false)
   })
 
   it('枚数の文字と枚数（空は null、0 は寸法だけ）', () => {

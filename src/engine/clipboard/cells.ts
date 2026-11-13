@@ -146,16 +146,6 @@ export function cutCells(job: Pick<Job, 'id' | 'parts'>, selected: CellSelection
  */
 export type PasteSkipReason = 'invalidName' | 'notQuantity' | 'notThickness'
 
-/**
- * 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3）。from は貼ろうとした名前、to は振ったあとの名前。
- * 第2.2版で番号を振るのをやめた（仕様書 26.6）ので、結果の renamed はいつも空（画面の直し U-33 まで形だけ残す）
- */
-export interface PasteRenamed {
-  cell: CellPos
-  from: string
-  to: string
-}
-
 export interface PasteSkip {
   /** 貼れなかったセル（表の位置） */
   cell: CellPos
@@ -172,8 +162,6 @@ export type PasteCellsResult =
       pasted: number
       /** 貼れなかったセル（表の上から・左から） */
       skipped: PasteSkip[]
-      /** いつも空（第2.2版で番号を振るのをやめた。仕様書 26.6。画面の直し U-33 まで形だけ残す） */
-      renamed: PasteRenamed[]
       /**
        * 切り取りを、元と違う仕事に貼ったとき：元の仕事で空にするセル（clearCutSource に渡す）。それ以外は null。
        * 同じ仕事の切り取りは、返す job の中で元を空にしてある
@@ -261,7 +249,6 @@ interface Applied {
   job: Job
   pasted: number
   skipped: PasteSkip[]
-  renamed: PasteRenamed[]
   /** 1つでも貼れたクリップの中の位置 */
   filled: Set<number>
 }
@@ -343,8 +330,7 @@ function applyTargets(
   }
 
   skipped.sort((a, b) => a.cell.row - b.cell.row || colIndex(a.cell.col) - colIndex(b.cell.col))
-  const renamed: PasteRenamed[] = []
-  if (pasted === 0) return { job, pasted, skipped, renamed, filled }
+  if (pasted === 0) return { job, pasted, skipped, filled }
   // 切り取りの元：貼れた位置は空のまま、貼れなかった位置は元に戻す
   for (const c of cutFirst) {
     if (filled.has(c.src)) touched.add(c.row)
@@ -362,7 +348,7 @@ function applyTargets(
     touched.add(index)
   }
   const kept = parts.filter((p, i) => !(touched.has(i) || i >= count) || !isBlankPart(p))
-  return { job: { ...job, parts: kept }, pasted, skipped, renamed, filled }
+  return { job: { ...job, parts: kept }, pasted, skipped, filled }
 }
 
 /** 切り取りの元の範囲で、クリップの中の位置 src にあたるセル（表をはみ出せば null） */
@@ -460,7 +446,7 @@ export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, ne
       .filter((c): c is CellPos => c !== null)
     cutClear = { jobId: cut.jobId, cells: srcCells }
   }
-  return { ok: true, job: r.job, pasted: r.pasted, skipped: r.skipped, renamed: r.renamed, cutClear }
+  return { ok: true, job: r.job, pasted: r.pasted, skipped: r.skipped, cutClear }
 }
 
 /**
@@ -497,7 +483,7 @@ export function fillCells(job: Job, from: CellRange, to: CellRange, newId: (pref
     }
   }
   const a = applyTargets(job, targets, newId, [])
-  return { ok: true, job: a.job, pasted: a.pasted, skipped: a.skipped, renamed: a.renamed, cutClear: null }
+  return { ok: true, job: a.job, pasted: a.pasted, skipped: a.skipped, cutClear: null }
 }
 
 /** 選んだセルのある行の部材の id（部材の並び。空の行は入れない） */

@@ -1559,6 +1559,7 @@ h3 > .help {
   font-weight: 700;
 }
 .pt-name {
+  position: relative;
   justify-content: flex-start;
   font-weight: 700;
   font-size: 15px;
@@ -2391,10 +2392,7 @@ h3 > .help {
   color: var(--warn);
   margin-right: 4px;
 }
-/* メモのある部材の名前のセル：右上の角に小さな三角（第2.2版 仕様書 26.3） */
-.pt-name {
-  position: relative;
-}
+/* メモのある部材の名前のセル：右上の角に小さな三角（第2.2版 仕様書 26.3。.pt-name は position: relative） */
 .pt-name.memo::after {
   content: '';
   position: absolute;

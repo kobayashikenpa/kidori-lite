@@ -100,6 +100,11 @@ export function quantityFromText(t: string): number | null {
   return Number.isInteger(n) && n >= 0 ? n : null
 }
 
+/** 厚みの欄に打っている途中で、続けて数字を打てば 0 より大きい数になる形か（「0」「0.」「.」「0.0」。第2.2版） */
+export function thicknessIncomplete(text: string): boolean {
+  return /^0*\.?0*$/.test(text.trim()) && text.trim() !== ''
+}
+
 /** 厚みの欄の文字（空は ''。小数第1位まで） */
 export function thicknessText(t: number | null): string {
   return t === null ? '' : fmt(t)

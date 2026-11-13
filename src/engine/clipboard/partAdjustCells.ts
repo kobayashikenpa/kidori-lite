@@ -17,7 +17,6 @@ import {
   selectionShape,
   type CellSelection,
   type CopyCellsResult,
-  type PasteRenamed,
   type PasteSkip,
 } from './cells'
 
@@ -65,8 +64,6 @@ export type PartAdjustPasteResult =
       pasted: number
       /** いつも空（［調整］では貼れない理由が無い。pasteCells と同じ形にそろえる） */
       skipped: PasteSkip[]
-      /** いつも空（名前を変えないので番号は振らない） */
-      renamed: PasteRenamed[]
       /** 切り取りをほかの仕事に貼ったとき、元の仕事で空にする W・H のセル（clearPartAdjustCutSource に渡す）。それ以外は null */
       cutClear: { jobId: string; cells: CellPos[] } | null
     }
@@ -169,7 +166,7 @@ export function pastePartAdjustCells(job: Job, clip: CellClip, selected: CellSel
       .filter((c): c is { row: number; col: 'W' | 'H' } => c !== null)
     cutClear = { jobId: cut.jobId, cells: srcCells }
   }
-  return { ok: true, job: r.job, pasted: r.pasted, skipped: [], renamed: [], cutClear }
+  return { ok: true, job: r.job, pasted: r.pasted, skipped: [], cutClear }
 }
 
 /**
@@ -203,7 +200,7 @@ export function fillPartAdjustCells(job: Job, from: CellRange, to: CellRange): P
     }
   }
   const a = applyTargets(job, targets, [])
-  return { ok: true, job: a.job, pasted: a.pasted, skipped: [], renamed: [], cutClear: null }
+  return { ok: true, job: a.job, pasted: a.pasted, skipped: [], cutClear: null }
 }
 
 /**

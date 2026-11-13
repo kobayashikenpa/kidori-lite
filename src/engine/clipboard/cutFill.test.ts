@@ -190,7 +190,6 @@ describe('切り取り', () => {
     const clip = clipOk(cutCells(src, R(3, 0, 1, 1))) // 棚板
     const r = ok(pasteCells(src, clip, [{ row: 4, col: 'name' }], ids()))
     expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '', '棚板'])
-    expect(r.renamed).toEqual([])
   })
 
   it('切り取った名前は、貼る先に同じ名前があってもそのまま貼る', () => {
@@ -265,7 +264,6 @@ describe('オートフィル', () => {
       ['A', '10', '40', 2],
       ['A', '10', '60', 3],
     ])
-    expect(r.renamed).toEqual([])
   })
 
   it('仕様書 26.6：「棚板」の名前を下へ引くと「棚板」のまま入る（空の行には部材を足す）', () => {

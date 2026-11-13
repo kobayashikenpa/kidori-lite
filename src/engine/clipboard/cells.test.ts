@@ -151,7 +151,6 @@ describe('pasteCells：1つのセルをコピーしたとき', () => {
     expect(r.job.parts.map((p) => p.name)).toEqual(['棚板', '棚板', '棚板'])
     expect(r.pasted).toBe(2)
     expect(r.skipped).toEqual([])
-    expect(r.renamed).toEqual([])
   })
 
   it('全角・半角だけ違う名前も、書いたまま貼る（「棚板１」は「棚板１」のまま）', () => {

@@ -46,6 +46,7 @@ import {
   tableDimCell,
   tableRowCount,
   thicknessFromText,
+  thicknessIncomplete,
   thicknessText,
   type TableCell,
   type TableField,
@@ -298,7 +299,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     }
     // アプリのキーを出すときは、スマホのキーボードをしまう
     closeKeyboard()
-    if (cell.field === 'T') setThickDraft(thicknessText(part?.thickness ?? null))
+    if (cell.field === 'T') setThickDraft(part?.thickness == null ? '' : String(part.thickness))
     if (cell.field === 'qty' || cell.field === 'T') return
     // カーソルは式の終わり。第1.6版までの「＝」で始めた式は「＝」を外した形で開く（入れ直すと「＝」の無い形で保存する）
     const raw = part?.expr[cell.field] ?? ''
@@ -433,7 +434,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     setThickDraft(text)
     const r = thicknessFromText(text)
     if (!r.ok) {
-      setThickMsg(r.message)
+      // 「0」「0.」「.」のように、続けて打てば入れられる形の途中は理由を出さない（入力を終えたときに元に戻す）
+      setThickMsg(thicknessIncomplete(text) ? null : r.message)
       return
     }
     setThickMsg(null)
@@ -637,7 +639,9 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           parts.filter((_, j) => j !== sel.row).map((p) => p.name),
         )
       : null
-  const rowMsg = sel?.field === 'name' ? (nameMsg ?? liveNameError) : null
+  // 同じ名前の部材（貼り付けでできたもの）の名前を、まだ変えていない間は「すでにあります」を出さない（仕様書 26.6。理由は式の欄の下の「同じ名前があります」）
+  const nameUnchanged = sel?.field === 'name' && nameDraft.trim() === (parts[sel.row]?.name ?? '').trim()
+  const rowMsg = sel?.field === 'name' ? (nameMsg ?? (nameUnchanged ? null : liveNameError)) : null
 
   const padAxis: Axis | null = sel && (sel.field === 'W' || sel.field === 'H') ? sel.field : null
   // 入力中の式に入っている部材（色の枠の番号。鍵はそろえた部材名）。入力していないときは空。「＝」で始まる古い式は「＝」を外した形
