@@ -3,6 +3,7 @@
 // 変わらない部分は前のオブジェクトを共有し、50回持ってもメモリは小さい。
 // reduce は変えずに、その外側（dispatchWithHistory）で記録する。履歴はスマホに保存しない（StoreState.history。saveSaved は書かない）
 import type { AdjustRow, AppData, Job } from '../engine/types'
+import { historyLabel, historyNotice } from './historyLabel'
 import { reduce, type Env, type ReduceResult, type StoreAction, type StoreState } from './reducer'
 
 /** 仕事の中身のうち、戻すもの（名前・id・作った日・updatedAt は戻さない） */
@@ -52,8 +53,8 @@ export interface DispatchOptions {
   follow?: boolean
 }
 
-/** 戻す・進むの結果。label は戻した（進めた）1回の名前 */
-export type HistoryResult = { ok: true; state: StoreState; label: string } | { ok: false; message: string }
+/** 戻す・進むの結果。label は戻した（進めた）1回の名前（「棚板 の W」）、notice は知らせる文（「戻しました：棚板 の W」） */
+export type HistoryResult = { ok: true; state: StoreState; label: string; notice: string } | { ok: false; message: string }
 
 /** 戻せる数（仕様書 27.3）。古いものから消える */
 export const HISTORY_LIMIT = 50
@@ -236,7 +237,7 @@ export function dispatchWithHistory(state: StoreState, action: StoreAction, env:
     const touched = change.adjusts !== null || change.jobs.some((j) => j.jobId === state.currentJobId)
     return touched ? withHistory(emptyHistory(h.revision)) : r
   }
-  return withHistory(record(h, change, '', opts))
+  return withHistory(record(h, change, historyLabel(action, state), opts))
 }
 
 // ---------- 戻す・進む ----------
@@ -272,7 +273,7 @@ function move(state: StoreState, env: Env, kind: 'undo' | 'redo'): HistoryResult
       kind === 'undo'
         ? { past: from, future: [...h.future, entry], last: 'move', revision: h.revision + 1 }
         : { past: [...h.past, entry], future: from, last: 'move', revision: h.revision + 1 }
-    return { ok: true, state: { ...state, data, history }, label: entry.label }
+    return { ok: true, state: { ...state, data, history }, label: entry.label, notice: historyNotice(kind, entry.label) }
   }
   return { ok: false, message: kind === 'undo' ? UNDO_EMPTY_MESSAGE : REDO_EMPTY_MESSAGE }
 }

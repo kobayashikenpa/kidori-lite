@@ -999,7 +999,7 @@ export interface JobChange { jobId: string; before: JobBody; after: JobBody }
 export interface AdjustsChange { before: AdjustRow[]; after: AdjustRow[] }
 
 export interface HistoryEntry {
-  label: string                 // 何をしたか（E-30 の historyLabel。まとまりは最初の操作の名前。E-29 の時点では空）
+  label: string                 // 何をしたか（E-30 の historyLabel。まとまりは最初の操作の名前）
   group: string | null          // まとめる印（opts.group）
   jobs: JobChange[]             // 変わった仕事ごとの前と後（切り取りの元がほかの仕事なら2つ）
   adjusts: AdjustsChange | null // 調整寸法の表の前と後。変わらなければ null
@@ -1015,7 +1015,7 @@ export interface History {
 // reducer.ts の StoreState に history: History を足した（initialState は空の履歴。saveSaved は書かない）
 
 export interface DispatchOptions { group?: string; follow?: boolean }   // 両方あれば follow が先
-export type HistoryResult = { ok: true; state: StoreState; label: string } | { ok: false; message: string }
+export type HistoryResult = { ok: true; state: StoreState; label: string; notice: string } | { ok: false; message: string }
 
 export const HISTORY_LIMIT = 50
 export function emptyHistory(revision = 0): History
@@ -1058,28 +1058,31 @@ export const canRedo = (h: History) => h.future.length > 0
   - 記録した仕事が全部消えていて調整寸法の表も無い1回は、当てる所が無いので捨てて次の1回を戻す（進む）
 - 固定した1枚（`frozenSheets`）・切り出しチェックも中身に入っているので、チェックを戻すと固定した1枚も「チェックした時の形」に戻る（27.2）
 
-### 16.3 1回の名前と知らせる文（E-30）
+### 16.3 1回の名前と知らせる文（E-30。`src/store/historyLabel.ts`。作った）
 
-`historyLabel(action, before: StoreState): string`。部材の呼び名は操作の前の表示名（`partLabelAt`。名前の無い部材は「#3」）。
+`historyLabel(action, before: StoreState): string`。部材の呼び名は操作の前の表示名（`partLabelAt`。名前の無い部材は「#3」）。`dispatchWithHistory` が新しい1回を記録するときに付ける（まとまり・後片付けは最初の1回の名前のまま）。
 
-| action | 名前（案） |
+| action | 名前 |
 |---|---|
-| `updatePart`（expr の W／H） | 棚板 の W ／ 棚板 の H |
+| `updatePart`（expr の W／H） | 棚板 の W ／ 棚板 の H（W・H の両方を渡しても、今の値と違う欄の名前） |
 | `updatePart`（name・thickness・quantity） | 天板 の名前（前の名前）／ 棚板 の厚み ／ 棚板 の枚数 |
-| `updatePart`（rotatable・finishedDone） | 棚板 の回転 ／ 棚板 の仕上がり |
-| `addPart`（空の行に入れた） | 入れた欄で「#5 の W」など |
+| `updatePart`（adjust・rotatable・finishedDone・memo・色） | 棚板 の調整 W ／ 棚板 の回転 ／ 棚板 の仕上がり ／ 棚板 のメモ ／ 棚板 の色 |
+| `addPart`（空の行に入れた） | 入れた欄（名前・厚み・W・H・枚数の順で最初に入っている欄）で「#5 の W」「#5 の名前」など。何も入っていなければ「行の追加」 |
 | `setPartAdjust` | 棚板 の調整 W |
 | `insertPart`・`removePart`・`deleteRows`・`duplicatePart` | 行の挿入・行の削除・行の削除・複製 |
 | `sortParts`・`moveParts` | 並べ替え・行の移動 |
 | `pasteCells`・`fillCells`・`clearCells`（［調整］も同じ） | 貼り付け・オートフィル・クリア |
 | `setCellColor`・`setRowColor`・`setPartMemo` | 色・色・棚板 のメモ |
-| `setAllRotatable` | 全部回転 |
+| `setAllRotatable` | 全部回転してよい（オン・オフどちらも。画面のスイッチの名前） |
 | 調整寸法の表の操作 | 調整寸法の表 |
 | `setSheet` | 板のサイズ |
-| `updateSettings` | 刃厚・端切り・切り代・切り方（渡した設定の名前） |
+| `updateSettings` | 刃厚・端切り・切り代・切り方（渡した設定の名前。2つ以上なら「刃厚・端切り」のように「・」でつなぐ） |
 | `setPartCheck`・`setPieceCheck` | 切り出しチェック |
 
-- `historyNotice(kind, label)`：「戻しました：棚板 の W」／「進めました：棚板 の W」（未決事項 6）
+- 文の形は仕様書 27.1 の例のとおり「部材の呼び名 ＋ 空白 ＋ の ＋ 欄」。欄が W・H（英字）で始まるときだけ「の」のあとに空白を入れる（棚板 の W／棚板 の厚み／棚板 の調整 H）
+- 部材が見つからないとき（ふつうは起きない）は欄の名前だけ。`updatePart` で今の値と違う欄が無いときは「棚板 の中身」
+- `historyNotice(kind: 'undo' | 'redo', label)`：「戻しました：棚板 の W」／「進めました：棚板 の W」（未決事項 6）。名前が空なら「戻しました」だけ
+- `undoHistory`・`redoHistory` の結果に `label`（1回の名前）と `notice`（知らせる文）を入れる。画面は `notice` をそのまま出せばよい
 
 ### 16.4 dispatch とまとまり（U-37）
 
