@@ -167,8 +167,8 @@ describe('部材の操作（開いている仕事）', () => {
 describe('セルのコピーと貼り付け（第1.2版）', () => {
   it('セルをコピーするとアプリが覚え（仕事は変えない）、ほかの仕事の選んだセルに貼れる。行が足りなければ部材が増える', () => {
     const s0 = start()
-    let r = run(s0, { type: 'copyCells', cells: [{ row: 1, col: 'name' }, { row: 1, col: 'W' }, { row: 2, col: 'name' }, { row: 2, col: 'W' }] })
-    expect(r.state.data.cellClip).toEqual({ rows: 2, cols: 2, cells: [['天板', '全体.W'], ['側板', '全体.W']] })
+    let r = run(s0, { type: 'copyCells', range: { top: 1, left: 0, rows: 2, cols: 3 } })
+    expect(r.state.data.cellClip).toEqual({ rows: 2, cols: 3, cells: [['天板', '', '全体.W'], ['側板', '', '全体.W']], columns: 'name,T,W,H,qty' })
     expect(r.state.data.jobs).toBe(s0.data.jobs)
     r = run(r.state, { type: 'createJob', name: '別' })
     r = run(r.state, { type: 'addPart', part: { name: '天板', expr: { W: '1', H: '1' }, quantity: 1 } })
@@ -177,7 +177,7 @@ describe('セルのコピーと貼り付け（第1.2版）', () => {
       ['天板', '全体.W'],
       ['側板', '全体.W'],
     ])
-    expect(r.paste).toEqual({ pasted: 4, skipped: [], renamed: [] })
+    expect(r.paste).toEqual({ pasted: 6, skipped: [], renamed: [] })
     expect(currentJob(r.state)!.updatedAt).toBe(T1.toISOString())
   })
 
@@ -213,13 +213,13 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
   const W = (s: StoreState) => currentJob(s)!.parts.map((p) => p.expr.W)
 
   it('切り取って貼ると元が空になり、クリップはふつうのコピーに変わる（2回目の貼り付けで元を消さない）', () => {
-    let r = run(start(), { type: 'cutCells', range: { top: 1, left: 1, rows: 1, cols: 1 } })
-    expect(r.state.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [['全体.W']], cut: { jobId: 'job-shelf', range: { top: 1, left: 1, rows: 1, cols: 1 } } })
+    let r = run(start(), { type: 'cutCells', range: { top: 1, left: 2, rows: 1, cols: 1 } })
+    expect(r.state.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [['全体.W']], cut: { jobId: 'job-shelf', range: { top: 1, left: 2, rows: 1, cols: 1 } }, columns: 'name,T,W,H,qty' })
     expect(W(r.state)[1]).toBe('全体.W') // 切り取っただけでは変えない
-    r = run(r.state, { type: 'pasteCells', range: { top: 0, left: 1, rows: 1, cols: 1 } }, env(T1))
+    r = run(r.state, { type: 'pasteCells', range: { top: 0, left: 2, rows: 1, cols: 1 } }, env(T1))
     expect(W(r.state).slice(0, 2)).toEqual(['全体.W', ''])
     expect(r.paste).toEqual({ pasted: 1, skipped: [], renamed: [] })
-    expect(r.state.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [['全体.W']] })
+    expect(r.state.data.cellClip).toEqual({ rows: 1, cols: 1, cells: [['全体.W']], columns: 'name,T,W,H,qty' })
     // 2回目：元（天板の W）に入れ直しても、もう消さない
     r = run(r.state, { type: 'updatePart', partId: 'part-tenita', patch: { expr: { W: '全体.W', H: '全体.H' } } })
     r = run(r.state, { type: 'pasteCells', cells: [{ row: 3, col: 'W' }] })
@@ -227,14 +227,14 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
   })
 
   it('貼る前にほかをコピーすると、元は消さない', () => {
-    let s = run(start(), { type: 'cutCells', range: { top: 2, left: 2, rows: 1, cols: 1 } }).state
-    s = run(s, { type: 'copyCells', range: { top: 0, left: 1, rows: 1, cols: 1 } }).state
-    s = run(s, { type: 'pasteCells', range: { top: 3, left: 2, rows: 1, cols: 1 } }).state
+    let s = run(start(), { type: 'cutCells', range: { top: 2, left: 3, rows: 1, cols: 1 } }).state
+    s = run(s, { type: 'copyCells', range: { top: 0, left: 2, rows: 1, cols: 1 } }).state
+    s = run(s, { type: 'pasteCells', range: { top: 3, left: 3, rows: 1, cols: 1 } }).state
     expect(currentJob(s)!.parts.map((p) => p.expr.H)).toEqual(['1800', '全体.H', '700', '400'])
   })
 
   it('ほかの仕事に貼っても、元の仕事のセルを空にする（元の仕事の updatedAt も付く）', () => {
-    let s = run(start(), { type: 'cutCells', range: { top: 3, left: 0, rows: 1, cols: 4 } }).state
+    let s = run(start(), { type: 'cutCells', range: { top: 3, left: 0, rows: 1, cols: 5 } }).state
     s = run(s, { type: 'createJob', name: '別' }).state
     const r = run(s, { type: 'pasteCells', range: { top: 0, left: 0, rows: 1, cols: 1 } }, env(T1))
     expect(currentJob(r.state)!.parts.map((p) => p.name)).toEqual(['棚板'])
@@ -245,16 +245,16 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
   })
 
   it('切り取った元の仕事が消えていても、貼れる（元は何もしない）', () => {
-    let s = run(start(), { type: 'cutCells', range: { top: 1, left: 1, rows: 1, cols: 1 } }).state
+    let s = run(start(), { type: 'cutCells', range: { top: 1, left: 2, rows: 1, cols: 1 } }).state
     s = run(s, { type: 'createJob', name: '別' }).state
     s = run(s, { type: 'deleteJob', jobId: 'job-shelf' }).state
-    const r = run(s, { type: 'pasteCells', range: { top: 0, left: 1, rows: 1, cols: 1 } })
+    const r = run(s, { type: 'pasteCells', range: { top: 0, left: 2, rows: 1, cols: 1 } })
     expect(W(r.state)).toEqual(['全体.W'])
     expect(r.state.data.cellClip?.cut).toBeUndefined()
   })
 
   it('オートフィル：2行の範囲を下に5行引くと くり返して入る。名前は番号を振って入る（仕様書 18.3）', () => {
-    const r = run(start(), { type: 'fillCells', from: { top: 0, left: 0, rows: 2, cols: 2 }, to: { top: 0, left: 0, rows: 7, cols: 2 } }, env(T1))
+    const r = run(start(), { type: 'fillCells', from: { top: 0, left: 0, rows: 2, cols: 3 }, to: { top: 0, left: 0, rows: 7, cols: 3 } }, env(T1))
     expect(currentJob(r.state)!.parts.map((p) => [p.name, p.expr.W])).toEqual([
       ['全体', '400'],
       ['天板', '全体.W'],
@@ -264,15 +264,15 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
       ['天板2', '全体.W'],
       ['全体3', '400'],
     ])
-    expect(r.paste?.pasted).toBe(10)
+    expect(r.paste?.pasted).toBe(15)
     expect(r.paste?.skipped).toEqual([])
     expect(currentJob(r.state)!.updatedAt).toBe(T1.toISOString())
   })
 
   it('クリア・行を削除も四角の範囲で呼べる', () => {
-    let s = run(start(), { type: 'clearCells', range: { top: 0, left: 3, rows: 4, cols: 1 } }).state
+    let s = run(start(), { type: 'clearCells', range: { top: 0, left: 4, rows: 4, cols: 1 } }).state
     expect(currentJob(s)!.parts.map((p) => p.quantity)).toEqual([null, null, null, null])
-    s = run(s, { type: 'deleteRows', range: { top: 1, left: 0, rows: 2, cols: 4 } }).state
+    s = run(s, { type: 'deleteRows', range: { top: 1, left: 0, rows: 2, cols: 5 } }).state
     expect(currentJob(s)!.parts.map((p) => p.name)).toEqual(['全体', '棚板'])
   })
 })
@@ -433,5 +433,30 @@ describe('部材の厚み（第2.2版。仕様書 26.1）', () => {
     expect(c.state.data.jobs.find((j) => j.id === c.id)?.parts[1].thickness).toBe(18)
     const d = run(s, { type: 'duplicatePart', partId: 'part-tenita' })
     expect(currentJob(d.state)?.parts[2]).toMatchObject({ name: '天板のコピー', thickness: 18 })
+  })
+})
+
+describe('厚みの列のセル操作（第2.2版。今の action のまま使える）', () => {
+  const T = (s: StoreState) => currentJob(s)!.parts.map((p) => p.thickness)
+
+  it('厚みのセルをコピーして貼る・オートフィル・クリア', () => {
+    let s = run(start(), { type: 'updatePart', partId: 'part-tenita', patch: { thickness: 18 } }).state
+    s = run(s, { type: 'copyCells', cells: [{ row: 1, col: 'T' }] }).state
+    expect(s.data.cellClip?.cells).toEqual([['18']])
+    let r = run(s, { type: 'pasteCells', range: { top: 2, left: 1, rows: 2, cols: 1 } }, env(T1))
+    expect(T(r.state)).toEqual([null, 18, 18, 18])
+    expect(r.paste).toEqual({ pasted: 2, skipped: [], renamed: [] })
+    r = run(r.state, { type: 'clearCells', range: { top: 2, left: 1, rows: 2, cols: 1 } })
+    expect(T(r.state)).toEqual([null, 18, null, null])
+    r = run(r.state, { type: 'fillCells', from: { top: 1, left: 1, rows: 1, cols: 1 }, to: { top: 0, left: 1, rows: 4, cols: 1 } })
+    expect(T(r.state)).toEqual([18, 18, 18, 18])
+  })
+
+  it('貼れない厚みは結果の skipped に理由が返る（状態は変えない）', () => {
+    let s = run(start(), { type: 'copyCells', cells: [{ row: 0, col: 'name' }] }).state
+    const r = run(s, { type: 'pasteCells', cells: [{ row: 1, col: 'T' }] })
+    expect(r.paste?.skipped).toEqual([{ cell: { row: 1, col: 'T' }, reason: 'notThickness', message: '厚みには 0 より大きい数だけ貼れます' }])
+    s = r.state
+    expect(T(s)).toEqual([null, null, null, null])
   })
 })

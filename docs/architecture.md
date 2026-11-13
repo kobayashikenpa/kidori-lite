@@ -842,3 +842,25 @@ export type DimensionErrorKind = … | 'noThickness' // 厚みが空の部材の
 - **計算**（`dimensions/index.ts` の `computeDimensions`）：`.T` の値は参照先の部材の `thickness`（数字）。厚みは天板の W・H のエラーと関係なく使える。エラーは今までどおり、参照している寸法に `from` 付きで伝わる。厚みは木取り寸法・板の並べ方に足さない
 - **使っている所**（`partsReferencing`）：`deps` か `thicknessDeps` にその部材があれば「使っている」（軸は使っている側の式の W・H）。部材の削除の確認（`ui/partsTable.ts` の `referencingOthers`）はそのまま使える
 - テストの見本：`fixtures/shelf.ts` の `thickShelfJob()`（`shelfJob` に天板の厚み 18・側板の H ＝ `全体.H - 天板.T × 2`。側板の仕上がり H 1764・木取り 1774）。`shelfJob()` は変えていない
+
+### 15.3 部材の表の列に厚みを足す（E-26。spec 26.1・26.3・26.8）
+
+```ts
+// types.ts
+export type CellCol = 'name' | 'T' | 'W' | 'H' | 'qty'     // T は厚み
+export const CELL_COLS: readonly CellCol[] = ['name', 'T', 'W', 'H', 'qty']   // left 0＝名前・1＝厚み・2＝W・3＝H・4＝枚数
+export const CELL_COLS_KEY = CELL_COLS.join(',')           // 'name,T,W,H,qty'（列の並びの印）
+export interface CellClip { rows; cols; cells; cut?; source?; columns?: string }   // columns：列の並びの印
+```
+
+- 3つの表（［仕上がり］［調整］［木取り］）は同じ列。行全体（`rowRange`）は 5 列、範囲（`isCellRange`）は left + cols ≦ 5
+- **セル操作**（`clipboard/cells.ts`）
+  - `cellText`：厚みは数字の文字（`String(thickness)`。空は ''）
+  - 貼り付け・オートフィル（`applyTargets` の `thicknessOf`）：前後の空白を外し、全角をそろえて `数字` か `数字.数字` で 0 より大きいものだけ貼る（例 18・2.5・１８．５）。空は空（null）にする。それ以外（文字・0・負の数・式・「18mm」・「18.」）は貼らずに `skipped` に `{ reason: 'notThickness', message: NOT_THICKNESS_MESSAGE }`（「厚みには 0 より大きい数だけ貼れます」）
+  - クリア・切り取りの元を空にする（`setCellEmpty`）は厚みを null。厚みだけ入った行は外れない（`isBlankPart`。15.1）
+  - 行をまるごと（5列）切り取って同じ仕事の左の端から貼ったとき、5つの欄がぜんぶ貼れた行の調整が動く（`AdjustMove` の `srcs` は `CELL_COLS` の数）
+- **［調整］のタブ**（`clipboard/partAdjustCells.ts`）：厚みは名前・枚数と同じく見るだけ（`partAdjustCellText` は厚みの数字。コピーはできるが、貼り付け・クリア・オートフィルで変わるのは W・H だけ）
+- **コピーしたセルの印**：`copyCells`・`cutCells`・`copyPartAdjustCells`・`cutPartAdjustCells` で作るクリップには `columns: CELL_COLS_KEY` を付ける。`shape.ts` の `isCellClip` は `columns === CELL_COLS_KEY` のものだけを通すので、前の版で保存したクリップ（印なし）は `parseAppData` で捨てる（`cellClip: null`。仕事などほかの中身は読める。26.8）。列の並びがまた変われば印も変わり、古いクリップは捨てられる。貼り付けは印を見ない
+- `migrate/finishedAdjusts.ts` の `inlineCellClipAdjusts` は列の位置を見ていないので変えていない
+- store（`reducer.ts`）：action は変えていない（`copyCells`・`pasteCells`・`fillCells`・`clearCells` で厚みの列がそのまま使える。テストで確かめた）
+- **画面の最小限の直し**（厚みのセルは U-30 で作る）：`ui/cellSelect.ts` の `CELL_COL_LABEL` に `T: '厚み'`。`PartsTable.tsx`：`FIELD_LABEL`・`SORT_KEY` を `Record<CellCol, …>` にして T を足し、`sortChoices` の引数を `CellCol` に、`onPressCell` は厚みの列なら何もしない、見出しは `CELL_COLS.map` で T を出さない（位置 `c` は 0〜4 のまま）、枚数のセルの `data-col` を `colOf('qty')`（4）に。`PartAdjustTable.tsx`：見出しで T を出さない、枚数のセルの位置を `QTY_COL`（4）に。`ui/partsTable.ts` の `TableField`（名前・W・H・枚数）は変えていない

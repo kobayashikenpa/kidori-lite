@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { toV21 } from './fixtures/legacy'
 import { shelfJob } from './fixtures/shelf'
-import { isPart, readJob, readJobs } from './shape'
+import { isCellClip, isCellRange, isPart, readCellClip, readJob, readJobs } from './shape'
 
 /** 第2.0版までの部材（調整 adjust も、第2.2版の厚みも無い）にした仕事 */
 function oldJob(id = 'job-old') {
@@ -94,5 +94,28 @@ describe('部材の厚み（thickness。第2.2版 仕様書 26.1・26.7）', () 
   it('調整も厚みも無い第2.0版の部材も読める', () => {
     const job = readJob(oldJob())
     expect(job!.parts.every((p) => p.thickness === null && p.adjust.W === '')).toBe(true)
+  })
+})
+
+describe('コピーしたセルの列の並び（第2.2版。仕様書 26.8）', () => {
+  const K = 'name,T,W,H,qty'
+
+  it('範囲は 5 列（名前・厚み・W・H・枚数）まで', () => {
+    expect(isCellRange({ top: 0, left: 0, rows: 1, cols: 5 })).toBe(true)
+    expect(isCellRange({ top: 0, left: 4, rows: 1, cols: 1 })).toBe(true)
+    expect(isCellRange({ top: 0, left: 1, rows: 1, cols: 5 })).toBe(false)
+  })
+
+  it('列の並びの印（columns）が今の並びのクリップだけを通す', () => {
+    expect(isCellClip({ rows: 1, cols: 5, cells: [['棚板', '18', '1', '2', '3']], columns: K })).toBe(true)
+    expect(isCellClip({ rows: 1, cols: 4, cells: [['棚板', '1', '2', '3']] })).toBe(false)
+    expect(isCellClip({ rows: 1, cols: 1, cells: [['1']], columns: 'name,W,H,qty' })).toBe(false)
+  })
+
+  it('前の版のクリップ（印なし）は readCellClip で null（切り取りの元があっても）', () => {
+    expect(readCellClip({ rows: 1, cols: 1, cells: [['1']] })).toBeNull()
+    expect(readCellClip({ rows: 1, cols: 1, cells: [['1']], cut: { jobId: 'j', range: { top: 0, left: 1, rows: 1, cols: 1 } } })).toBeNull()
+    const ok = { rows: 1, cols: 1, cells: [['1']], cut: { jobId: 'j', range: { top: 0, left: 1, rows: 1, cols: 1 } }, columns: K }
+    expect(readCellClip(ok)).toEqual(ok)
   })
 })

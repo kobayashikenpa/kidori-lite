@@ -1,16 +1,18 @@
 // 部材の表のセルのコピーと貼り付け・消す・行を削除（第1.2版。仕様書 16.1）と、
 // 範囲（四角）・切り取り・オートフィル（第1.3版。仕様書 17.3・17.4）。新しく作ったもの（kidori には無い）。
-// - セルの位置は { row: 表の行（0 から。job.parts の位置。部材の数以上は空の行）, col: 名前・W・H・枚数 }
+// - セルの位置は { row: 表の行（0 から。job.parts の位置。部材の数以上は空の行）, col: 名前・厚み・W・H・枚数（厚みは第2.2版） }
 // - 選んだセルは、セルの配列か四角い範囲（CellRange）のどちらでも渡せる（CellSelection）
-// - コピーは「1つのセル」か「四角い範囲（続いた行 × 続いた列）」だけ。中身は文字のまま（式は書いたまま、枚数は数字の文字）
+// - コピーは「1つのセル」か「四角い範囲（続いた行 × 続いた列）」だけ。中身は文字のまま（式は書いたまま、厚み・枚数は数字の文字）
 // - 貼り付けは中身の上書き（名前を貼っても、ほかの式の参照は書き換えない。名前の変更ではない）
 // 仕事は書き換えず、新しい仕事を返す（updatedAt とコピーしたセル AppData.cellClip の保存は store の側で行う）
 import { normalizeFormulaText, normalizePartName, validatePartName } from '../formula/tokenize'
 import { isBlankPart } from '../parts'
-import { CELL_COLS, type CellClip, type CellCol, type CellPos, type CellRange, type Job, type Part } from '../types'
+import { CELL_COLS, CELL_COLS_KEY, type CellClip, type CellCol, type CellPos, type CellRange, type Job, type Part } from '../types'
 
 export const COPY_SHAPE_MESSAGE = 'コピーは1つのセルか、四角い範囲を選んでください'
 export const NOT_QUANTITY_MESSAGE = '枚数には 0 以上の整数だけ貼れます'
+/** 厚みの欄に 0 より大きい数でないものを貼ろうとしたとき（第2.2版。仕様書 26.8） */
+export const NOT_THICKNESS_MESSAGE = '厚みには 0 より大きい数だけ貼れます'
 export const FILL_RANGE_MESSAGE = '引く元の範囲を選んでください'
 /** ［調整］のタブでコピーしたセルを［仕上がり］に貼ろうとしたとき（第2.1版。仕様書 25.2） */
 export const ADJUST_CLIP_TO_FINISHED_MESSAGE = '［調整］でコピーしたものは［仕上がり］には貼れません'
@@ -18,7 +20,7 @@ export const ADJUST_CLIP_TO_FINISHED_MESSAGE = '［調整］でコピーした�
 /** 選んだセル：セルの配列か、四角い範囲（第1.3版。画面は四角で持つ） */
 export type CellSelection = CellRange | readonly CellPos[]
 
-/** 選んだセルの形。1つのセルは 1行×1列の range。left は列の位置（0＝名前 … 3＝枚数） */
+/** 選んだセルの形。1つのセルは 1行×1列の range。left は列の位置（0＝名前・1＝厚み・2＝W・3＝H・4＝枚数） */
 export type SelectionShape =
   | { kind: 'none' }
   | { kind: 'range'; top: number; left: number; rows: number; cols: number }
@@ -40,7 +42,7 @@ export function rangeCells(range: CellRange): CellPos[] {
   return out
 }
 
-/** 行全体（名前〜枚数）の範囲 */
+/** 行全体（名前〜枚数の5列）の範囲 */
 export function rowRange(top: number, rows = 1): CellRange {
   return { top, left: 0, rows, cols: CELL_COLS.length }
 }
@@ -94,13 +96,15 @@ export function selectionShape(selected: CellSelection): SelectionShape {
   return cells.length === h * w ? { kind: 'range', top, left, rows: h, cols: w } : { kind: 'scattered' }
 }
 
-/** セルの中身の文字（名前・式は書いたまま。枚数は数字の文字で、空は ''。空の行は ''） */
+/** セルの中身の文字（名前・式は書いたまま。厚み・枚数は数字の文字で、空は ''。空の行は ''） */
 export function cellText(job: Pick<Job, 'parts'>, pos: CellPos): string {
   const p = job.parts[pos.row] as Part | undefined
   if (!p) return ''
   switch (pos.col) {
     case 'name':
       return p.name
+    case 'T':
+      return p.thickness === null ? '' : String(p.thickness)
     case 'W':
     case 'H':
       return p.expr[pos.col]
@@ -121,7 +125,7 @@ export function copyCells(job: Pick<Job, 'parts'>, selected: CellSelection): Cop
     for (let j = 0; j < shape.cols; j++) line.push(cellText(job, { row: shape.top + i, col: CELL_COLS[shape.left + j] }))
     cells.push(line)
   }
-  return { ok: true, clip: { rows: shape.rows, cols: shape.cols, cells } }
+  return { ok: true, clip: { rows: shape.rows, cols: shape.cols, cells, columns: CELL_COLS_KEY } }
 }
 
 /**
@@ -136,10 +140,11 @@ export function cutCells(job: Pick<Job, 'id' | 'parts'>, selected: CellSelection
 }
 
 /**
- * 貼れなかった理由。invalidName：名前に使えない文字 / notQuantity：枚数に 0 以上の整数でないもの。
+ * 貼れなかった理由。invalidName：名前に使えない文字 / notQuantity：枚数に 0 以上の整数でないもの /
+ * notThickness：厚みに 0 より大きい数でないもの（第2.2版）。
  * 第1.4版で、同じ名前になるときは貼らずに番号を振るようにした（duplicateName・fillName はなくした。仕様書 18.3）
  */
-export type PasteSkipReason = 'invalidName' | 'notQuantity'
+export type PasteSkipReason = 'invalidName' | 'notQuantity' | 'notThickness'
 
 /** 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3）。from は貼ろうとした名前、to は振ったあとの名前 */
 export interface PasteRenamed {
@@ -181,6 +186,18 @@ function quantityOf(text: string): number | null | undefined {
   return /^[0-9]+$/.test(t) ? Number(t) : undefined
 }
 
+/**
+ * 厚みの欄に貼る文字から厚み（第2.2版）。空は null（空にする）、0 より大きい数（全角の数字・小数点も。例 18・2.5）はその数、
+ * それ以外（文字・0・負の数・式）は undefined（貼らない）
+ */
+function thicknessOf(text: string): number | null | undefined {
+  const t = normalizeFormulaText(text).trim()
+  if (t === '') return null
+  if (!/^[0-9]+(?:\.[0-9]+)?$/.test(t)) return undefined
+  const n = Number(t)
+  return n > 0 ? n : undefined
+}
+
 /** 表の位置に書く文字。src はクリップの中の位置（行 × 列の数 ＋ 列。切り取りの元と結ぶ） */
 interface Target {
   row: number
@@ -206,8 +223,8 @@ interface CutCell {
 }
 
 /**
- * 行をまるごと（名前・W・H・枚数）切り取って同じ仕事に貼るとき、調整（Part.adjust）も動かす行の組（第2.1版）。
- * from は切り取った元の行、to は貼る先の表の行、srcs はその行のクリップの位置（4つ）
+ * 行をまるごと（名前・厚み・W・H・枚数）切り取って同じ仕事に貼るとき、調整（Part.adjust）も動かす行の組（第2.1版）。
+ * from は切り取った元の行、to は貼る先の表の行、srcs はその行のクリップの位置（5つ）
  */
 interface AdjustMove {
   from: number
@@ -217,12 +234,14 @@ interface AdjustMove {
 
 function setCellEmpty(p: Part, col: CellCol): void {
   if (col === 'name') p.name = ''
+  else if (col === 'T') p.thickness = null
   else if (col === 'qty') p.quantity = null
   else p.expr[col] = ''
 }
 
 function copyCell(to: Part, from: Part, col: CellCol): void {
   if (col === 'name') to.name = from.name
+  else if (col === 'T') to.thickness = from.thickness
   else if (col === 'qty') to.quantity = from.quantity
   else to.expr[col] = from.expr[col]
 }
@@ -270,11 +289,18 @@ function applyTargets(
   const filled = new Set<number>()
   let pasted = 0
 
-  // W・H・枚数
+  // 厚み・W・H・枚数
   for (const w of writes) {
     const p = parts[w.index]
     if (w.cell.col === 'W' || w.cell.col === 'H') {
       p.expr[w.cell.col] = w.text
+    } else if (w.cell.col === 'T') {
+      const t = thicknessOf(w.text)
+      if (t === undefined) {
+        skipped.push({ cell: w.cell, reason: 'notThickness', message: NOT_THICKNESS_MESSAGE })
+        continue
+      }
+      p.thickness = t
     } else if (w.cell.col === 'qty') {
       const q = quantityOf(w.text)
       if (q === undefined) {
@@ -308,7 +334,7 @@ function applyTargets(
     if (filled.has(c.src)) touched.add(c.row)
     else copyCell(parts[c.row], job.parts[c.row], c.col)
   }
-  // 行をまるごと切り取って貼ったときは、調整も貼った行へ動かす（4つの欄が全部貼れた行だけ）。
+  // 行をまるごと切り取って貼ったときは、調整も貼った行へ動かす（5つの欄が全部貼れた行だけ）。
   // 元の調整を先に読んでから元を空にし、そのあと貼った先に入れる（元と先が重なっても入れ違わないように）
   const moves = adjustMoves
     .filter((m) => m.from !== m.to && m.srcs.every((src) => filled.has(src)))
@@ -431,6 +457,7 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  * コピーしたセルを貼る。
  * - 1つのセルのコピー：選んだセル全部に同じものを貼る
  * - 範囲のコピー：選んだセルの一番左上（いちばん上の行・いちばん左の列）から同じ形で貼る。表の右（枚数）をはみ出す列は貼らない
+ * - 厚み：0 より大きい数だけ（全角の数字・小数点も。空は空にする）。それ以外は貼らない（notThickness。第2.2版）
  * - 空の行に貼ると部材を作る（id は newId('part')、枚数は空から、回転しない）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）
  * - 名前：前後の空白を外して入れる。貼ったあと同じ名前（normalizePartName。名前のある部材どうし）になるときは、
  *   後ろに番号を振って貼る（棚板 → 棚板1、棚板2 …。終わりの数字は外して振る：棚板1 → 棚板2。振ったものは renamed。第1.4版。assignNames）。使えない文字の名前は貼らない。
@@ -520,7 +547,7 @@ export function clearCutSource(job: Job, clip: CellClip, cells: readonly CellPos
  * - to は元を含めた引いたあとの範囲でも、元を除いた所だけでもよい。元の行は書かない。列はいつも元の列（上下だけ）
  * - 上へ引いたときも、元の並びがつながるようにくり返す（元の下の端の行が、元のすぐ上に入る）
  * - 名前の列も入れる。重なる名前には貼り付けと同じく番号を振る（棚板 → 棚板1、棚板2 …。第1.4版。仕様書 18.3）
- * - 枚数・W・H・行が足りないときの部材の足し方・全部空になった部材は、貼り付け（pasteCells）と同じ
+ * - 厚み・枚数・W・H・行が足りないときの部材の足し方・全部空になった部材は、貼り付け（pasteCells）と同じ
  */
 export function fillCells(job: Job, from: CellRange, to: CellRange, newId: (prefix: string) => string): PasteCellsResult {
   const src = selectionRange(from)
@@ -548,7 +575,7 @@ export function selectedPartIds(job: Pick<Job, 'parts'>, selected: CellSelection
 }
 
 /**
- * 選んだセルの中身を消す（名前・W・H は空、枚数は空）。名前を消してもほかの式は書き換えない。
+ * 選んだセルの中身を消す（名前・W・H は空、厚み・枚数は空）。名前を消してもほかの式は書き換えない。
  * 行の全部の欄が空になった部材は消す。空の行のセルは何もしない（部材の行が1つも無ければ同じ仕事を返す）
  */
 export function clearCells(job: Job, selected: CellSelection): Job {

@@ -21,7 +21,7 @@ import { formulaUnits } from '../../engine/formula/units'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
 import { hasName } from '../../engine/parts'
-import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
+import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
 import { claimOpen } from '../exclusive'
@@ -86,16 +86,17 @@ function cellOf(s: Sel | null, parts: readonly Part[]): TableCell | null {
   return row < 0 ? null : { row, field: s.field }
 }
 
-const FIELD_LABEL: Record<TableField, string> = { name: '名前', W: 'W', H: 'H', qty: '枚数' }
+// 第2.2版（E-26）：厚み（T）の列を engine に足した。厚みのセルは U-30 で作るので、それまで見出し・セルは出さない（最小限の直し）
+const FIELD_LABEL: Record<CellCol, string> = { name: '名前', T: '厚み', W: 'W', H: 'H', qty: '枚数' }
 
-/** 欄の列の位置（0＝名前 … 3＝枚数） */
+/** 欄の列の位置（0＝名前・1＝厚み・2＝W・3＝H・4＝枚数） */
 const colOf = (f: TableField): number => CELL_COLS.indexOf(f)
 
 /** 見出しの列 → 並べ替えに使う列（engine の SortKey） */
-const SORT_KEY: Record<TableField, SortKey> = { name: 'name', W: 'W', H: 'H', qty: 'qty' }
+const SORT_KEY: Record<CellCol, SortKey> = { name: 'name', T: 'T', W: 'W', H: 'H', qty: 'qty' }
 
 /** 並べ替えのメニューのボタン（仕様書 24.1）：W・H・枚数は大きい順・小さい順、名前はあいうえお順・逆の順 */
-function sortChoices(f: TableField): { order: SortOrder; label: string }[] {
+function sortChoices(f: CellCol): { order: SortOrder; label: string }[] {
   return f === 'name'
     ? [
         { order: 'asc', label: 'あいうえお順' },
@@ -178,7 +179,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     headEls,
     rowCount,
     colCount: CELL_COLS.length,
-    onPressCell: (row, col) => pressCell(row, CELL_COLS[col]),
+    onPressCell: (row, col) => {
+      const f = CELL_COLS[col]
+      if (f !== 'T') pressCell(row, f) // 厚みのセルは U-30 で作る
+    },
     onPressRow: (row) => pressRow(row),
     onLongPress: (at) => openMenu(at),
     noLongPress: () => formulaPicking(),
@@ -625,7 +629,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           <span role="columnheader" className="pt-hno">
             番号
           </span>
-          {CELL_COLS.map((f, c) => (
+          {CELL_COLS.map((f, c) => f === 'T' ? null : (
             <span key={f} role="columnheader" className="pt-hwrap">
               <HeadButton
                 buttonRef={(el) => {
@@ -786,7 +790,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
                   type="button"
                   className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
                   data-row={i}
-                  data-col={3}
+                  data-col={colOf('qty')}
                   aria-label={`${label} の枚数：${part?.quantity ?? '空'}`}
                   aria-selected={inRange('qty')}
                   onClick={cellPress('qty')}

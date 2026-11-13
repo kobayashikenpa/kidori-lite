@@ -171,9 +171,15 @@ export interface AdjustClip {
 
 // ---------- セルのコピーと貼り付け（第1.2版。仕様書 16.1） ----------
 
-/** 部材の表の欄（左から 名前・W・H・枚数） */
-export type CellCol = 'name' | 'W' | 'H' | 'qty'
-export const CELL_COLS: readonly CellCol[] = ['name', 'W', 'H', 'qty']
+/** 部材の表の欄（左から 名前・厚み・W・H・枚数。T は厚み。第2.2版で厚みを足した） */
+export type CellCol = 'name' | 'T' | 'W' | 'H' | 'qty'
+export const CELL_COLS: readonly CellCol[] = ['name', 'T', 'W', 'H', 'qty']
+
+/**
+ * 部材の表の列の並びの印（第2.2版）。コピーしたセル（CellClip.columns）に付け、読み込むときに今の並びと同じものだけを使う。
+ * 列の並びが変わると印も変わるので、前の版で保存したクリップ（印なし・違う印）は捨てる（仕様書 26.8）
+ */
+export const CELL_COLS_KEY: string = CELL_COLS.join(',')
 
 /** 部材の表のセルの位置。row は表の行（0 から。job.parts の位置。部材の数以上は空の行） */
 export interface CellPos {
@@ -182,7 +188,7 @@ export interface CellPos {
 }
 
 /**
- * コピーしたセル（四角い形）。cells[行][列] はセルの中身の文字（名前・式は書いたまま・枚数は数字の文字。空は ''）。
+ * コピーしたセル（四角い形）。cells[行][列] はセルの中身の文字（名前・式は書いたまま・厚みと枚数は数字の文字。空は ''）。
  * 1つのセルなら rows = cols = 1
  */
 export interface CellClip {
@@ -199,11 +205,17 @@ export interface CellClip {
    * 無ければ［仕上がり］のタブ（第2.0版までの保存データも無い）。［仕上がり］と［調整］をまたいで貼ることはできない
    */
   source?: 'adjust'
+  /**
+   * 列の並びの印（第2.2版。CELL_COLS_KEY）。copyCells・cutCells・copyPartAdjustCells で作るクリップには必ず付ける。
+   * 保存データを読むとき、この印が今の CELL_COLS_KEY と違う（無い）クリップは前の版のものとして捨てる（shape.ts の isCellClip）。
+   * 貼り付け（pasteCells など）はこの印を見ない
+   */
+  columns?: string
 }
 
 /**
- * 部材の表の四角い範囲（第1.3版）。left は列の位置（0＝名前 … 3＝枚数）。1つのセルは rows = cols = 1。
- * 行全体は left 0・cols 4、列全体は top 0・rows 部材の数（engine/clipboard/cells の rowRange・columnRange）
+ * 部材の表の四角い範囲（第1.3版）。left は列の位置（0＝名前・1＝厚み・2＝W・3＝H・4＝枚数。第2.2版で厚みを足した）。1つのセルは rows = cols = 1。
+ * 行全体は left 0・cols 5、列全体は top 0・rows 部材の数（engine/clipboard/cells の rowRange・columnRange）
  */
 export interface CellRange {
   top: number

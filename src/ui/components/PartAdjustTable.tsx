@@ -59,6 +59,8 @@ function cellOf(s: Sel | null, job: Job): Cell | null {
 }
 
 const colOf = (axis: Axis): number => CELL_COLS.indexOf(axis)
+/** 枚数の列の位置（第2.2版で厚みの列が入って 4 になった） */
+const QTY_COL = CELL_COLS.indexOf('qty')
 
 export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, barSlot }: Props) {
   const parts = job.parts
@@ -334,7 +336,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
             <span role="columnheader" className="pt-hno">
               番号
             </span>
-            {CELL_COLS.map((f, c) => (
+            {/* 第2.2版（E-26）：厚み（T）の列は U-30 で作るので、それまで見出しを出さない（最小限の直し） */}
+            {CELL_COLS.map((f, c) => f === 'T' ? null : (
               <span key={f} role="columnheader" className="pt-hwrap">
                 <button
                   type="button"
@@ -434,12 +437,12 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   {dimEl('H')}
                   <button
                     type="button"
-                    className={`pt-cell pt-qty num${rangeCls(3)}`}
+                    className={`pt-cell pt-qty num${rangeCls(QTY_COL)}`}
                     data-row={i}
-                    data-col={3}
+                    data-col={QTY_COL}
                     aria-label={`${label} の枚数：${part.quantity ?? '空'}（見るだけ）`}
-                    aria-selected={inRange(3)}
-                    onClick={() => pressCell(i, 3)}
+                    aria-selected={inRange(QTY_COL)}
+                    onClick={() => pressCell(i, QTY_COL)}
                   >
                     {part.quantity ?? ''}
                   </button>

@@ -1,6 +1,6 @@
 // 保存データ・共有とバックアップのファイルの中身の形の確かめ（store/storage.ts から移した。第1.1版 E-11）。
 // 手で書き換えたデータや途中までのデータで画面が真っ白にならないよう、形が違えば「読めない」とする
-import { ADJUST_COLS, CELL_COLS, type Adjust, type AdjustClip, type AdjustRow, type CellClip, type CellCut, type CellRange, type FrozenSheet, type Job, type Part, type Settings, type Sheet } from './types'
+import { ADJUST_COLS, CELL_COLS, CELL_COLS_KEY, type Adjust, type AdjustClip, type AdjustRow, type CellClip, type CellCut, type CellRange, type FrozenSheet, type Job, type Part, type Settings, type Sheet } from './types'
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -72,10 +72,12 @@ function isCellCut(v: unknown, rows: number, cols: number): v is CellCut {
 
 /**
  * コピーしたセル（第1.2版）：1〜部材の表の列の数の四角い形で、中身は全部文字。
- * 切り取りの元 cut（第1.3版）は無くてもよい（第1.2版の保存データ）。あるときは形も確かめる
+ * 切り取りの元 cut（第1.3版）は無くてもよい（第1.2版の保存データ）。あるときは形も確かめる。
+ * 列の並びの印 columns（第2.2版）が今の CELL_COLS_KEY と同じものだけ（前の版で保存したクリップは列がずれるので読めない＝捨てる。仕様書 26.8）
  */
 export function isCellClip(v: unknown): v is CellClip {
   if (!isRecord(v) || !Number.isInteger(v.rows) || !Number.isInteger(v.cols)) return false
+  if (v.columns !== CELL_COLS_KEY) return false
   const rows = v.rows as number
   const cols = v.cols as number
   if (rows < 1 || cols < 1 || cols > CELL_COLS.length) return false

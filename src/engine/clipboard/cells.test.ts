@@ -11,6 +11,7 @@ import {
   COPY_SHAPE_MESSAGE,
   deleteRows,
   pasteCells,
+  rowRange,
   selectedPartIds,
   selectionShape,
   type PasteCellsResult,
@@ -50,16 +51,17 @@ describe('selectionShape（1つ／四角い範囲／それ以外）', () => {
   })
 
   it('1つのセルは 1行×1列の範囲', () => {
-    expect(selectionShape([c(2, 'H')])).toEqual({ kind: 'range', top: 2, left: 2, rows: 1, cols: 1 })
+    expect(selectionShape([c(2, 'H')])).toEqual({ kind: 'range', top: 2, left: 3, rows: 1, cols: 1 })
   })
 
   it('続いた行 × 続いた列（押した順によらない。同じセルを2回入れても1つ）', () => {
     const sel = [c(4, 'H'), c(3, 'W'), c(4, 'W'), c(3, 'H'), c(3, 'H')]
-    expect(selectionShape(sel)).toEqual({ kind: 'range', top: 3, left: 1, rows: 2, cols: 2 })
+    expect(selectionShape(sel)).toEqual({ kind: 'range', top: 3, left: 2, rows: 2, cols: 2 })
   })
 
-  it('1行に横いっぱい（名前〜枚数）も範囲', () => {
-    expect(selectionShape([c(0, 'name'), c(0, 'W'), c(0, 'H'), c(0, 'qty')])).toEqual({ kind: 'range', top: 0, left: 0, rows: 1, cols: 4 })
+  it('1行に横いっぱい（名前〜枚数の5列）も範囲。厚みを飛ばすと範囲でない', () => {
+    expect(selectionShape([c(0, 'name'), c(0, 'T'), c(0, 'W'), c(0, 'H'), c(0, 'qty')])).toEqual({ kind: 'range', top: 0, left: 0, rows: 1, cols: 5 })
+    expect(selectionShape([c(0, 'name'), c(0, 'W'), c(0, 'H'), c(0, 'qty')]).kind).toBe('scattered')
   })
 
   it('離れたセル・欠けた四角・飛んだ列や行は範囲でない', () => {
@@ -72,21 +74,23 @@ describe('selectionShape（1つ／四角い範囲／それ以外）', () => {
 describe('copyCells（式は式のまま）', () => {
   it('1つのセル：式は書いたまま（部材名も名前のまま）', () => {
     const r = copyCells(shelfJob(), [c(3, 'W')])
-    expect(r).toEqual({ ok: true, clip: { rows: 1, cols: 1, cells: [['天板.W - 20']] } })
+    expect(r).toEqual({ ok: true, clip: { rows: 1, cols: 1, cells: [['天板.W - 20']], columns: 'name,T,W,H,qty' } })
   })
 
-  it('範囲：名前・式・枚数を形つきで。枚数が空・空の行は空の文字', () => {
+  it('範囲：名前・厚み・式・枚数を形つきで。厚み・枚数が空・空の行は空の文字', () => {
     const job = shelfJob()
     job.parts[2].quantity = null
-    const r = copyCells(job, [c(2, 'name'), c(2, 'W'), c(2, 'H'), c(2, 'qty'), c(3, 'name'), c(3, 'W'), c(3, 'H'), c(3, 'qty'), c(4, 'name'), c(4, 'W'), c(4, 'H'), c(4, 'qty')])
+    job.parts[3].thickness = 18
+    const r = copyCells(job, rowRange(2, 3))
     expect(r.ok && r.clip).toEqual({
       rows: 3,
-      cols: 4,
+      cols: 5,
       cells: [
-        ['側板', '全体.W', '700', ''],
-        ['棚板', '天板.W - 20', '天板.H - 20 × 2', '3'],
-        ['', '', '', ''],
+        ['側板', '', '全体.W', '700', ''],
+        ['棚板', '18', '天板.W - 20', '天板.H - 20 × 2', '3'],
+        ['', '', '', '', ''],
       ],
+      columns: 'name,T,W,H,qty',
     })
   })
 
@@ -333,9 +337,9 @@ describe('pasteCells：範囲をコピーしたとき', () => {
     expect(r.skipped).toEqual([])
   })
 
-  it('名前・W・H・枚数の行まるごとを、ほかの仕事の空の行に貼れる', () => {
+  it('名前・厚み・W・H・枚数の行まるごとを、ほかの仕事の空の行に貼れる', () => {
     const src = shelfJob()
-    const clip = okCopy(copyCells(src, [c(0, 'name'), c(0, 'W'), c(0, 'H'), c(0, 'qty'), c(1, 'name'), c(1, 'W'), c(1, 'H'), c(1, 'qty')]))
+    const clip = okCopy(copyCells(src, rowRange(0, 2)))
     const other = jobOf()
     const r = okPaste(pasteCells(other, clip, [c(0, 'name')], ids()))
     expect(table(r.job)).toEqual([
@@ -347,11 +351,11 @@ describe('pasteCells：範囲をコピーしたとき', () => {
 
   it('同じ名前は番号を振って貼り、枚数に式は貼られず貼れなかったセルが返る（ほかのセルは貼る）', () => {
     const job = shelfJob()
-    // 棚板の行（名前・W・H・枚数）の形で、名前は今ある「天板」、枚数は式
-    const clip = clipOf([['天板', '300', '400', '全体.W']])
+    // 棚板の行（名前・厚み・W・H・枚数）の形で、名前は今ある「天板」、枚数は式
+    const clip = clipOf([['天板', '', '300', '400', '全体.W']])
     const r = okPaste(pasteCells(job, clip, [c(2, 'name')], ids()))
     expect(table(r.job)[2]).toEqual(['天板1', '300', '400', 2])
-    expect(r.pasted).toBe(3)
+    expect(r.pasted).toBe(4)
     expect(r.skipped).toEqual([{ cell: c(2, 'qty'), reason: 'notQuantity', message: '枚数には 0 以上の整数だけ貼れます' }])
   })
 
@@ -458,3 +462,83 @@ function okCopy(r: ReturnType<typeof copyCells>): CellClip {
   if (!r.ok) throw new Error(r.message)
   return r.clip
 }
+
+describe('厚みの列（第2.2版。仕様書 26.1・26.8）', () => {
+  /** 見本の棚の、棚板の厚みを 18 にしたもの */
+  const thick = () => {
+    const job = shelfJob()
+    job.parts[3] = { ...job.parts[3], thickness: 18 }
+    return job
+  }
+  const thicknesses = (job: Job) => job.parts.map((p) => p.thickness)
+
+  it('列は 名前・厚み・W・H・枚数。厚みのセルの中身は数字の文字（空は \'\'・小数もそのまま）', () => {
+    const job = thick()
+    job.parts[1] = { ...job.parts[1], thickness: 2.5 }
+    expect([cellText(job, c(3, 'T')), cellText(job, c(1, 'T')), cellText(job, c(0, 'T')), cellText(job, c(9, 'T'))]).toEqual(['18', '2.5', '', ''])
+    expect(selectionShape([c(0, 'T')])).toEqual({ kind: 'range', top: 0, left: 1, rows: 1, cols: 1 })
+  })
+
+  it('厚み 18 のセルをコピーして3行に貼ると3行とも 18', () => {
+    const job = thick()
+    const clip = okCopy(copyCells(job, [c(3, 'T')]))
+    expect(clip.cells).toEqual([['18']])
+    const r = okPaste(pasteCells(job, clip, [c(0, 'T'), c(1, 'T'), c(2, 'T')], ids()))
+    expect(thicknesses(r.job)).toEqual([18, 18, 18, 18])
+    expect(r.pasted).toBe(3)
+    expect(r.skipped).toEqual([])
+  })
+
+  it('abc・0・−1・式は貼られず理由が返る（「厚みには 0 より大きい数だけ貼れます」）。ほかのセルは貼る', () => {
+    const job = thick()
+    for (const text of ['abc', '0', '-1', '0.0', '18mm', '天板.T', '9 * 2']) {
+      const r = okPaste(pasteCells(job, clipOf([[text]]), [c(3, 'T')], ids()))
+      expect(r.job, text).toBe(job)
+      expect(r.skipped, text).toEqual([{ cell: c(3, 'T'), reason: 'notThickness', message: '厚みには 0 より大きい数だけ貼れます' }])
+    }
+    const r = okPaste(pasteCells(job, clipOf([['abc', '300']]), [c(2, 'T')], ids()))
+    expect(r.job.parts[2]).toMatchObject({ thickness: null, expr: { W: '300' } })
+    expect(r.pasted).toBe(1)
+  })
+
+  it('全角の数字・小数点も貼れる。空を貼ると厚みが空になる', () => {
+    const job = thick()
+    expect(okPaste(pasteCells(job, clipOf([['１８．５']]), [c(0, 'T')], ids())).job.parts[0].thickness).toBe(18.5)
+    expect(okPaste(pasteCells(job, clipOf([[' 2.5 ']]), [c(0, 'T')], ids())).job.parts[0].thickness).toBe(2.5)
+    expect(okPaste(pasteCells(job, clipOf([['']]), [c(3, 'T')], ids())).job.parts[3].thickness).toBeNull()
+  })
+
+  it('名前〜枚数の5列をまとめてコピーして別の行（空の行）に貼れる', () => {
+    const src = thick()
+    const clip = okCopy(copyCells(src, rowRange(3)))
+    expect(clip.cells).toEqual([['棚板', '18', '天板.W - 20', '天板.H - 20 × 2', '3']])
+    const r = okPaste(pasteCells(jobOf(), clip, [c(0, 'name')], ids()))
+    expect(r.job.parts[0]).toMatchObject({ name: '棚板', thickness: 18, expr: { W: '天板.W - 20', H: '天板.H - 20 × 2' }, quantity: 3 })
+    expect(r.pasted).toBe(5)
+  })
+
+  it('厚みだけを空の行に貼ると、厚みだけの部材ができて残る（名前・W・H・枚数は空）', () => {
+    const r = okPaste(pasteCells(shelfJob(), clipOf([['12']]), [c(4, 'T')], ids()))
+    expect(r.job.parts).toHaveLength(5)
+    expect(r.job.parts[4]).toMatchObject({ name: '', thickness: 12, expr: { W: '', H: '' }, quantity: null })
+  })
+
+  it('クリアで厚みが空になる。厚みだけの行をクリアすると部材は外れる', () => {
+    const job = thick()
+    expect(thicknesses(clearCells(job, [c(3, 'T')]))).toEqual([null, null, null, null])
+    const only = { ...job, parts: [...job.parts, part('p5', '', '', '', null)] }
+    only.parts[4] = { ...only.parts[4], thickness: 9 }
+    expect(clearCells(only, [c(4, 'T')]).parts).toHaveLength(4)
+  })
+
+  it('行全体（5列）を消すと部材が外れる。4列（厚みを残す）なら残る', () => {
+    const job = thick()
+    expect(clearCells(job, rowRange(3)).parts).toHaveLength(3)
+    const kept = clearCells(job, [c(3, 'name'), c(3, 'W'), c(3, 'H'), c(3, 'qty')])
+    expect(kept.parts[3]).toMatchObject({ name: '', thickness: 18, quantity: null })
+  })
+
+  it('コピーしたセルには列の並びの印（columns）が付く', () => {
+    expect(okCopy(copyCells(shelfJob(), [c(0, 'T')])).columns).toBe('name,T,W,H,qty')
+  })
+})
