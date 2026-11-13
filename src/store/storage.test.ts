@@ -82,8 +82,8 @@ describe('保存と読み込み', () => {
     expect(r.status).toBe('ok')
     // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）
     const { clipboard: _old, ...rest } = JSON.parse(v1) as { jobs: { parts: object[] }[] } & Record<string, unknown>
-    // 部材の調整（第2.1版）・厚み（第2.2版）は無いので、調整なし（W・H とも空）・厚みなしとして読む
-    const jobs = rest.jobs.map((j) => ({ ...j, parts: j.parts.map((p) => ({ ...p, adjust: { W: '', H: '' }, thickness: null })) }))
+    // 部材の調整（第2.1版）・厚みと色とメモ（第2.2版）は無いので、調整なし（W・H とも空）・厚みなし・色なし・メモなしとして読む
+    const jobs = rest.jobs.map((j) => ({ ...j, parts: j.parts.map((p) => ({ ...p, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '' })) }))
     expect(r.data).toEqual({ ...rest, jobs, cellClip: null, adjustClip: null })
     expect('clipboard' in r.data).toBe(false)
   })
@@ -160,8 +160,8 @@ describe('保存と読み込み', () => {
   it('名前が空・枚数が空（null）の部材も保存して読み戻せる（第1.1版）', () => {
     const data = sample()
     data.jobs[0].parts.push(
-      { id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, thickness: null, quantity: null, rotatable: false, finishedDone: false },
-      { id: 'p6', name: '', expr: { W: '300', H: '400' }, adjust: { W: '-2', H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false },
+      { id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: null, rotatable: false, finishedDone: false },
+      { id: 'p6', name: '', expr: { W: '300', H: '400' }, adjust: { W: '-2', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: 1, rotatable: false, finishedDone: false },
     )
     const st = new MemoryStorage()
     saveSaved(st, data, null)
@@ -197,6 +197,19 @@ describe('保存と読み込み', () => {
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+  })
+
+  it('色とメモを保存して読み戻せる（第2.2版）。色・メモの無い第2.1版の保存データは、色なし・メモなしとして読む', () => {
+    const data = sample()
+    data.jobs[0].parts[2] = { ...data.jobs[0].parts[2], rowColor: 'blue' }
+    data.jobs[0].parts[3] = { ...data.jobs[0].parts[3], cellColors: { W: 'red' }, memo: '木目を縦に' }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+    st.setItem(DATA_KEY, JSON.stringify(toV21(data)))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data).toEqual(sample())
   })
 
   it('部材の調整を保存して読み戻せる（第2.1版）', () => {

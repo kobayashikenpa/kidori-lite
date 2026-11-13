@@ -272,7 +272,7 @@ describe('バックアップを取り込む', () => {
 /** 部材1つ（W の調整に調整寸法 {n:s-x} を足す）の仕事 */
 function oneAdjustJob(): Job {
   const job = shelfJob()
-  job.parts = [{ id: 'p1', name: '板', expr: { W: '100', H: '200' }, adjust: { W: '+{n:s-x}', H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false }]
+  job.parts = [{ id: 'p1', name: '板', expr: { W: '100', H: '200' }, adjust: { W: '+{n:s-x}', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: 1, rotatable: false, finishedDone: false }]
   return job
 }
 
@@ -314,5 +314,32 @@ describe('部材の厚み（第2.2版。仕様書 26.1・26.7）', () => {
     const src: AppData = { version: 1, jobs: [shelfJob('job-a', '棚A'), shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
     const all = importTransfer(receiver(), readFile(JSON.stringify(toV21(JSON.parse(buildBackupFile(src))))), ids(), NOW)
     expect(all.data.jobs.slice(1).flatMap((j) => j.parts.map((p) => p.thickness))).toEqual(Array(8).fill(null))
+  })
+})
+
+describe('色とメモ（第2.2版。仕様書 26.3・26.7）', () => {
+  /** 棚板の W のセルを赤・メモ「木目を縦に」、側板の行を青にした棚 */
+  function marked(id = 'job-shelf', name = '棚'): Job {
+    const job = shelfJob(id, name)
+    job.parts[2] = { ...job.parts[2], rowColor: 'blue' }
+    job.parts[3] = { ...job.parts[3], cellColors: { W: 'red' }, memo: '木目を縦に' }
+    return job
+  }
+  const marksOf = (job: Job) => job.parts.map((p) => [p.name, p.rowColor, p.cellColors, p.memo])
+
+  it('送って取り込むと、色とメモがその部材についている', () => {
+    const r = importTransfer(receiver(), readFile(buildJobFile(marked(), shelfAdjusts())), ids(), NOW)
+    expect(marksOf(r.data.jobs[1])).toEqual(marksOf(marked()))
+  })
+
+  it('バックアップから戻すと、色とメモがその部材についている', () => {
+    const src: AppData = { version: 1, jobs: [marked('job-a', '棚A')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
+    expect(marksOf(r.data.jobs[1])).toEqual(marksOf(marked()))
+  })
+
+  it('色・メモの無い第2.1版のファイルは、色なし・メモなしとして取り込む', () => {
+    const r = importTransfer(receiver(), readFile(JSON.stringify(toV21(JSON.parse(buildJobFile(marked(), shelfAdjusts()))))), ids(), NOW)
+    expect(r.data.jobs[1].parts.every((p) => p.rowColor === null && Object.keys(p.cellColors).length === 0 && p.memo === '')).toBe(true)
   })
 })

@@ -32,7 +32,7 @@ export function duplicateName(job: Pick<Job, 'parts'>, name: string): string {
 export type DuplicateResult = { ok: true; job: Job; partId: string } | { ok: false; message: string }
 
 /**
- * 部材の複製：式・調整（第2.1版）・厚み（第2.2版）・枚数・回転を写し、名前は duplicateName、元の部材のすぐ後ろに足す。
+ * 部材の複製：式・調整（第2.1版）・厚み・色・メモ（第2.2版）・枚数・回転を写し、名前は duplicateName、元の部材のすぐ後ろに足す。
  * id は newId('part')（partId で返す。画面で編集を開くため）、仕上がりの完了は外す
  */
 export function duplicatePart(job: Job, partId: string, newId: (prefix: string) => string): DuplicateResult {
@@ -45,6 +45,9 @@ export function duplicatePart(job: Job, partId: string, newId: (prefix: string) 
     expr: { W: src.expr.W, H: src.expr.H },
     adjust: { W: src.adjust.W, H: src.adjust.H },
     thickness: src.thickness,
+    rowColor: src.rowColor,
+    cellColors: { ...src.cellColors },
+    memo: src.memo,
     quantity: src.quantity,
     rotatable: src.rotatable,
     finishedDone: false,

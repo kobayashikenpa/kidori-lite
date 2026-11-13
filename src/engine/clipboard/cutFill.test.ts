@@ -24,7 +24,7 @@ function ids(): (prefix: string) => string {
 }
 
 function part(id: string, name: string, W = '100', H = '200', quantity: number | null = 1): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable: false, finishedDone: false }
 }
 
 function jobOf(id: string, ...parts: Part[]): Job {

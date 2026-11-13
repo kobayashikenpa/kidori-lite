@@ -75,6 +75,11 @@ export interface Adjust {
   value: number
 }
 
+/** 色（第2.2版。仕様書 26.3）：赤・青・黄の3つ。「なし」は null（行の色）か、その列が無い（セルの色） */
+export type PartColor = 'red' | 'blue' | 'yellow'
+
+export const PART_COLORS: readonly PartColor[] = ['red', 'blue', 'yellow']
+
 /** 部材 */
 export interface Part {
   id: string
@@ -100,6 +105,18 @@ export interface Part {
    * 調整・切り代は足さない。第2.1版までの保存データ・ファイルには無いので、読むときに null にする（shape.ts の readJob）
    */
   thickness: number | null
+  /**
+   * 行の色（第2.2版。仕様書 26.3）：赤・青・黄か、なし（null）。番号の長押しのメニューで付ける。
+   * セルの色（cellColors）があるセルはセルの色を出す（engine/marks の cellColor）。木取りの計算には影響しない
+   */
+  rowColor: PartColor | null
+  /**
+   * セルの色（第2.2版。仕様書 26.3）：列（名前・厚み・W・H・枚数）ごとの色。無い列は色なし（空のオブジェクトは色なし）。
+   * セルの長押しのメニューで付ける。セルのコピー・貼り付け・クリアでは変わらない（部材についていく）
+   */
+  cellColors: Partial<Record<CellCol, PartColor>>
+  /** メモ（第2.2版。仕様書 26.3）：部材ごとに1つ。空の文字はメモなし。改行してよく、長さの上限は無い */
+  memo: string
   /** 枚数（0 は切り出さない寸法だけの行。null は枚数が空＝寸法は計算するが、木取り・必要な枚数・進み具合・比べに入れない） */
   quantity: number | null
   /** 回転してよい（W・H を入れ替えて置いてよい）。初期値 false */

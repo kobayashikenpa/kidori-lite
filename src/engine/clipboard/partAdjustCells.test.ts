@@ -21,7 +21,7 @@ import {
 const M = `−{n:${MELAMINE_ID}}×2`
 
 function part(id: string, name: string, adjustW = '', adjustH = '', quantity: number | null = 1): Part {
-  return { id, name, expr: { W: '900', H: '300' }, adjust: { W: adjustW, H: adjustH }, thickness: null, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W: '900', H: '300' }, adjust: { W: adjustW, H: adjustH }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable: false, finishedDone: false }
 }
 
 /** 4つの部材（D の W に調整 −メラミン1×2、H に −1） */

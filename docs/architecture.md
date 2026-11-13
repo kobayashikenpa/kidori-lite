@@ -797,12 +797,12 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 
 ## 15. 第2.2版の変更（仕様書 26章）
 
-作業は `docs/tasks.md` の E-24〜E-28・U-30〜U-36。下は planner の下書き（2026-11-13）。名前・形は各作業で engine-dev / ui-dev が決め、決めたらこの節を書き直す。
+作業は `docs/tasks.md` の E-24〜E-28・U-30〜U-36。計算・保存の側（E-24〜E-28）は 15.1〜15.5 に実装に合わせて書いた（2026-11-13 engine-dev）。画面（U-30〜U-36）は ui-dev が節を足す。
 
-- **厚み**（E-24・E-25・E-26）：`Part` に厚み（数か空）を足す。部材の寸法の `Axis`（W・H。板に置く2つ）は変えず、式の参照の軸だけ W・H・T にする（`RefAxis` など）。`.T` は参照先の部材の厚みの数字で、計算順・循環の辿り（`resolve.ts` の `nodes`）には入らない。木取りの並べ方（`packing/`）は厚みを見ない（11章のまま）
-- **表の列**（E-26）：`CELL_COLS` を 名前・厚み・W・H・枚数（`left` 0〜4）にする。［仕上がり］［調整］［木取り］の3つの表が同じ列。［調整］では厚みも見るだけ
-- **名前の重なり**（E-27）：貼り付け・オートフィルでは同じ名前を許す（18.3 の番号を振る処理をなくす）。打って入れるとき（`validatePartName`）は今どおり断る。同じ名前の部材を参照している式はエラー（どちらか決まらない）
-- **色とメモ**（E-28）：`Part` に 行の色・列ごとのセルの色・メモ を足す。部材のオブジェクトごと動く操作（並べ替え・移動・複製・仕事のコピー・ファイル）はそのままついていく。行をまるごと切り取って同じ仕事に貼ったときは、第2.1版の調整と同じ所（`cells.ts` の `AdjustMove`）で動かす
+- **厚み**（E-24・E-25・E-26）：`Part.thickness`（数か空）。部材の寸法の `Axis`（W・H。板に置く2つ）は変えず、式の参照の軸だけ W・H・T（`RefAxis`）。`.T` は参照先の部材の厚みの数字で、計算順・循環の辿り（`resolve.ts` の `deps`）には入らない。木取りの並べ方（`packing/`）は厚みを見ない（11章のまま）
+- **表の列**（E-26）：`CELL_COLS` は 名前・厚み・W・H・枚数（`left` 0〜4）。［仕上がり］［調整］［木取り］の3つの表が同じ列。［調整］では厚みも見るだけ
+- **名前の重なり**（E-27）：貼り付け・オートフィルでは同じ名前を許す（18.3 の番号を振る処理をなくした）。打って入れるとき（`validatePartName`）は今どおり断る。同じ名前の部材を参照している式はエラー（`ambiguousRef`）
+- **色とメモ**（E-28）：`Part` に 行の色（`rowColor`）・列ごとのセルの色（`cellColors`）・メモ（`memo`）。部材のオブジェクトごと動く操作（並べ替え・移動・複製・仕事のコピー・ファイル）はそのままついていく。行をまるごと切り取って同じ仕事に貼ったときは、第2.1版の調整と同じ所（`cells.ts` の `RowMove`。前の `AdjustMove`）で動かす
 - **前の版のデータ**：厚み・色・メモの無い部材は `shape.ts` の `readJob` で「なし」を足してから読む（第2.1版の `adjust` と同じやり方）。ファイルの版（`TRANSFER_VERSION`）は 1 のまま（26.7）
 
 ### 15.1 部材の厚みの型・読み込み・行の操作（E-24。spec 26.1・26.7）
@@ -884,3 +884,39 @@ export function ambiguousRefMessage(name, count): string          // 「棚板 �
 - `partsReferencing`：同じ名前の部材は、どちらも「使われていない」になる（式はどちらも指していないため。片方を消すと、式は残ったほうを指すようになる）
 - **名前の変更**（`formula/rename.ts` の `renamePart`）：打って同じ名前にするのは今までどおり断る（`validatePartName`。文は「「棚板」という部材はすでにあります」のまま。26.8）。同じ名前の部材の片方の名前を変えたとき、もう1つ同じ名前が残るなら、ほかの部材の式は書き換えない（式は残った部材を指すようになり、エラーが消える）
 - `store/jobs.ts` の `insertPart`・`addPart`・`updatePart`：変えていない（打って同じ名前は断る。同じ名前の部材の名前以外の欄は変えられる。テストで確かめた）。複製（`duplicateName`「棚板のコピー」）・行をまるごと切り取って動かすときも今のまま
+
+### 15.5 色とメモの型・付け方・部材についていく（E-28。spec 26.3・26.7・26.8）
+
+```ts
+// types.ts
+export type PartColor = 'red' | 'blue' | 'yellow'
+export const PART_COLORS: readonly PartColor[] = ['red', 'blue', 'yellow']
+export interface Part {
+  …
+  rowColor: PartColor | null                       // 行の色（null はなし）
+  cellColors: Partial<Record<CellCol, PartColor>>  // セルの色（列ごと。無い列は色なし。{} は色なし）
+  memo: string                                     // メモ（'' はメモなし。改行可・長さの上限なし）
+  …
+}
+```
+
+- 行の色とセルの色は別々に持つ（番号で「なし」は行の色だけ消す。26.8）
+- **付け方**（新しいファイル `src/engine/marks.ts`。テストは `marks.test.ts`）
+
+| 関数 | 内容 |
+|---|---|
+| `cellColor(part, col)` | そのセルに見せる色：セルの色 → 無ければ行の色 → どちらも無ければ null（26.3「両方あるときはセルの色」） |
+| `hasMemo(part)` | メモがあるか（空白・改行だけはメモなし）。名前のセルの右上の三角に使う |
+| `setCellColor(job, sel, color)` | 選んだセル（`CellSelection`。範囲でも離れたセルでも）にセルの色。`null` で消す。部材の無い空の行は何もしない（部材を作らない）。変わらなければ同じ仕事 |
+| `setRowColor(job, sel, color)` | 選んだセルのある行（部材）に行の色。`null` で行の色だけ消す。空の行は何もしない。変わらなければ同じ仕事 |
+| `setPartMemo(job, partId, text)` | `{ ok: true, job }`／`{ ok: false, message: '部材が見つかりません' }`。空白・改行だけは ''（メモを消す）、それ以外は打ったまま。同じなら同じ仕事 |
+
+- **読み込み**（`shape.ts`）：`isPartColor(v)` を足した。`isPart` は `rowColor`（null か色）・`cellColors`（知っている列 → 色）・`memo`（文字）を要る。`readJob` は前の版の部材に「なし」（null・{}・''）を足す。色・メモは飾りなので、**知らない色・知らない列・形の違うものは仕事ごと読めなくせず、その色・メモを外して読む**（あとの版で色が増えたファイルを前の版で読んでも読めるように。暫定）
+- **部材についていく**
+  - `store/jobs.ts` の `copyJob`（写す。`cellColors` は別のオブジェクト）・`insertPart`（渡した部材のまま。`newPart` は色なし・メモなし）、`clipboard/copy.ts` の `duplicatePart`（写す）、`order.ts` の `sortParts`・`moveParts`、`removePart`・`deleteRows`（部材ごと消える）は部材のオブジェクトごと扱う
+  - `clipboard/cells.ts`：行をまるごと（5列）切り取って同じ仕事に貼ったときは、調整・行の色・セルの色・メモ（`RowExtras`）を貼った行へ動かす（`RowMove`。元の行は「なし」にしてから貼った先に入れるので、1行ずらしても入れ違わない。ほかの部材の行に貼れば、その行のものは入れ替わる）。セルのコピー・貼り付け・オートフィル・一部の欄の切り取り・ほかの仕事への貼り付けでは写さない。クリアは中身だけ消し、色・メモは残す。行の欄がぜんぶ空になって部材が外れたときは色・メモも消える。表の下に足す部材は色なし・メモなし
+  - 送るファイル（`share.ts` の `jobFile`）・バックアップ・取り込み（`importFile.ts` の `rekeyJob`）にも入る（`cellColors` は写し）
+- **store**（`reducer.ts`。どれも `jobId` を省くと開いている仕事。変わらなければ updatedAt を付けない）
+  - `{ type: 'setCellColor', color: PartColor | null } & SelectionArg`（`cells` か `range`）
+  - `{ type: 'setRowColor', color: PartColor | null } & SelectionArg`
+  - `{ type: 'setPartMemo', partId, text }`（無い部材は「部材が見つかりません」）

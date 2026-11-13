@@ -18,7 +18,7 @@ function summary(job: Job) {
 }
 
 function part(id: string, W: string, H: string, quantity = 1, rotatable = false): Part {
-  return { id, name: id, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable, finishedDone: false }
+  return { id, name: id, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable, finishedDone: false }
 }
 
 /** 板だけ kind に置き換えて packJob した結果 */

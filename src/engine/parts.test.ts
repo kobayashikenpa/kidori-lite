@@ -20,7 +20,7 @@ const adjusts = shelfAdjusts()
 const dimsOf = (job: Job) => computeDimensions(job, adjusts)
 
 function part(id: string, name: string, W: string, H: string, quantity: number | null, rotatable = false): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable, finishedDone: false }
 }
 
 /** 見本の棚の後ろに部材を足した写し */

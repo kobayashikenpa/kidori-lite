@@ -226,14 +226,22 @@ interface CutCell {
 }
 
 /**
- * 行をまるごと（名前・厚み・W・H・枚数）切り取って同じ仕事に貼るとき、調整（Part.adjust）も動かす行の組（第2.1版）。
+ * 行をまるごと（名前・厚み・W・H・枚数）切り取って同じ仕事に貼るとき、行についているもの（RowExtras）も動かす行の組。
  * from は切り取った元の行、to は貼る先の表の行、srcs はその行のクリップの位置（5つ）
  */
-interface AdjustMove {
+interface RowMove {
   from: number
   to: number
   srcs: number[]
 }
+
+/** 部材の行についている、表の欄ではないもの：調整（第2.1版）・行の色・セルの色・メモ（第2.2版） */
+type RowExtras = Pick<Part, 'adjust' | 'rowColor' | 'cellColors' | 'memo'>
+
+const rowExtrasOf = (p: Part): RowExtras => ({ adjust: { ...p.adjust }, rowColor: p.rowColor, cellColors: { ...p.cellColors }, memo: p.memo })
+
+/** 行についているものの「なし」（表の下に足す部材・動かした元の行） */
+const emptyRowExtras = (): RowExtras => ({ adjust: { W: '', H: '' }, rowColor: null, cellColors: {}, memo: '' })
 
 function setCellEmpty(p: Part, col: CellCol): void {
   if (col === 'name') p.name = ''
@@ -270,14 +278,14 @@ function applyTargets(
   targets: Target[],
   newId: (prefix: string) => string,
   cutFirst: CutCell[],
-  adjustMoves: AdjustMove[] = [],
+  rowMoves: RowMove[] = [],
 ): Applied {
   const count = job.parts.length
   const newRows = [...new Set(targets.filter((t) => t.row >= count).map((t) => t.row))].sort((a, b) => a - b)
   const indexOfRow = new Map(newRows.map((r, k) => [r, count + k]))
   const parts: Part[] = job.parts.map((p) => ({ ...p, expr: { ...p.expr } }))
   for (let k = 0; k < newRows.length; k++) {
-    parts.push({ id: newId('part'), name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, thickness: null, quantity: null, rotatable: false, finishedDone: false })
+    parts.push({ id: newId('part'), name: '', expr: { W: '', H: '' }, thickness: null, quantity: null, rotatable: false, finishedDone: false, ...emptyRowExtras() })
   }
   const writes: Write[] = targets.map((t) => ({
     cell: { row: t.row, col: CELL_COLS[t.col] },
@@ -342,15 +350,15 @@ function applyTargets(
     if (filled.has(c.src)) touched.add(c.row)
     else copyCell(parts[c.row], job.parts[c.row], c.col)
   }
-  // 行をまるごと切り取って貼ったときは、調整も貼った行へ動かす（5つの欄が全部貼れた行だけ）。
-  // 元の調整を先に読んでから元を空にし、そのあと貼った先に入れる（元と先が重なっても入れ違わないように）
-  const moves = adjustMoves
+  // 行をまるごと切り取って貼ったときは、調整・色・メモも貼った行へ動かす（5つの欄が全部貼れた行だけ。第2.2版で色・メモも）。
+  // 元のものを先に読んでから元を「なし」にし、そのあと貼った先に入れる（元と先が重なっても入れ違わないように）
+  const moves = rowMoves
     .filter((m) => m.from !== m.to && m.srcs.every((src) => filled.has(src)))
-    .map((m) => ({ ...m, adjust: { ...job.parts[m.from].adjust } }))
-  for (const m of moves) parts[m.from] = { ...parts[m.from], adjust: { W: '', H: '' } }
+    .map((m) => ({ ...m, extras: rowExtrasOf(job.parts[m.from]) }))
+  for (const m of moves) parts[m.from] = { ...parts[m.from], ...emptyRowExtras() }
   for (const m of moves) {
     const index = m.to < count ? m.to : indexOfRow.get(m.to)!
-    parts[index] = { ...parts[index], adjust: m.adjust }
+    parts[index] = { ...parts[index], ...m.extras }
     touched.add(index)
   }
   const kept = parts.filter((p, i) => !(touched.has(i) || i >= count) || !isBlankPart(p))
@@ -382,11 +390,12 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  * - 1つのセルのコピー：選んだセル全部に同じものを貼る
  * - 範囲のコピー：選んだセルの一番左上（いちばん上の行・いちばん左の列）から同じ形で貼る。表の右（枚数）をはみ出す列は貼らない
  * - 厚み：0 より大きい数だけ（全角の数字・小数点も。空は空にする）。それ以外は貼らない（notThickness。第2.2版）
- * - 空の行に貼ると部材を作る（id は newId('part')、枚数は空から、回転しない）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）
+ * - 空の行に貼ると部材を作る（id は newId('part')、枚数は空から、回転しない、調整・色・メモなし）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）
  * - 名前：前後の空白を外して、そのまま入れる（同じ名前になっても番号を振らない。第2.2版 仕様書 26.6。18.3 はやめた）。
  *   使えない文字の名前は貼らない。ほかの式の参照は書き換えない。同じ名前の部材は parts.ts の duplicateNameIds で見つける
  * - 枚数：0 以上の整数だけ（空は空にする）。W・H：文字のまま式として入れる
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
+ * - 色・メモ（第2.2版）は写さない（中身だけ）。行をまるごと（5列）切り取って同じ仕事に貼ったときだけ、調整と同じく貼った行へ動かす
  * - ［調整］でコピーしたもの（clip.source が 'adjust'）は貼れない（第2.1版）
  * - 切り取り（clip.cut）：元のセルを空にする（第1.3版）。貼る先と重なるセル・1つも貼れなかったクリップの位置・
  *   切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で空にし、
@@ -427,8 +436,8 @@ export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, ne
     }
   }
 
-  // 行をまるごと切り取って、同じ仕事の表の左の端（名前の列）から貼るときは、調整も動かす（第2.1版）
-  const adjustMoves: AdjustMove[] = []
+  // 行をまるごと切り取って、同じ仕事の表の左の端（名前の列）から貼るときは、調整（第2.1版）・色・メモ（第2.2版）も動かす
+  const rowMoves: RowMove[] = []
   const fullRows = clip.cols === CELL_COLS.length && cut?.range.left === 0 && cut.range.cols === CELL_COLS.length
   if (sameJob && fullRows && !(clip.rows === 1 && clip.cols === 1)) {
     const top = Math.min(...cells.map((s) => s.row))
@@ -437,12 +446,12 @@ export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, ne
       for (let i = 0; i < clip.rows; i++) {
         const from = cut.range.top + i
         if (from >= job.parts.length) continue
-        adjustMoves.push({ from, to: top + i, srcs: CELL_COLS.map((_, j) => i * clip.cols + j) })
+        rowMoves.push({ from, to: top + i, srcs: CELL_COLS.map((_, j) => i * clip.cols + j) })
       }
     }
   }
 
-  const r = applyTargets(job, targets, newId, cutFirst, adjustMoves)
+  const r = applyTargets(job, targets, newId, cutFirst, rowMoves)
   let cutClear: { jobId: string; cells: CellPos[] } | null = null
   if (cut && !sameJob && r.pasted > 0) {
     const srcCells = [...r.filled]
@@ -498,7 +507,7 @@ export function selectedPartIds(job: Pick<Job, 'parts'>, selected: CellSelection
 }
 
 /**
- * 選んだセルの中身を消す（名前・W・H は空、厚み・枚数は空）。名前を消してもほかの式は書き換えない。
+ * 選んだセルの中身を消す（名前・W・H は空、厚み・枚数は空）。色・メモは消さない（第2.2版。仕様書 26.8）。名前を消してもほかの式は書き換えない。
  * 行の全部の欄が空になった部材は消す。空の行のセルは何もしない（部材の行が1つも無ければ同じ仕事を返す）
  */
 export function clearCells(job: Job, selected: CellSelection): Job {

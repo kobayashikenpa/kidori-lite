@@ -17,7 +17,7 @@ function emptyJob(): Job {
 }
 
 function part(id: string, name: string, W = '100', H = '200', quantity = 1): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable: false, finishedDone: false }
 }
 
 describe('duplicateName（複製の名前）', () => {
@@ -58,6 +58,9 @@ describe('duplicatePart（部材の複製）', () => {
       expr: { W: '天板.W - 20', H: '天板.H - 20 × 2' },
       adjust: { W: '-{n:adjust-melamine}', H: '' },
       thickness: null,
+      rowColor: null,
+      cellColors: {},
+      memo: '',
       quantity: 3,
       rotatable: true,
       finishedDone: false,
@@ -71,6 +74,15 @@ describe('duplicatePart（部材の複製）', () => {
     const r = duplicatePart(job, 'part-tenita', ids())
     if (!r.ok) throw new Error(r.message)
     expect(r.job.parts[2]).toMatchObject({ name: '天板のコピー', thickness: 18 })
+  })
+
+  it('色とメモも写す（セルの色は別のオブジェクト。第2.2版）', () => {
+    const job = shelfJob()
+    job.parts[3] = { ...job.parts[3], rowColor: 'blue', cellColors: { W: 'red' }, memo: '木目を縦に' }
+    const r = duplicatePart(job, 'part-tanaita', ids())
+    if (!r.ok) throw new Error(r.message)
+    expect(r.job.parts[4]).toMatchObject({ rowColor: 'blue', cellColors: { W: 'red' }, memo: '木目を縦に' })
+    expect(r.job.parts[4].cellColors).not.toBe(job.parts[3].cellColors)
   })
 
   it('途中の部材を複製すると、そのすぐ後ろ。もう1回で「天板のコピー2」', () => {

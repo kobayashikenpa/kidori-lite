@@ -58,7 +58,7 @@ export function copyJobName(name: string): string {
 }
 
 /**
- * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式・調整（第2.1版。仕様書 25.5）・厚み（第2.2版）のまま写し、id は新しくする。
+ * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式・調整（第2.1版。仕様書 25.5）・厚み・色・メモ（第2.2版）のまま写し、id は新しくする。
  * 切った記録（固定した1枚）と仕上がりの完了のチェックは写さない（暫定。kidori と同じく切った記録は写さない）。
  * 元の仕事は書き換えない
  */
@@ -70,6 +70,9 @@ export function copyJob(job: Job, now: Date, id: string, makeId: (prefix: string
     expr: { W: p.expr.W, H: p.expr.H },
     adjust: { W: p.adjust.W, H: p.adjust.H },
     thickness: p.thickness,
+    rowColor: p.rowColor,
+    cellColors: { ...p.cellColors },
+    memo: p.memo,
     quantity: p.quantity,
     rotatable: p.rotatable,
     finishedDone: false,
@@ -127,9 +130,9 @@ export function setSheet(job: Job, sheet: Sheet): OpResult {
 
 // ---------- 部材 ----------
 
-/** 新しい部材の下書き（枚数 1・回転しない・調整なし・厚みは空） */
+/** 新しい部材の下書き（枚数 1・回転しない・調整なし・厚みは空・色なし・メモなし） */
 export function newPart(id: string, p: Partial<Omit<Part, 'id'>> = {}): Part {
-  return { id, name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false, ...p }
+  return { id, name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: 1, rotatable: false, finishedDone: false, ...p }
 }
 
 /** 厚みに入れられないものを断る文（第2.2版。仕様書 26.1） */
@@ -157,7 +160,7 @@ export function insertPart(job: Job, index: number, part: Part): OpResult {
     job.parts.map((p) => p.name),
   )
   if (invalid) return fail(invalid)
-  const p: Part = { ...part, name, expr: { W: part.expr.W, H: part.expr.H }, adjust: { W: part.adjust.W, H: part.adjust.H } }
+  const p: Part = { ...part, name, expr: { W: part.expr.W, H: part.expr.H }, adjust: { W: part.adjust.W, H: part.adjust.H }, cellColors: { ...part.cellColors } }
   const err = validatePartFields(p)
   if (err) return fail(err)
   const i = Number.isInteger(index) && index >= 0 && index <= job.parts.length ? index : job.parts.length

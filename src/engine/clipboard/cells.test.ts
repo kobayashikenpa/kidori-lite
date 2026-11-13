@@ -9,7 +9,9 @@ import {
   clearCells,
   copyCells,
   COPY_SHAPE_MESSAGE,
+  cutCells,
   deleteRows,
+  fillCells,
   pasteCells,
   rowRange,
   selectedPartIds,
@@ -26,7 +28,7 @@ function ids(): (prefix: string) => string {
 const c = (row: number, col: CellCol): CellPos => ({ row, col })
 
 function part(id: string, name: string, W = '100', H = '200', quantity: number | null = 1): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable: false, finishedDone: false }
 }
 
 function jobOf(...parts: Part[]): Job {
@@ -466,5 +468,78 @@ describe('厚みの列（第2.2版。仕様書 26.1・26.8）', () => {
 
   it('コピーしたセルには列の並びの印（columns）が付く', () => {
     expect(okCopy(copyCells(shelfJob(), [c(0, 'T')])).columns).toBe('name,T,W,H,qty')
+  })
+})
+
+describe('色とメモは部材についていく（第2.2版。仕様書 26.3・26.8）', () => {
+  /** 棚板の W のセルを赤・行を黄・メモ「木目を縦に」、側板の行を青にした見本 */
+  const marked = () => {
+    const job = shelfJob()
+    job.parts[2] = { ...job.parts[2], rowColor: 'blue' }
+    job.parts[3] = { ...job.parts[3], rowColor: 'yellow', cellColors: { W: 'red' }, memo: '木目を縦に' }
+    return job
+  }
+  const marksOf = (p: Part) => [p.rowColor, p.cellColors, p.memo]
+
+  it('行をまるごと（5列）切り取って同じ仕事の下に貼ると、色・メモも貼った行へ動く', () => {
+    const job = marked()
+    const clip = okCopy(cutCells(job, rowRange(3)))
+    const r = okPaste(pasteCells(job, clip, [c(5, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板'])
+    expect(r.job.parts[3].id).toBe('part-new1')
+    expect(marksOf(r.job.parts[3])).toEqual(['yellow', { W: 'red' }, '木目を縦に'])
+  })
+
+  it('行をまるごと切り取ってほかの部材の行に貼ると、その行の色・メモは切り取った部材のものに入れ替わる', () => {
+    const job = marked()
+    const clip = okCopy(cutCells(job, rowRange(3)))
+    const r = okPaste(pasteCells(job, clip, [c(1, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '棚板', '側板'])
+    expect(marksOf(r.job.parts[1])).toEqual(['yellow', { W: 'red' }, '木目を縦に'])
+    expect(marksOf(r.job.parts[2])).toEqual(['blue', {}, ''])
+  })
+
+  it('2行をまるごと切り取って1行下にずらしても、色・メモは入れ違わない', () => {
+    const job = marked()
+    const clip = okCopy(cutCells(job, rowRange(2, 2)))
+    const r = okPaste(pasteCells(job, clip, [c(3, 'name')], ids()))
+    expect(r.job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板'])
+    expect(r.job.parts.map(marksOf)).toEqual([
+      [null, {}, ''],
+      [null, {}, ''],
+      ['blue', {}, ''],
+      ['yellow', { W: 'red' }, '木目を縦に'],
+    ])
+  })
+
+  it('セルのコピー・貼り付け・オートフィル・一部の欄の切り取り・ほかの仕事への貼り付けでは色・メモは写さない', () => {
+    const job = marked()
+    const one = okPaste(pasteCells(job, okCopy(copyCells(job, [c(3, 'W')])), [c(0, 'W')], ids()))
+    expect(marksOf(one.job.parts[0])).toEqual([null, {}, ''])
+    const row = okPaste(pasteCells(job, okCopy(copyCells(job, rowRange(3))), [c(4, 'name')], ids()))
+    expect(marksOf(row.job.parts[4])).toEqual([null, {}, ''])
+    const fill = fillCells(job, { top: 3, left: 0, rows: 1, cols: 5 }, { top: 3, left: 0, rows: 3, cols: 5 }, ids())
+    expect(fill.ok && fill.job.parts.slice(4).map(marksOf)).toEqual([
+      [null, {}, ''],
+      [null, {}, ''],
+    ])
+    const part = okPaste(pasteCells(job, okCopy(cutCells(job, { top: 3, left: 0, rows: 1, cols: 4 })), [c(5, 'name')], ids()))
+    expect(marksOf(part.job.parts[3])).toEqual(['yellow', { W: 'red' }, '木目を縦に'])
+    expect(marksOf(part.job.parts[4])).toEqual([null, {}, ''])
+    const other = okPaste(pasteCells(jobOf(), okCopy(cutCells(job, rowRange(3))), [c(0, 'name')], ids()))
+    expect(marksOf(other.job.parts[0])).toEqual([null, {}, ''])
+  })
+
+  it('クリアは中身だけ消し、色・メモは残す。行の欄がぜんぶ空になって部材が外れたときは色・メモも消える', () => {
+    const job = marked()
+    const cleared = clearCells(job, [c(3, 'W'), c(3, 'H')])
+    expect(marksOf(cleared.parts[3])).toEqual(['yellow', { W: 'red' }, '木目を縦に'])
+    const gone = clearCells(job, rowRange(3))
+    expect(gone.parts.map((p) => p.id)).toEqual(['part-zentai', 'part-tenita', 'part-gawaita'])
+  })
+
+  it('表の下に足す部材は色なし・メモなし', () => {
+    const r = okPaste(pasteCells(shelfJob(), clipOf([['300']]), [c(4, 'W')], ids()))
+    expect(marksOf(r.job.parts[4])).toEqual([null, {}, ''])
   })
 })

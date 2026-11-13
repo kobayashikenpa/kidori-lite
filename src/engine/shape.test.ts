@@ -119,3 +119,48 @@ describe('コピーしたセルの列の並び（第2.2版。仕様書 26.8）',
     expect(readCellClip(ok)).toEqual(ok)
   })
 })
+
+describe('色とメモの読み込み（第2.2版。仕様書 26.3・26.7）', () => {
+  const marked = () => {
+    const job = shelfJob()
+    job.parts[2] = { ...job.parts[2], rowColor: 'blue' }
+    job.parts[3] = { ...job.parts[3], cellColors: { W: 'red', T: 'yellow' }, memo: '木目を縦に\n角は R2' }
+    return job
+  }
+
+  it('色・メモのある部材はそのまま読む', () => {
+    const job = readJob(JSON.parse(JSON.stringify(marked())))
+    expect(job).toEqual(marked())
+  })
+
+  it('色・メモの無い前の版の部材は、色なし・メモなしとして読む', () => {
+    const job = readJob(toV21(marked()))
+    expect(job!.parts.map((p) => [p.rowColor, p.cellColors, p.memo])).toEqual(job!.parts.map(() => [null, {}, '']))
+  })
+
+  it('知らない色・知らない列・形の違うものは、色なし（メモなし）にして読む（仕事は読める）', () => {
+    const raw = JSON.parse(JSON.stringify(marked())) as { parts: Record<string, unknown>[] }
+    raw.parts[0].rowColor = 'green'
+    raw.parts[1].rowColor = 3
+    raw.parts[1].cellColors = { W: 'purple', H: 'blue', D: 'red', qty: null }
+    raw.parts[2].cellColors = 'red'
+    raw.parts[3].memo = 12
+    const job = readJob(raw)
+    expect(job).not.toBeNull()
+    expect(job!.parts.map((p) => [p.rowColor, p.cellColors, p.memo])).toEqual([
+      [null, {}, ''],
+      [null, { H: 'blue' }, ''],
+      ['blue', {}, ''],
+      [null, { W: 'red', T: 'yellow' }, ''],
+    ])
+  })
+
+  it('isPart は色・メモの形が正しい部材だけを通す', () => {
+    const p = shelfJob().parts[0]
+    expect(isPart(p)).toBe(true)
+    expect(isPart({ ...p, rowColor: 'green' })).toBe(false)
+    expect(isPart({ ...p, cellColors: { W: 'pink' } })).toBe(false)
+    expect(isPart({ ...p, cellColors: { D: 'red' } })).toBe(false)
+    expect(isPart({ ...p, memo: null })).toBe(false)
+  })
+})

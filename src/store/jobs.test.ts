@@ -10,6 +10,7 @@ import {
   defaultJobName,
   deleteJob,
   makeJob,
+  moveJobParts,
   newPart,
   removeAdjusts,
   removePart,
@@ -289,5 +290,36 @@ describe('同じ名前の部材（第2.2版 仕様書 26.6）', () => {
   it('片方の名前を変えられる。もう1つ同じ名前が残るので、ほかの式は書き換えない', () => {
     const job = okJob(updatePart(twoShelves(), 'part-tanaita2', { name: '棚板2' }))
     expect(job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板', '棚板2'])
+  })
+})
+
+describe('色とメモ（第2.2版。仕様書 26.3）', () => {
+  /** 棚板の W のセルを赤・メモ「木目を縦に」、側板の行を青にした見本 */
+  function marked(): Job {
+    const job = shelfJob()
+    job.parts[2] = { ...job.parts[2], rowColor: 'blue' }
+    job.parts[3] = { ...job.parts[3], cellColors: { W: 'red' }, memo: '木目を縦に' }
+    return job
+  }
+
+  it('新しい部材は色なし・メモなし', () => {
+    expect(newPart('p1')).toMatchObject({ rowColor: null, cellColors: {}, memo: '' })
+    expect(newPart('p1').cellColors).not.toBe(newPart('p2').cellColors)
+  })
+
+  it('仕事のコピーは色とメモも写す（セルの色は別のオブジェクト）', () => {
+    const src = marked()
+    const c = copyJob(src, NOW, 'job-copy', counter())
+    expect(c.parts.map((p) => [p.rowColor, p.cellColors, p.memo])).toEqual(src.parts.map((p) => [p.rowColor, p.cellColors, p.memo]))
+    expect(c.parts[3].cellColors).not.toBe(src.parts[3].cellColors)
+  })
+
+  it('上に行を入れる・並べ替え・動かす・消すで、色とメモはその部材についていく（消すと消える）', () => {
+    let job = okJob(insertPart(marked(), 0, newPart('n1', { name: '地板' })))
+    expect(job.parts[4]).toMatchObject({ id: 'part-tanaita', memo: '木目を縦に', cellColors: { W: 'red' } })
+    job = okJob(moveJobParts(job, 4, 1, 0))
+    expect(job.parts[0]).toMatchObject({ id: 'part-tanaita', memo: '木目を縦に' })
+    job = okJob(removePart(job, 'part-gawaita'))
+    expect(job.parts.some((p) => p.rowColor === 'blue')).toBe(false)
   })
 })

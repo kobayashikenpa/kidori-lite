@@ -38,9 +38,10 @@ import {
 import { usableAdjusts } from '../engine/adjusts'
 import { duplicatePart } from '../engine/clipboard/copy'
 import { computeDimensions } from '../engine/dimensions'
+import { setCellColor, setPartMemo, setRowColor } from '../engine/marks'
 import type { SortKey, SortOrder } from '../engine/order'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
-import type { AdjustCellPos, AdjustRow, AppData, Axis, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
+import type { AdjustCellPos, AdjustRow, AppData, Axis, CellPos, CellRange, Job, Part, PartColor, Settings, Sheet } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -200,6 +201,18 @@ export type StoreAction =
   | ({ type: 'fillPartAdjustCells'; from: CellRange; to: CellRange } & OnJob)
   /** ［調整］のタブのクリア（W・H の調整を空にする。名前・枚数は変えず、部材も消さない） */
   | ({ type: 'clearPartAdjustCells' } & SelectionArg & OnJob)
+  /**
+   * 選んだセルにセルの色を付ける（第2.2版。仕様書 26.3。セルの長押しのメニューの「色」）。color が null なら消す（「なし」）。
+   * 部材の無い空の行は何もしない（部材を作らない）。変わらなければ updatedAt を付けない
+   */
+  | ({ type: 'setCellColor'; color: PartColor | null } & SelectionArg & OnJob)
+  /**
+   * 選んだセルのある行（部材）に行の色を付ける（第2.2版。番号の長押しのメニューの「色」）。color が null なら行の色だけ消す（セルの色は残る）。
+   * 部材の無い空の行は何もしない。変わらなければ updatedAt を付けない
+   */
+  | ({ type: 'setRowColor'; color: PartColor | null } & SelectionArg & OnJob)
+  /** 部材のメモを入れる（第2.2版。空・空白だけで消す）。同じメモなら updatedAt を付けない */
+  | ({ type: 'setPartMemo'; partId: string; text: string } & OnJob)
   /** 切り出しチェック（その1枚の、ある部材の片をまとめて付け外し） */
   | ({ type: 'setPartCheck'; target: SheetTarget; partId: string; done: boolean } & OnJob)
   /** 切り出しチェック（片1つ） */
@@ -494,6 +507,12 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
     }
     case 'clearPartAdjustCells':
       return onJob(state, action.jobId, env, (j) => ({ ok: true, job: clearPartAdjustCells(j, selectionOf(action)) }))
+    case 'setCellColor':
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: setCellColor(j, selectionOf(action), action.color) }))
+    case 'setRowColor':
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: setRowColor(j, selectionOf(action), action.color) }))
+    case 'setPartMemo':
+      return onJob(state, action.jobId, env, (j) => setPartMemo(j, action.partId, action.text))
     case 'setPartCheck':
       return onJob(state, action.jobId, env, (j) =>
         setPartCheck(j, action.target, action.partId, action.done, env.now, env.newId('frozen')),

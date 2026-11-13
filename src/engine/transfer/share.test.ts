@@ -63,13 +63,16 @@ describe('jobFile・buildJobFile', () => {
 
   it('名前が空・枚数が空の部材もそのまま入る', () => {
     const job = shelfJob()
-    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, thickness: null, quantity: null, rotatable: true, finishedDone: true })
+    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: null, rotatable: true, finishedDone: true })
     expect(jobFile(job, shelfAdjusts()).job.parts[4]).toEqual({
       id: 'p5',
       name: '',
       expr: { W: '300', H: '400' },
       adjust: { W: '', H: '' },
       thickness: null,
+      rowColor: null,
+      cellColors: {},
+      memo: '',
       quantity: null,
       rotatable: true,
       finishedDone: false,
@@ -84,6 +87,16 @@ describe('部材の厚み（第2.2版。仕様書 26.7）', () => {
     const f = jobFile(job, shelfAdjusts())
     expect(f.version).toBe(1)
     expect(f.job.parts.map((p) => p.thickness)).toEqual([null, 18, null, null])
+  })
+})
+
+describe('色とメモ（第2.2版。仕様書 26.7）', () => {
+  it('行の色・セルの色・メモも入る（セルの色は写し）', () => {
+    const job = shelfJob()
+    job.parts[3] = { ...job.parts[3], rowColor: 'blue', cellColors: { W: 'red' }, memo: '木目を縦に' }
+    const f = jobFile(job, shelfAdjusts())
+    expect(f.job.parts[3]).toMatchObject({ rowColor: 'blue', cellColors: { W: 'red' }, memo: '木目を縦に' })
+    expect(f.job.parts[3].cellColors).not.toBe(job.parts[3].cellColors)
   })
 })
 

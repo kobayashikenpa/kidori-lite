@@ -8,6 +8,8 @@ import { packJob } from '../engine/packing'
 import { importTransfer } from '../engine/transfer/importFile'
 import { readTransferFile } from '../engine/transfer/read'
 import { buildJobFile } from '../engine/transfer/share'
+import { rowRange } from '../engine/clipboard/cells'
+import type { Job } from '../engine/types'
 import { currentJob, initialState, reduce, type Env, type StoreAction, type StoreState } from './reducer'
 
 const T0 = new Date(2026, 9, 21, 9, 0, 0)
@@ -458,5 +460,66 @@ describe('厚みの列のセル操作（第2.2版。今の action のまま使�
     expect(r.paste?.skipped).toEqual([{ cell: { row: 1, col: 'T' }, reason: 'notThickness', message: '厚みには 0 より大きい数だけ貼れます' }])
     s = r.state
     expect(T(s)).toEqual([null, null, null, null])
+  })
+})
+
+describe('色とメモ（第2.2版。仕様書 26.3）', () => {
+  /** 棚板の W のセルを赤、側板の行を青、棚板にメモ「木目を縦に」 */
+  function marked(): StoreState {
+    let s = run(start(), { type: 'setCellColor', cells: [{ row: 3, col: 'W' }], color: 'red' }).state
+    s = run(s, { type: 'setRowColor', range: rowRange(2), color: 'blue' }).state
+    s = run(s, { type: 'setPartMemo', partId: 'part-tanaita', text: '木目を縦に' }).state
+    return s
+  }
+  /** 部材の名前 → [行の色, セルの色, メモ] */
+  const marksOf = (job: Job) => Object.fromEntries(job.parts.map((p) => [p.name, [p.rowColor, p.cellColors, p.memo]]))
+  const MARKS = {
+    全体: [null, {}, ''],
+    天板: [null, {}, ''],
+    側板: ['blue', {}, ''],
+    棚板: [null, { W: 'red' }, '木目を縦に'],
+  }
+
+  it('セルの色・行の色・メモを付ける（updatedAt が付く）。変わらなければ updatedAt を付けない', () => {
+    const s = marked()
+    expect(marksOf(currentJob(s)!)).toEqual(MARKS)
+    const t = run(s, { type: 'setCellColor', cells: [{ row: 3, col: 'W' }], color: 'red' }, env(T1)).state
+    expect(t).toBe(s)
+    const u = run(s, { type: 'setRowColor', cells: [{ row: 2, col: 'name' }], color: null }, env(T1)).state
+    expect(currentJob(u)!.parts[2].rowColor).toBeNull()
+    expect(currentJob(u)!.updatedAt).toBe(T1.toISOString())
+    expect(run(s, { type: 'setPartMemo', partId: 'part-tanaita', text: '木目を縦に' }).state).toBe(s)
+    expect(reduce(s, { type: 'setPartMemo', partId: 'nope', text: 'x' }, env())).toEqual({ ok: false, message: '部材が見つかりません' })
+  })
+
+  it('上に行を挿入・番号を引いて動かす・W の大きい順に並べ替えても、色とメモはその部材についていく', () => {
+    let s = run(marked(), { type: 'insertPart', index: 0, part: { name: '地板' } }).state
+    expect(marksOf(currentJob(s)!)).toEqual({ 地板: [null, {}, ''], ...MARKS })
+    s = run(s, { type: 'moveParts', from: 4, count: 1, to: 0 }).state
+    expect(currentJob(s)!.parts[0].name).toBe('棚板')
+    expect(marksOf(currentJob(s)!)).toEqual({ 地板: [null, {}, ''], ...MARKS })
+    s = run(s, { type: 'sortParts', key: 'W', order: 'desc' }).state
+    expect(marksOf(currentJob(s)!)).toEqual({ 地板: [null, {}, ''], ...MARKS })
+  })
+
+  it('複製・仕事のコピーでも色とメモを写す', () => {
+    const d = run(marked(), { type: 'duplicatePart', partId: 'part-tanaita' })
+    expect(currentJob(d.state)!.parts[4]).toMatchObject({ name: '棚板のコピー', rowColor: null, cellColors: { W: 'red' }, memo: '木目を縦に' })
+    const c = run(marked(), { type: 'copyJob', jobId: 'job-shelf' })
+    expect(marksOf(c.state.data.jobs.find((j) => j.id === c.id)!)).toEqual(MARKS)
+  })
+
+  it('空の行に色・メモを付けても部材はできない', () => {
+    const s0 = start()
+    expect(run(s0, { type: 'setCellColor', cells: [{ row: 6, col: 'W' }], color: 'red' }).state).toBe(s0)
+    expect(run(s0, { type: 'setRowColor', range: rowRange(6), color: 'red' }).state).toBe(s0)
+  })
+
+  it('セルをコピーして貼っても色は写らない。クリアで色・メモが残る', () => {
+    let s = run(marked(), { type: 'copyCells', cells: [{ row: 3, col: 'W' }] }).state
+    s = run(s, { type: 'pasteCells', cells: [{ row: 0, col: 'W' }] }).state
+    expect(currentJob(s)!.parts[0].cellColors).toEqual({})
+    s = run(s, { type: 'clearCells', cells: [{ row: 3, col: 'W' }, { row: 3, col: 'qty' }] }).state
+    expect(currentJob(s)!.parts[3]).toMatchObject({ expr: { W: '' }, cellColors: { W: 'red' }, memo: '木目を縦に' })
   })
 })
