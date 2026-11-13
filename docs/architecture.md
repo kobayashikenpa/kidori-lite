@@ -980,3 +980,119 @@ export interface Part {
 - 名前のセルの右上の三角：`hasMemo(part)` のとき `.pt-name.memo::after`（`--warn` の色。3つの表）。読み上げに「（メモあり）」
 - `FormulaBar` の `memo`・`onMemo`：式の欄のすぐ下の `.fx-below`（表に重ねる）に、エラー（`.fx-err`）の下にメモ（`.fx-memo`。`-webkit-line-clamp: 2` で2行まで「…」）。押すとメモの欄。中身の無い欄（名前のセル）でもメモがあれば点線の空の欄とメモを出す。どの部材のメモかは式の欄と同じ（範囲の左上・入力中のセルの行。［木取り］は押したセルの行）
 - `useGrid.ts` の `stickyBottom()` は `.parts-sticky .fx-below` の下の端も数える（名前の入力中、行をメモ・エラーの下に見せる）
+
+## 16. 第2.3版の変更（仕様書 27章）：戻る・進む
+
+作業は `docs/tasks.md` の E-29・E-30・U-37・U-38。ここは planner の下書き（2026-11-13）。名前・形は作る人が決めてよく、作ったら実装に合わせて直す。決めきれない点は tasks.md の「第2.3版の未決事項」（案で進める）。
+
+- **考え方**：履歴は操作の **前と後の中身をまるごと持つ**（スナップショット。差分や「逆の操作」は作らない）。部材・設定・固定した1枚・調整寸法の表は変えずに新しいオブジェクトを作る作り（immutable）なので、変わらない部分は前のオブジェクトを共有し、50回持ってもメモリは小さい
+- **置き場所**：`src/store/history.ts`（React に依存しない純粋な関数。`reduce` と同じく Vitest でテストする）。今の `reduce` と reducer のテストは変えず、その外側で記録する
+- **保存しない**：履歴は `StoreState` に持つが、`saveSaved` は `data`・`currentJobId` だけを書くので保存されない（27.3）。戻す・進むで `data` が変わるので、今の自動保存（`JobStore.tsx` の useEffect）がそのまま保存する
+- **コピーしたセルは入れない**：`cellClip`・`adjustClip` は履歴に持たず、戻しても変わらない
+
+### 16.1 履歴の形（E-29。`src/store/history.ts`）
+
+```ts
+/** 仕事の中身のうち、戻すもの（名前・id・作った日・updatedAt は戻さない） */
+type JobBody = Pick<Job, 'parts' | 'settings' | 'frozenSheets'>
+
+interface HistoryEntry {
+  /** 何をしたか（E-30 の historyLabel。まとまりは最初の操作の名前）。知らせる文に使う */
+  label: string
+  /** まとめる印（dispatch の opts.group）。無ければ null */
+  group: string | null
+  /** 変わった仕事ごとの前と後（切り取りの元がほかの仕事なら2つ） */
+  jobs: { jobId: string; before: JobBody; after: JobBody }[]
+  /** 調整寸法の表（アプリ全体）の前と後。変わらなければ null */
+  adjusts: { before: AdjustRow[]; after: AdjustRow[] } | null
+}
+
+interface History {
+  past: HistoryEntry[]        // 古い順。最大 HISTORY_LIMIT（50）
+  future: HistoryEntry[]      // 戻した分（次に進むものが最後）
+  /** 最後にしたのが記録（'record'）か戻す・進む（'move'）か。まとめる・後片付けの判断に使う */
+  last: 'record' | 'move' | null
+  /** 戻す・進むのたびに 1 増える（画面が入力を終え、選んでいる範囲を外す合図） */
+  revision: number
+}
+
+interface StoreState { data; currentJobId; loadError; canSave; history: History }   // history を足す
+
+interface DispatchOptions {
+  /** 同じ印の操作が続いたら1回にまとめる。画面がセルの入力を始めるたびに新しい印を作る */
+  group?: string
+  /** 直前の1回に含める後片付け（空の行を外す）。直前が戻す・進むなら記録しない */
+  follow?: boolean
+}
+
+export const HISTORY_LIMIT = 50
+export function dispatchWithHistory(state: StoreState, action: StoreAction, env: Env, opts?: DispatchOptions): ReduceResult
+export function undoHistory(state: StoreState, env: Env): HistoryResult   // { ok: true; state; label } | { ok: false; message }
+export function redoHistory(state: StoreState, env: Env): HistoryResult
+export const canUndo = (h: History) => h.past.length > 0
+export const canRedo = (h: History) => h.future.length > 0
+```
+
+### 16.2 記録の決まり（E-29）
+
+`dispatchWithHistory` は `reduce` を呼び、結果を次の順で扱う。
+
+1. 失敗した操作・状態が変わらなかった操作は何もしない
+2. 開いている仕事（`currentJobId`）が変わったら履歴を空にする（ほかの仕事を開く・閉じる・新しい仕事を作って開く・開いている仕事の削除。同じ仕事を開き直したときは消さない＝未決事項 1）
+3. **戻せる操作**（下の表）で、仕事（`data.jobs` の中身 `JobBody`）か調整寸法の表（`data.adjusts`）が変わったときだけ記録する。変わった仕事は id ごとに前後の中身を比べて見つける（`jobs` 配列の要素の参照が変わったもの）
+   - `opts.follow`：`last === 'record'` なら直前の1回の「後」を新しくする（前は最初のまま）。それ以外は記録しない（先も消さない）
+   - `opts.group` が直前の1回の `group` と同じで `last === 'record'`：直前の1回の「後」を新しくする（ほかの仕事・調整寸法が新しく変わればそれも足す）
+   - それ以外：新しい1回を足し、`future` を空にし、`past` が 50 を超えたら古いものを捨てる
+   - まとめた結果、全部の前と後が同じ（`parts` の要素・`settings`・`frozenSheets`・`adjusts` の要素の参照が同じ）になった1回は外す（行を挿入して何も入れずに外した、など）
+4. **戻せない操作** で、開いている仕事の中身か調整寸法の表が変わったら履歴を空にする（`addSample` がメラミン1 を足した、`replaceData` など。未決事項 2）。名前の変更・ほかの仕事のコピー・ほかの仕事の削除は中身が変わらないので残る
+
+| 種類 | action |
+|---|---|
+| 戻せる（部材の画面） | `addPart`・`updatePart`・`setPartAdjust`・`removePart`・`insertPart`・`setAllRotatable`・`sortParts`・`moveParts`・`duplicatePart`・`pasteCells`・`fillCells`・`clearCells`・`deleteRows`・`pastePartAdjustCells`・`fillPartAdjustCells`・`clearPartAdjustCells`・`setCellColor`・`setRowColor`・`setPartMemo`・`updateSettings`（切り代） |
+| 戻せる（調整寸法の表。全部の仕事で共通） | `setAdjustCell`・`pasteAdjustCells`・`fillAdjustCells`・`clearAdjustCells`・`deleteAdjustRows`・`insertAdjustRow`・`addAdjust`・`updateAdjust`・`removeAdjusts` |
+| 戻せる（木取りの画面） | `setSheet`（3×6／4×8／自由入力）・`updateSettings`（刃厚・端切り・切り代・切り方）・`setPartCheck`・`setPieceCheck` |
+| 記録しない（仕事も調整寸法の表も変えない） | `copyCells`・`cutCells`・`copyPartAdjustCells`・`cutPartAdjustCells`・`copyAdjustCells`・`cutAdjustCells`・`dismissLoadError` |
+| 戻せない（仕事の画面。27.2） | `createJob`・`openJob`・`renameJob`・`copyJob`・`deleteJob`・`addSample`・`replaceData` |
+
+- 貼り付けで切り取りの元がほかの仕事のときは、その仕事も同じ1回に入る（戻すと両方戻る）。貼り付けでクリップが「ふつうのコピー」に変わるのは戻さない（未決事項 10）
+- **戻す**：`past` の最後の1回を取り、`jobs` の各仕事の中身を `before` に置き換え（名前・id はそのまま。updatedAt は今の時刻＝未決事項 9。その仕事が消えていれば飛ばす）、`adjusts` があれば表を `before` に。その1回を `future` へ。`last = 'move'`、`revision + 1`。**進む** は逆（`after` に置き換え、`past` へ）
+- 固定した1枚（`frozenSheets`）・切り出しチェックも中身に入っているので、チェックを戻すと固定した1枚も「チェックした時の形」に戻る（27.2）
+
+### 16.3 1回の名前と知らせる文（E-30）
+
+`historyLabel(action, before: StoreState): string`。部材の呼び名は操作の前の表示名（`partLabelAt`。名前の無い部材は「#3」）。
+
+| action | 名前（案） |
+|---|---|
+| `updatePart`（expr の W／H） | 棚板 の W ／ 棚板 の H |
+| `updatePart`（name・thickness・quantity） | 天板 の名前（前の名前）／ 棚板 の厚み ／ 棚板 の枚数 |
+| `updatePart`（rotatable・finishedDone） | 棚板 の回転 ／ 棚板 の仕上がり |
+| `addPart`（空の行に入れた） | 入れた欄で「#5 の W」など |
+| `setPartAdjust` | 棚板 の調整 W |
+| `insertPart`・`removePart`・`deleteRows`・`duplicatePart` | 行の挿入・行の削除・行の削除・複製 |
+| `sortParts`・`moveParts` | 並べ替え・行の移動 |
+| `pasteCells`・`fillCells`・`clearCells`（［調整］も同じ） | 貼り付け・オートフィル・クリア |
+| `setCellColor`・`setRowColor`・`setPartMemo` | 色・色・棚板 のメモ |
+| `setAllRotatable` | 全部回転 |
+| 調整寸法の表の操作 | 調整寸法の表 |
+| `setSheet` | 板のサイズ |
+| `updateSettings` | 刃厚・端切り・切り代・切り方（渡した設定の名前） |
+| `setPartCheck`・`setPieceCheck` | 切り出しチェック |
+
+- `historyNotice(kind, label)`：「戻しました：棚板 の W」／「進めました：棚板 の W」（未決事項 6）
+
+### 16.4 dispatch とまとまり（U-37）
+
+- `JobStore.tsx`：`dispatch(action, opts?)` は `dispatchWithHistory` を呼ぶ（id・時刻は今どおりここで1回だけ作る）。`undo()`・`redo()` は `undoHistory`・`redoHistory` を当て、知らせる文を返す。`JobStoreValue` に `undo`・`redo`・`canUndo`・`canRedo`・`historyRevision` を足す
+- 「セルの入力を終えるまでが1回」（27.2）は、**入力を始めるたびに新しい印（`group`）を作って、その入力の中の dispatch 全部に渡す** やり方にする。「始める／終える」の action は作らない（終えるのを呼び忘れると、あとの操作が全部1回にまとまってしまうため。印なら、ほかの操作が間に入れば自然に切れる）
+  - `PartsTable`：`selectCell` で名前・厚み・W・H・枚数の入力を始めたとき（「次へ」で進んだときも）に新しい印。`editExpr`・`pressQty`・`pressThick`・`commitName`・`addFromEmpty`・厚みを入力を始めたときの値に戻す `updatePart` に渡す
+  - `PartAdjustTable`：`startInput` で新しい印。`editAdjust`（`putAdjust` も）に渡す
+  - `CellMenu`：複数の部材の複製・回転・仕上がりのループは、押した1回ごとに新しい印
+  - 何も入っていない行を外す後片付け（`PartsTable` の `removePart`、`AdjustTable` の `removeAdjusts`。どちらも useEffect）は `follow`
+  - 印は `newId('group')` などでよい（中身に意味は無い）
+
+### 16.5 ボタンと知らせる文（U-38）
+
+- `components/UndoRedo.tsx`：「↶ 戻る」「↷ 進む」（44px 以上。`canUndo`・`canRedo` が false なら `disabled` で薄く）。押したら `undo()`・`redo()`、知らせる文をボタンの帯のすぐ下に重ねて出す（未決事項 6）
+- 部材の画面：`.parts-sticky` のタブの右（`.parts-tabs` と横に並べる。375px に収める＝未決事項 8）。木取りの画面：見出しの行を新しい止める帯（`position: sticky`。`top` は `.topbar` の高さ。`useTopbarHeight` は共通の所へ移す）にして右に置く
+- 戻す・進むのあと：`historyRevision` が変わったら、表は入力を終えて選んでいる範囲を外す（`useGrid` の `resetKey` に足す）。入力中に押したときは、ボタンを押した時点で表の外を押したことになり（`useOutsideEnd`）、入力を確定してから戻す（未決事項 5）
