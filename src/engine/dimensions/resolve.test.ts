@@ -166,3 +166,37 @@ describe('厚みの参照（部材名.T。第2.2版 仕様書 26.1）', () => {
     ])
   })
 })
+
+describe('同じ名前の部材を参照している式（第2.2版 仕様書 26.6）', () => {
+  it('棚板が2つあると、棚板.W を使う式は ambiguousRef「棚板 が2つあります」（どちらか決まらない）。依存関係には入れない', () => {
+    const parts = [mkPart('棚板', { W: '300' }), mkPart('X', { W: '棚板.W + 1' }), { ...mkPart('棚板', { W: '500' }), id: 'id-棚板2' }]
+    const r = resolve(parts)
+    expect(r.errors).toEqual([
+      { partId: 'id-X', axis: 'W', field: 'finished', kind: 'ambiguousRef', message: '棚板 が2つあります', refs: ['棚板'] },
+    ])
+    expect(r.nodes.get('id-X:W')!.deps).toEqual([])
+  })
+
+  it('3つなら「3つ」。全角・半角だけ違う名前も同じ名前とみなす。厚み（棚板.T）も同じ', () => {
+    const parts = [
+      mkPart('棚板1', {}, 18),
+      { ...mkPart('棚板１', {}, 18), id: 'b' },
+      { ...mkPart('棚板1', {}, 18), id: 'c' },
+      mkPart('X', { W: '棚板1.W', H: '棚板１.T × 10' }),
+    ]
+    expect(resolve(parts).errors.map((e) => [e.axis, e.kind, e.message])).toEqual([
+      ['W', 'ambiguousRef', '棚板1 が3つあります'],
+      ['H', 'ambiguousRef', '棚板1 が3つあります'],
+    ])
+  })
+
+  it('同じ名前の部材そのものの式はエラーにしない', () => {
+    const parts = [mkPart('棚板', { W: '300' }), { ...mkPart('棚板', { W: '500' }), id: 'id-棚板2' }]
+    expect(resolve(parts).errors).toEqual([])
+  })
+
+  it('同じ名前の部材は「使っている」の確認では、どちらも使われていないとみなす（式はどちらも指さない）', () => {
+    const parts = [mkPart('棚板', { W: '300' }), mkPart('X', { W: '棚板.W + 1' }), { ...mkPart('棚板', { W: '500' }), id: 'id-棚板2' }]
+    expect(partsReferencing(parts, 'id-棚板')).toEqual([])
+  })
+})

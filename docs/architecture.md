@@ -864,3 +864,23 @@ export interface CellClip { rows; cols; cells; cut?; source?; columns?: string }
 - `migrate/finishedAdjusts.ts` の `inlineCellClipAdjusts` は列の位置を見ていないので変えていない
 - store（`reducer.ts`）：action は変えていない（`copyCells`・`pasteCells`・`fillCells`・`clearCells` で厚みの列がそのまま使える。テストで確かめた）
 - **画面の最小限の直し**（厚みのセルは U-30 で作る）：`ui/cellSelect.ts` の `CELL_COL_LABEL` に `T: '厚み'`。`PartsTable.tsx`：`FIELD_LABEL`・`SORT_KEY` を `Record<CellCol, …>` にして T を足し、`sortChoices` の引数を `CellCol` に、`onPressCell` は厚みの列なら何もしない、見出しは `CELL_COLS.map` で T を出さない（位置 `c` は 0〜4 のまま）、枚数のセルの `data-col` を `colOf('qty')`（4）に。`PartAdjustTable.tsx`：見出しで T を出さない、枚数のセルの位置を `QTY_COL`（4）に。`ui/partsTable.ts` の `TableField`（名前・W・H・枚数）は変えていない
+
+### 15.4 名前はそのまま貼る・同じ名前のエラー（E-27。spec 26.6・26.8）
+
+```ts
+// types.ts
+export type DimensionErrorKind = … | 'ambiguousRef'   // 同じ名前が2つ以上ある部材を参照（どちらか決まらない）
+// parts.ts
+export const DUPLICATE_NAME_MESSAGE = '同じ名前があります'
+export function duplicateNameCounts(parts): Map<string, number>   // そろえた名前 → 数（2つ以上だけ。空の名前は数えない）
+export function duplicateNameIds(parts): Set<string>               // 同じ名前の部材の id
+// dimensions/resolve.ts
+export function ambiguousRefMessage(name, count): string          // 「棚板 が2つあります」
+```
+
+- **貼り付け・オートフィル**（`clipboard/cells.ts` の `applyTargets`）：名前は前後の空白を外して **そのまま** 入れる（18.3 の番号を振る処理 `assignNames`・`numberedName` をなくした）。使えない文字の名前は今までどおり貼らない（`invalidName`）。全角・半角だけ違う名前も書いたまま（`棚板１` は `棚板１`）。結果の `renamed`（`PasteRenamed`）は **いつも空**（画面の知らせの直しは U-33。形だけ残した）。`partAdjustCells.ts` は前から `renamed: []`
+- **同じ名前の見つけ方**（`parts.ts`）：`normalizePartName` でそろえて比べる（全角・半角の違いは同じ）。空の名前・空白だけの名前は数えない。画面は `duplicateNameIds(job.parts)` の部材の名前のセルを赤にし、選んだら `DUPLICATE_NAME_MESSAGE` を出す（U-33）
+- **式**（`dimensions/resolve.ts`）：同じ名前の部材が2つ以上ある名前を参照している式（`棚板.W`・`棚板.H`・`棚板.T`）は、`ambiguousRef`（「棚板 が2つあります」。3つなら「3つ」。`refs` に名前。field は finished）にし、依存関係（`deps`・`thicknessDeps`）に入れない。今までの「重複していれば先のものを使う」はやめた。エラーの並びは unknownRef → ambiguousRef → noThickness。同じ名前の部材そのものの寸法は計算し、木取りにも入れる。参照している寸法にはエラーが `from` 付きで伝わる
+- `partsReferencing`：同じ名前の部材は、どちらも「使われていない」になる（式はどちらも指していないため。片方を消すと、式は残ったほうを指すようになる）
+- **名前の変更**（`formula/rename.ts` の `renamePart`）：打って同じ名前にするのは今までどおり断る（`validatePartName`。文は「「棚板」という部材はすでにあります」のまま。26.8）。同じ名前の部材の片方の名前を変えたとき、もう1つ同じ名前が残るなら、ほかの部材の式は書き換えない（式は残った部材を指すようになり、エラーが消える）
+- `store/jobs.ts` の `insertPart`・`addPart`・`updatePart`：変えていない（打って同じ名前は断る。同じ名前の部材の名前以外の欄は変えられる。テストで確かめた）。複製（`duplicateName`「棚板のコピー」）・行をまるごと切り取って動かすときも今のまま

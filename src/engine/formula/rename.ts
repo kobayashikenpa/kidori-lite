@@ -24,7 +24,9 @@ export type RenameResult = { ok: true; parts: Part[] } | { ok: false; message: s
 /**
  * 部材の名前を変え、すべての部材の式の参照をつけ替えた新しい一覧を返す（元の一覧は書き換えない）。
  * 使えない名前・ほかの部材と同じ名前ならエラー。空の名前にもできる（空どうしは重ならない。
- * 空にした部材を参照していた式は、元の名前のまま残り「◯◯という部材はありません」のエラーになる）
+ * 空にした部材を参照していた式は、元の名前のまま残り「◯◯という部材はありません」のエラーになる）。
+ * 同じ名前の部材（第2.2版。貼り付けでできる）の片方の名前を変えたとき、もう1つ同じ名前が残るなら、ほかの式は書き換えない
+ * （式は残った部材を指すようになる。仕様書 26.8）
  */
 export function renamePart(parts: readonly Part[], partId: string, newName: string): RenameResult {
   const target = parts.find((p) => p.id === partId)
@@ -36,8 +38,11 @@ export function renamePart(parts: readonly Part[], partId: string, newName: stri
     parts.filter((p) => p.id !== partId).map((p) => p.name),
   )
   if (invalid) return { ok: false, message: invalid }
-  // 名前が空の部材は参照されていない。空にするときは「.W」にしないよう、式はそのまま残す
-  if (oldName.trim() === '' || newName.trim() === '') {
+  // 名前が空の部材は参照されていない。空にするときは「.W」にしないよう、式はそのまま残す。
+  // 同じ名前の部材がほかにも残るときは、式はその部材を指したままにする（第2.2版）
+  const oldKey = normalizePartName(oldName)
+  const sameRemains = parts.some((p) => p.id !== partId && p.name.trim() !== '' && normalizePartName(p.name) === oldKey)
+  if (oldName.trim() === '' || newName.trim() === '' || sameRemains) {
     return { ok: true, parts: parts.map((p) => (p.id === partId ? { ...p, name: newName } : p)) }
   }
   return {

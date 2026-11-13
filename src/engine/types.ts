@@ -79,7 +79,9 @@ export interface Adjust {
 export interface Part {
   id: string
   /**
-   * 仕事の中で重複不可（全角・半角の違いは同じとみなす）。式の参照に使う。
+   * 打って入れるときは仕事の中で重複不可（全角・半角の違いは同じとみなす）。式の参照に使う。
+   * 第2.2版から、貼り付け・オートフィルでは同じ名前のまま入る（仕様書 26.6）。同じ名前の部材は parts.ts の duplicateNameIds で見つけ、
+   * その名前を参照している式はエラー（ambiguousRef）。
    * 空でもよい（第1.1版）。空どうしは重ならず、画面では「#3」（行番号）と出す（parts.ts の partLabel）。空の部材は式から参照できない
    */
   name: string
@@ -236,6 +238,7 @@ export type DimensionErrorKind =
   | 'syntax' // 式が読めない
   | 'unknownRef' // 存在しない部材名を参照
   | 'noThickness' // 厚みが空の部材の厚み（部材名.T）を参照（第2.2版）
+  | 'ambiguousRef' // 同じ名前の部材が2つ以上ある名前を参照（どちらか決まらない。第2.2版）
   | 'unknownAdjust' // 式が使っている調整寸法が削除されている
   | 'cycle' // 循環参照
   | 'nonPositive' // 計算結果が 0 以下
@@ -255,7 +258,7 @@ export interface DimensionError {
   kind: DimensionErrorKind
   /** 画面にそのまま出せる日本語 */
   message: string
-  /** unknownRef・noThickness の部材名、cycle の部材名の並び */
+  /** unknownRef・noThickness・ambiguousRef の部材名、cycle の部材名の並び */
   refs?: string[]
   /**
    * 入れている途中の形の式（syntax のときだけ。空・終わりが記号や「(」・かっこが閉じていない・「1.」。第1.4版。仕様書 18.5）。

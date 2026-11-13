@@ -264,3 +264,30 @@ describe('調整寸法', () => {
     expect(updateAdjust(list, MELAMINE_ID, { name: 'シート', value: 0.5 }).ok).toBe(false)
   })
 })
+
+describe('同じ名前の部材（第2.2版 仕様書 26.6）', () => {
+  /** 貼り付けで「棚板」が2つになった仕事 */
+  function twoShelves(): Job {
+    const job = shelfJob()
+    job.parts.push({ ...job.parts[3], id: 'part-tanaita2' })
+    return job
+  }
+
+  it('打って同じ名前にするのは今までどおり断る（追加・上に入れる・名前の変更）', () => {
+    const msg = { ok: false, message: '「棚板」という部材はすでにあります' }
+    expect(addPart(shelfJob(), newPart('n', { name: '棚板' }))).toEqual(msg)
+    expect(insertPart(shelfJob(), 0, newPart('n', { name: '棚板' }))).toEqual(msg)
+    expect(updatePart(shelfJob(), 'part-gawaita', { name: '棚板' })).toEqual(msg)
+  })
+
+  it('同じ名前の部材の、名前以外（枚数・式・厚み）は変えられる', () => {
+    let job = okJob(updatePart(twoShelves(), 'part-tanaita2', { quantity: 5, thickness: 18 }))
+    job = okJob(updatePart(job, 'part-tanaita2', { expr: { W: '300' } }))
+    expect(job.parts[4]).toMatchObject({ name: '棚板', quantity: 5, thickness: 18, expr: { W: '300' } })
+  })
+
+  it('片方の名前を変えられる。もう1つ同じ名前が残るので、ほかの式は書き換えない', () => {
+    const job = okJob(updatePart(twoShelves(), 'part-tanaita2', { name: '棚板2' }))
+    expect(job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板', '棚板2'])
+  })
+})

@@ -253,16 +253,16 @@ describe('切り取り・オートフィル・四角の範囲（第1.3版）', (
     expect(r.state.data.cellClip?.cut).toBeUndefined()
   })
 
-  it('オートフィル：2行の範囲を下に5行引くと くり返して入る。名前は番号を振って入る（仕様書 18.3）', () => {
+  it('オートフィル：2行の範囲を下に5行引くと くり返して入る。名前はそのまま入る（仕様書 26.6）', () => {
     const r = run(start(), { type: 'fillCells', from: { top: 0, left: 0, rows: 2, cols: 3 }, to: { top: 0, left: 0, rows: 7, cols: 3 } }, env(T1))
     expect(currentJob(r.state)!.parts.map((p) => [p.name, p.expr.W])).toEqual([
       ['全体', '400'],
       ['天板', '全体.W'],
-      ['全体1', '400'],
-      ['天板1', '全体.W'],
-      ['全体2', '400'],
-      ['天板2', '全体.W'],
-      ['全体3', '400'],
+      ['全体', '400'],
+      ['天板', '全体.W'],
+      ['全体', '400'],
+      ['天板', '全体.W'],
+      ['全体', '400'],
     ])
     expect(r.paste?.pasted).toBe(15)
     expect(r.paste?.skipped).toEqual([])

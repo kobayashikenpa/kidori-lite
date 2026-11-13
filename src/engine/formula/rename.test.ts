@@ -131,3 +131,29 @@ describe('厚みの参照の名前のつけ替え（第2.2版。仕様書 26.1�
     expect(r.ok && r.parts[2].expr).toEqual({ W: '全体.W', H: '全体.H - 甲板.T × 2' })
   })
 })
+
+describe('同じ名前の部材の名前を変える（第2.2版 仕様書 26.6・26.8）', () => {
+  /** 見本の棚に、もう1つ「天板」を足したもの（天板を使う棚板の式はエラーになっている） */
+  function twoTops() {
+    const parts = shelfJob().parts
+    parts.push({ ...parts[1], id: 'part-tenita2' })
+    return parts
+  }
+
+  it('もう1つ同じ名前が残るときは、ほかの部材の式を書き換えない（残った天板を指すようになる）', () => {
+    const r = renamePart(twoTops(), 'part-tenita2', '天板B')
+    expect(r.ok && r.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板', '天板B'])
+    expect(r.ok && r.parts[3].expr).toEqual({ W: '天板.W - 20', H: '天板.H - 20 × 2' })
+  })
+
+  it('同じ名前が無くなったあとに名前を変えると、今までどおり書き換える', () => {
+    const r1 = renamePart(twoTops(), 'part-tenita2', '天板B')
+    if (!r1.ok) throw new Error(r1.message)
+    const r2 = renamePart(r1.parts, 'part-tenita', '天板A')
+    expect(r2.ok && r2.parts[3].expr).toEqual({ W: '天板A.W - 20', H: '天板A.H - 20 × 2' })
+  })
+
+  it('打って同じ名前にするのは、今までどおり断る（「「天板」という部材はすでにあります」）', () => {
+    expect(renamePart(shelfJob().parts, 'part-gawaita', '天板')).toEqual({ ok: false, message: '「天板」という部材はすでにあります' })
+  })
+})

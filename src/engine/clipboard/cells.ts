@@ -5,7 +5,7 @@
 // - コピーは「1つのセル」か「四角い範囲（続いた行 × 続いた列）」だけ。中身は文字のまま（式は書いたまま、厚み・枚数は数字の文字）
 // - 貼り付けは中身の上書き（名前を貼っても、ほかの式の参照は書き換えない。名前の変更ではない）
 // 仕事は書き換えず、新しい仕事を返す（updatedAt とコピーしたセル AppData.cellClip の保存は store の側で行う）
-import { normalizeFormulaText, normalizePartName, validatePartName } from '../formula/tokenize'
+import { normalizeFormulaText, validatePartName } from '../formula/tokenize'
 import { isBlankPart } from '../parts'
 import { CELL_COLS, CELL_COLS_KEY, type CellClip, type CellCol, type CellPos, type CellRange, type Job, type Part } from '../types'
 
@@ -142,11 +142,14 @@ export function cutCells(job: Pick<Job, 'id' | 'parts'>, selected: CellSelection
 /**
  * 貼れなかった理由。invalidName：名前に使えない文字 / notQuantity：枚数に 0 以上の整数でないもの /
  * notThickness：厚みに 0 より大きい数でないもの（第2.2版）。
- * 第1.4版で、同じ名前になるときは貼らずに番号を振るようにした（duplicateName・fillName はなくした。仕様書 18.3）
+ * 同じ名前は理由にならない（第2.2版から同じ名前のまま貼る。仕様書 26.6）
  */
 export type PasteSkipReason = 'invalidName' | 'notQuantity' | 'notThickness'
 
-/** 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3）。from は貼ろうとした名前、to は振ったあとの名前 */
+/**
+ * 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3）。from は貼ろうとした名前、to は振ったあとの名前。
+ * 第2.2版で番号を振るのをやめた（仕様書 26.6）ので、結果の renamed はいつも空（画面の直し U-33 まで形だけ残す）
+ */
 export interface PasteRenamed {
   cell: CellPos
   from: string
@@ -169,7 +172,7 @@ export type PasteCellsResult =
       pasted: number
       /** 貼れなかったセル（表の上から・左から） */
       skipped: PasteSkip[]
-      /** 名前が重なるので番号を振って貼ったセル（表の上から・左から。第1.4版） */
+      /** いつも空（第2.2版で番号を振るのをやめた。仕様書 26.6。画面の直し U-33 まで形だけ残す） */
       renamed: PasteRenamed[]
       /**
        * 切り取りを、元と違う仕事に貼ったとき：元の仕事で空にするセル（clearCutSource に渡す）。それ以外は null。
@@ -258,7 +261,7 @@ interface Applied {
 /**
  * 表の位置に文字を書く（貼り付けとオートフィルで同じ）。
  * - 空の行（部材の数以上）は、上から部材の後ろに詰めて部材を作る（id は newId('part')、枚数は空から、回転しない）
- * - cutFirst：同じ仕事の切り取りの元。書く前に空にし（名前の重なりを空にしたあとで比べるため）、
+ * - cutFirst：同じ仕事の切り取りの元。書く前に空にし、
  *   そのクリップの位置が1つも貼れなかったセルは元に戻す
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
  */
@@ -316,18 +319,23 @@ function applyTargets(
     pasted++
   }
 
-  // 名前：使えない文字のものは貼らず、重なる名前には番号を振る（第1.4版。仕様書 18.3）
-  const names = assignNames(parts, writes)
-  for (const n of names.skipped) skipped.push(n)
-  for (const a of names.accepted) {
-    parts[a.write.index].name = a.name
-    touched.add(a.write.index)
-    filled.add(a.write.src)
+  // 名前：前後の空白を外してそのまま入れる（同じ名前でも番号を振らない。第2.2版 仕様書 26.6）。使えない文字のものは貼らない
+  for (const w of writes) {
+    if (w.cell.col !== 'name') continue
+    const name = w.text.trim()
+    const invalid = validatePartName(name)
+    if (invalid) {
+      skipped.push({ cell: w.cell, reason: 'invalidName', message: invalid })
+      continue
+    }
+    parts[w.index].name = name
+    touched.add(w.index)
+    filled.add(w.src)
     pasted++
   }
 
   skipped.sort((a, b) => a.cell.row - b.cell.row || colIndex(a.cell.col) - colIndex(b.cell.col))
-  const renamed = names.renamed
+  const renamed: PasteRenamed[] = []
   if (pasted === 0) return { job, pasted, skipped, renamed, filled }
   // 切り取りの元：貼れた位置は空のまま、貼れなかった位置は元に戻す
   for (const c of cutFirst) {
@@ -347,90 +355,6 @@ function applyTargets(
   }
   const kept = parts.filter((p, i) => !(touched.has(i) || i >= count) || !isBlankPart(p))
   return { job: { ...job, parts: kept }, pasted, skipped, renamed, filled }
-}
-
-/**
- * 名前の後ろに番号を振る：1 から、used（そろえた名前）と重ならない一番小さい番号（棚板 → 棚板1、棚板2 …）。
- * 名前の終わりが数字（半角・全角）なら、その数字を外した名前に振る（棚板1 → 棚板2。棚板11 にしない。仕様書 18.3）。
- * 数字だけの名前は、外すと空になるのでそのまま後ろに振る
- */
-function numberedName(name: string, used: ReadonlySet<string>): string {
-  const stripped = name.replace(/[0-9０-９]+$/u, '')
-  const base = stripped === '' ? name : stripped
-  for (let n = 1; ; n++) {
-    const candidate = `${base}${n}`
-    if (!used.has(normalizePartName(candidate))) return candidate
-  }
-}
-
-/**
- * 名前の欄に書く名前を決める（第1.4版。仕様書 18.3）。parts は切り取りの元を空にしたあとの部材。
- * - 前後の空白を外す。名前に使えない文字のものは貼らない（invalidName）
- * - 書く先が今と同じ名前（そろえた名前）なら、今の名前のまま（コピー元の名前は変えない）
- * - 貼ったあとに残る名前（書かない行の名前）や、ほかの貼る名前と重なる名前は、後ろに番号を振る。
- *   番号は 1 から、残る名前・重ならずにそのまま貼る名前・先に振った名前のどれとも重ならない一番小さい番号（書く順＝上から・左から）
- * - 重ならなければそのまま（切り取りで動かすとき・入れ替え A・B → B・A も）。空の名前は重なりとみなさない
- */
-function assignNames(
-  parts: readonly Part[],
-  writes: readonly Write[],
-): { accepted: { write: Write; name: string }[]; skipped: PasteSkip[]; renamed: PasteRenamed[] } {
-  const skipped: PasteSkip[] = []
-  const valid: { write: Write; name: string }[] = []
-  for (const w of writes) {
-    if (w.cell.col !== 'name') continue
-    const name = w.text.trim()
-    const invalid = validatePartName(name)
-    if (invalid) skipped.push({ cell: w.cell, reason: 'invalidName', message: invalid })
-    else valid.push({ write: w, name })
-  }
-  const written = new Set(valid.map((v) => v.write.index))
-  // 貼ったあとに残る名前（書かない行。使えない名前で貼らなかった行も今の名前が残る）
-  const used = new Set<string>()
-  parts.forEach((p, i) => {
-    if (!written.has(i) && p.name.trim() !== '') used.add(normalizePartName(p.name))
-  })
-  // 今と同じ名前を書く行は、今の名前のまま残す
-  const accepted: { write: Write; name: string }[] = []
-  const rest: { write: Write; name: string }[] = []
-  for (const v of valid) {
-    const current = parts[v.write.index].name
-    if (v.name !== '' && current.trim() !== '' && normalizePartName(current) === normalizePartName(v.name) && !used.has(normalizePartName(current))) {
-      used.add(normalizePartName(current))
-      accepted.push({ write: v.write, name: current })
-    } else {
-      rest.push(v)
-    }
-  }
-  // 貼るものどうしの数（そろえた名前ごと）
-  const count = new Map<string, number>()
-  for (const v of rest) if (v.name !== '') count.set(normalizePartName(v.name), (count.get(normalizePartName(v.name)) ?? 0) + 1)
-  const needsNumber = (v: { name: string }): boolean => {
-    if (v.name === '') return false
-    const key = normalizePartName(v.name)
-    return used.has(key) || (count.get(key) ?? 0) > 1
-  }
-  // 重ならない名前を先に取っておき、番号はそれとも重ならないように振る
-  const numbering = rest.filter(needsNumber)
-  for (const v of rest) {
-    if (numbering.includes(v)) continue
-    if (v.name !== '') used.add(normalizePartName(v.name))
-    accepted.push(v)
-  }
-  const renamed: PasteRenamed[] = []
-  for (const v of numbering) {
-    const to = numberedName(v.name, used)
-    const invalid = validatePartName(to)
-    if (invalid) {
-      skipped.push({ cell: v.write.cell, reason: 'invalidName', message: invalid })
-      continue
-    }
-    used.add(normalizePartName(to))
-    accepted.push({ write: v.write, name: to })
-    renamed.push({ cell: v.write.cell, from: v.name, to })
-  }
-  renamed.sort((a, b) => a.cell.row - b.cell.row || colIndex(a.cell.col) - colIndex(b.cell.col))
-  return { accepted, skipped, renamed }
 }
 
 /** 切り取りの元の範囲で、クリップの中の位置 src にあたるセル（表をはみ出せば null） */
@@ -459,14 +383,13 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  * - 範囲のコピー：選んだセルの一番左上（いちばん上の行・いちばん左の列）から同じ形で貼る。表の右（枚数）をはみ出す列は貼らない
  * - 厚み：0 より大きい数だけ（全角の数字・小数点も。空は空にする）。それ以外は貼らない（notThickness。第2.2版）
  * - 空の行に貼ると部材を作る（id は newId('part')、枚数は空から、回転しない）。途中の空の行も、部材の後ろに上から詰めて足す（暫定）
- * - 名前：前後の空白を外して入れる。貼ったあと同じ名前（normalizePartName。名前のある部材どうし）になるときは、
- *   後ろに番号を振って貼る（棚板 → 棚板1、棚板2 …。終わりの数字は外して振る：棚板1 → 棚板2。振ったものは renamed。第1.4版。assignNames）。使えない文字の名前は貼らない。
- *   ほかの式の参照は書き換えない
+ * - 名前：前後の空白を外して、そのまま入れる（同じ名前になっても番号を振らない。第2.2版 仕様書 26.6。18.3 はやめた）。
+ *   使えない文字の名前は貼らない。ほかの式の参照は書き換えない。同じ名前の部材は parts.ts の duplicateNameIds で見つける
  * - 枚数：0 以上の整数だけ（空は空にする）。W・H：文字のまま式として入れる
  * - 貼って行の全部の欄が空になった部材は消す。1つも貼れなかったときは同じ仕事を返す
  * - ［調整］でコピーしたもの（clip.source が 'adjust'）は貼れない（第2.1版）
  * - 切り取り（clip.cut）：元のセルを空にする（第1.3版）。貼る先と重なるセル・1つも貼れなかったクリップの位置・
- *   切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で空にし（名前は空にしたあとで重なりを比べる）、
+ *   切り取ったあとに書き換えたセルは空にしない。同じ仕事なら返す job の中で空にし、
  *   違う仕事なら cutClear で返す。クリップをふつうのコピーに変えるのは store の側
  */
 export function pasteCells(job: Job, clip: CellClip, selected: CellSelection, newId: (prefix: string) => string): PasteCellsResult {
@@ -546,7 +469,7 @@ export function clearCutSource(job: Job, clip: CellClip, cells: readonly CellPos
  * オートフィル（仕様書 17.4）：元の範囲 from の値を、引いた先の範囲 to の行へ上下にくり返して入れる（数は増やさない）。
  * - to は元を含めた引いたあとの範囲でも、元を除いた所だけでもよい。元の行は書かない。列はいつも元の列（上下だけ）
  * - 上へ引いたときも、元の並びがつながるようにくり返す（元の下の端の行が、元のすぐ上に入る）
- * - 名前の列も入れる。重なる名前には貼り付けと同じく番号を振る（棚板 → 棚板1、棚板2 …。第1.4版。仕様書 18.3）
+ * - 名前の列も入れる。貼り付けと同じく、同じ名前のまま入れる（番号を振らない。第2.2版 仕様書 26.6）
  * - 厚み・枚数・W・H・行が足りないときの部材の足し方・全部空になった部材は、貼り付け（pasteCells）と同じ
  */
 export function fillCells(job: Job, from: CellRange, to: CellRange, newId: (prefix: string) => string): PasteCellsResult {

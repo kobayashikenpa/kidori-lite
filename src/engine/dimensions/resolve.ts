@@ -3,7 +3,7 @@
 import { refsOf } from '../formula/evaluate'
 import { parse, type Expr } from '../formula/parse'
 import { normalizePartName } from '../formula/tokenize'
-import { hasName, partLabels } from '../parts'
+import { duplicateNameCounts, hasName, partLabels } from '../parts'
 import { AXES, type Adjust, type Axis, type DimensionError, type Part } from '../types'
 
 /** 部材の1つの寸法（部材.W など） */
@@ -30,7 +30,7 @@ export interface Resolution {
   nodes: Map<string, DimNode>
   /** すべての寸法の計算順。参照先が先に並ぶ（循環している寸法も含む） */
   order: DimRef[]
-  /** 式そのもののエラー（syntax・unknownRef・noThickness・cycle。仕上がりの欄なので field はいつも finished）。部材の並び順 → W・H の順 */
+  /** 式そのもののエラー（syntax・unknownRef・ambiguousRef・noThickness・cycle。仕上がりの欄なので field はいつも finished）。部材の並び順 → W・H の順 */
   errors: DimensionError[]
 }
 
@@ -42,15 +42,18 @@ export function dimKey(partId: string, axis: Axis): string {
  * 部材の式から依存関係を作り、計算順と、存在しない部材・循環参照を求める。
  * adjusts（アプリ全体の調整寸法）は、式のエラーの文に調整寸法の表示名を出すため（第1.4版）。
  * 厚みの参照（部材名.T。第2.2版）は依存関係に入れず、参照先の部材が無ければ unknownRef、厚みが空なら noThickness
- * （「天板 の厚みが入っていません」）にする
+ * （「天板 の厚みが入っていません」）にする。同じ名前の部材が2つ以上ある名前の参照（.W・.H・.T）は ambiguousRef
+ * （「棚板 が2つあります」。第2.2版）にし、依存関係に入れない
  */
 export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Resolution {
-  // そろえた部材名 → 部材（名前は重複しない前提。重複していれば先のものを使う）。名前の無い部材は参照できない
+  // そろえた部材名 → 部材。名前の無い部材は参照できない。
+  // 同じ名前の部材が2つ以上ある名前（第2.2版。貼り付けでできる）は、どちらか決まらないので参照できない（ambiguousRef）
+  const duplicates = duplicateNameCounts(parts)
   const byName = new Map<string, Part>()
   for (const p of parts) {
     if (!hasName(p)) continue
     const key = normalizePartName(p.name)
-    if (!byName.has(key)) byName.set(key, p)
+    if (!duplicates.has(key) && !byName.has(key)) byName.set(key, p)
   }
   // 表示用の名前（名前が空なら #行番号）
   const nameOf = partLabels(parts)
@@ -74,10 +77,13 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
       const deps: DimRef[] = []
       const thicknessDeps: string[] = []
       const unknown: string[] = []
+      const ambiguous: string[] = []
       const noThickness: string[] = []
       for (const ref of refsOf(parsed.ast)) {
         const target = byName.get(ref.part)
-        if (!target) {
+        if (duplicates.has(ref.part)) {
+          if (!ambiguous.includes(ref.part)) ambiguous.push(ref.part)
+        } else if (!target) {
           if (!unknown.includes(ref.part)) unknown.push(ref.part)
         } else if (ref.axis === 'T') {
           // 厚みは数字なので計算順・循環の辿りに入れない（第2.2版）
@@ -96,6 +102,16 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
           kind: 'unknownRef',
           message: unknown.map((n) => `「${n}」という部材はありません`).join('。'),
           refs: unknown,
+        })
+      }
+      if (ambiguous.length > 0) {
+        addError({
+          partId: p.id,
+          axis,
+          field: 'finished',
+          kind: 'ambiguousRef',
+          message: ambiguous.map((n) => ambiguousRefMessage(n, duplicates.get(n)!)).join('。'),
+          refs: ambiguous,
         })
       }
       if (noThickness.length > 0) {
@@ -199,6 +215,11 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
 
   const errors = [...nodes.keys()].flatMap((key) => ownErrors.get(key) ?? [])
   return { nodes, order, errors }
+}
+
+/** 同じ名前の部材が count 個ある名前を参照しているときのエラーの文（第2.2版。仕様書 26.6。例「棚板 が2つあります」） */
+export function ambiguousRefMessage(name: string, count: number): string {
+  return `${name} が${count}つあります`
 }
 
 /** 厚みが空の部材の厚み（部材名.T）を使っているときのエラーの文（第2.2版。仕様書 26.1） */

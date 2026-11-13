@@ -33,13 +33,15 @@ type Value = { ok: true; value: number } | { ok: false; error: DimensionError }
  * - 木取り寸法 ＝ 調整後 ＋ settings.allowance（W・H それぞれに1回）。調整後が出ない軸は出さない
  * - 式の参照（天板.W）は仕上がりを使うので、調整のエラーはほかの部材に伝わらない
  * - finished・adjusted・cut は W・H の両方が計算できたときだけ。片方だけのときは finishedByAxis・adjustedByAxis・cutByAxis に入る
+ * - 同じ名前が2つ以上ある部材を参照している式は ambiguousRef（第2.2版）。同じ名前の部材そのものは計算し、木取りにも入れる
  * - 名前の無い部材も寸法を計算する（式からは参照できない）。name は表示用の名前（空なら #行番号）。枚数が空（null）の部材も計算する
  */
 export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts: readonly Adjust[]): DimensionResult {
   const res = resolve(job.parts, adjusts)
   const adjustById = new Map(adjusts.map((a) => [a.id, a.value]))
   const allowance = job.settings.allowance
-  // 全角・半角をそろえた部材名 → id・厚み（式の中の参照は、そろえた名前で出てくる）
+  // 全角・半角をそろえた部材名 → id・厚み（式の中の参照は、そろえた名前で出てくる）。
+  // 同じ名前の部材を参照している式は resolve で ambiguousRef にしてあるので、ここで同じ名前の部材を引くことはない
   const idByName = new Map<string, string>()
   const thicknessByName = new Map<string, number | null>()
   for (const p of job.parts) {
