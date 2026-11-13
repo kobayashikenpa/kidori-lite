@@ -1,6 +1,6 @@
 // 保存データ・共有とバックアップのファイルの中身の形の確かめ（store/storage.ts から移した。第1.1版 E-11）。
 // 手で書き換えたデータや途中までのデータで画面が真っ白にならないよう、形が違えば「読めない」とする
-import { ADJUST_COLS, CELL_COLS, type Adjust, type AdjustClip, type AdjustRow, type CellClip, type CellCut, type CellRange, type FrozenSheet, type Job, type Part, type Settings, type Sheet } from './types'
+import { ADJUST_COLS, CELL_COLS, CELL_COLS_KEY, PART_COLORS, type CellCol, type PartColor, type Adjust, type AdjustClip, type AdjustRow, type CellClip, type CellCut, type CellRange, type FrozenSheet, type Job, type Part, type Settings, type Sheet } from './types'
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -34,7 +34,25 @@ function isExpr(v: unknown): v is Part['expr'] {
   return isRecord(v) && isString(v.W) && isString(v.H)
 }
 
-/** 部材（第2.1版から調整 adjust も要る。調整の無い古い部材は readJob で調整を足してから確かめる） */
+/** 厚み（第2.2版）：0 より大きい数か、空（null） */
+export function isThickness(v: unknown): v is number | null {
+  return v === null || isPositive(v)
+}
+
+/** 色（第2.2版）：赤・青・黄のどれか */
+export function isPartColor(v: unknown): v is PartColor {
+  return typeof v === 'string' && (PART_COLORS as readonly string[]).includes(v)
+}
+
+/** セルの色（第2.2版）：列（名前・厚み・W・H・枚数）→ 色。知らない列・知らない色があれば false */
+function isCellColors(v: unknown): v is Part['cellColors'] {
+  return isRecord(v) && Object.entries(v).every(([k, c]) => (CELL_COLS as readonly string[]).includes(k) && isPartColor(c))
+}
+
+/**
+ * 部材（第2.1版から調整 adjust、第2.2版から厚み thickness・行の色 rowColor・セルの色 cellColors・メモ memo も要る。
+ * 無い古い部材は readJob で「なし」を足してから確かめる）
+ */
 export function isPart(v: unknown): v is Part {
   return (
     isRecord(v) &&
@@ -42,6 +60,10 @@ export function isPart(v: unknown): v is Part {
     isString(v.name) &&
     isExpr(v.expr) &&
     isExpr(v.adjust) &&
+    isThickness(v.thickness) &&
+    (v.rowColor === null || isPartColor(v.rowColor)) &&
+    isCellColors(v.cellColors) &&
+    isString(v.memo) &&
     // 枚数は 0 以上の整数か、空（null。第1.1版）
     (v.quantity === null || (Number.isInteger(v.quantity) && (v.quantity as number) >= 0)) &&
     typeof v.rotatable === 'boolean' &&
@@ -63,10 +85,12 @@ function isCellCut(v: unknown, rows: number, cols: number): v is CellCut {
 
 /**
  * コピーしたセル（第1.2版）：1〜部材の表の列の数の四角い形で、中身は全部文字。
- * 切り取りの元 cut（第1.3版）は無くてもよい（第1.2版の保存データ）。あるときは形も確かめる
+ * 切り取りの元 cut（第1.3版）は無くてもよい（第1.2版の保存データ）。あるときは形も確かめる。
+ * 列の並びの印 columns（第2.2版）が今の CELL_COLS_KEY と同じものだけ（前の版で保存したクリップは列がずれるので読めない＝捨てる。仕様書 26.8）
  */
 export function isCellClip(v: unknown): v is CellClip {
   if (!isRecord(v) || !Number.isInteger(v.rows) || !Number.isInteger(v.cols)) return false
+  if (v.columns !== CELL_COLS_KEY) return false
   const rows = v.rows as number
   const cols = v.cols as number
   if (rows < 1 || cols < 1 || cols > CELL_COLS.length) return false
@@ -121,15 +145,56 @@ export function isJob(v: unknown): v is Job {
  * - 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
  * - 第2.0版までの部材（調整 adjust が無い）は、調整なし（W・H とも空）にして読む（第2.1版。仕様書 25.5）。
  *   調整があって形が違う（文字でない・軸が無い）部材は読めない
+ * - 第2.1版までの部材（厚み thickness が無い）は、厚みなし（null）にして読む（第2.2版。仕様書 26.7）。
+ *   厚みがあって 0 以下・数でない部材は読めない
+ * - 第2.1版までの部材（色・メモが無い）は、色なし・メモなしにして読む（第2.2版。仕様書 26.7）。
+ *   色・メモは飾りなので、知らない色（あとの版で色が増えたとき など）・形の違うものも仕事ごと読めなくはせず、その色・メモを外して読む
  */
 export function readJob(v: unknown): Job | null {
   if (!isRecord(v)) return null
   let job: Record<string, unknown> = v
   if (isRecord(v.settings) && v.settings.cutMode === 'auto') job = { ...job, settings: { ...v.settings, cutMode: 'vertical' } }
-  if (Array.isArray(v.parts) && v.parts.some((p) => isRecord(p) && p.adjust === undefined)) {
-    job = { ...job, parts: v.parts.map((p: unknown) => (isRecord(p) && p.adjust === undefined ? { ...p, adjust: { W: '', H: '' } } : p)) }
+  if (Array.isArray(v.parts) && v.parts.some(needsPartDefaults)) {
+    job = { ...job, parts: v.parts.map(withPartDefaults) }
   }
   return isJob(job) ? job : null
+}
+
+/** 前の版の部材で、あとの版で足した欄が無いか。色・メモの形が違うか（外して読む） */
+function needsPartDefaults(p: unknown): boolean {
+  return (
+    isRecord(p) &&
+    (p.adjust === undefined ||
+      p.thickness === undefined ||
+      !(p.rowColor === null || isPartColor(p.rowColor)) ||
+      !isCellColors(p.cellColors) ||
+      !isString(p.memo))
+  )
+}
+
+/** セルの色の、知っている列・知っている色だけ（形が違えば色なし） */
+function knownCellColors(v: unknown): Part['cellColors'] {
+  if (!isRecord(v)) return {}
+  const out: Partial<Record<CellCol, PartColor>> = {}
+  for (const col of CELL_COLS) if (isPartColor(v[col])) out[col] = v[col]
+  return out
+}
+
+/**
+ * 前の版の部材に、あとの版で足した欄の「なし」を足す（調整 W・H とも空・厚み null・色なし・メモなし）。
+ * ある欄はそのまま。色・メモの形が違えば、知らない色・列を外す（メモは文字でなければなし）
+ */
+function withPartDefaults(p: unknown): unknown {
+  if (!needsPartDefaults(p)) return p
+  const r = p as Record<string, unknown>
+  return {
+    ...r,
+    ...(r.adjust === undefined ? { adjust: { W: '', H: '' } } : {}),
+    ...(r.thickness === undefined ? { thickness: null } : {}),
+    rowColor: isPartColor(r.rowColor) ? r.rowColor : null,
+    cellColors: knownCellColors(r.cellColors),
+    memo: isString(r.memo) ? r.memo : '',
+  }
 }
 
 /** 仕事の並びを読む（readJob）。1つでも読めなければ null */

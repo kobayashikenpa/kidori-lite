@@ -11,7 +11,7 @@ function expand(job: Job, frozen?: ReadonlyMap<string, number>) {
 }
 
 function addPart(job: Job, p: Partial<Part> & Pick<Part, 'id' | 'name'>) {
-  job.parts.push({ expr: { W: '100', H: '100' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false, ...p })
+  job.parts.push({ expr: { W: '100', H: '100' }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: 1, rotatable: false, finishedDone: false, ...p })
 }
 
 /** 4×8 */

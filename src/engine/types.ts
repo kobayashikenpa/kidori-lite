@@ -6,6 +6,14 @@ export type Axis = 'W' | 'H'
 
 export const AXES: readonly Axis[] = ['W', 'H']
 
+/**
+ * 式の参照の軸（第2.2版。仕様書 26.1）：W・H は部材の仕上がり寸法、T は部材の厚み（Part.thickness）。
+ * 部材の寸法の軸（Axis）とは分ける（T は板に置く寸法ではない）
+ */
+export type RefAxis = Axis | 'T'
+
+export const REF_AXES: readonly RefAxis[] = ['W', 'H', 'T']
+
 // ---------- 入力 ----------
 
 /** 切り方：縦切り優先 / 横切り優先（第1.4版で「おまかせ」をなくした。古いデータの 'auto' は読むときに 'vertical' にする。仕様書 18.2） */
@@ -67,11 +75,18 @@ export interface Adjust {
   value: number
 }
 
+/** 色（第2.2版。仕様書 26.3）：赤・青・黄の3つ。「なし」は null（行の色）か、その列が無い（セルの色） */
+export type PartColor = 'red' | 'blue' | 'yellow'
+
+export const PART_COLORS: readonly PartColor[] = ['red', 'blue', 'yellow']
+
 /** 部材 */
 export interface Part {
   id: string
   /**
-   * 仕事の中で重複不可（全角・半角の違いは同じとみなす）。式の参照に使う。
+   * 打って入れるときは仕事の中で重複不可（全角・半角の違いは同じとみなす）。式の参照に使う。
+   * 第2.2版から、貼り付け・オートフィルでは同じ名前のまま入る（仕様書 26.6）。同じ名前の部材は parts.ts の duplicateNameIds で見つけ、
+   * その名前を参照している式はエラー（ambiguousRef）。
    * 空でもよい（第1.1版）。空どうしは重ならず、画面では「#3」（行番号）と出す（parts.ts の partLabel）。空の部材は式から参照できない
    */
   name: string
@@ -84,6 +99,24 @@ export interface Part {
    * 第2.0版までの保存データ・ファイルには無いので、読むときに W・H とも空にする（shape.ts の readJob）
    */
   adjust: Record<Axis, string>
+  /**
+   * 厚み（第2.2版。仕様書 26.1）：0 より大きい数（mm。小数可）か、空（null）。入れなくてもよい。
+   * 木取りの並べ方（板）には使わない（W・H だけを板に置く）。式では「天板.T」でほかの部材から参照できる（E-25）。
+   * 調整・切り代は足さない。第2.1版までの保存データ・ファイルには無いので、読むときに null にする（shape.ts の readJob）
+   */
+  thickness: number | null
+  /**
+   * 行の色（第2.2版。仕様書 26.3）：赤・青・黄か、なし（null）。番号の長押しのメニューで付ける。
+   * セルの色（cellColors）があるセルはセルの色を出す（engine/marks の cellColor）。木取りの計算には影響しない
+   */
+  rowColor: PartColor | null
+  /**
+   * セルの色（第2.2版。仕様書 26.3）：列（名前・厚み・W・H・枚数）ごとの色。無い列は色なし（空のオブジェクトは色なし）。
+   * セルの長押しのメニューで付ける。セルのコピー・貼り付け・クリアでは変わらない（部材についていく）
+   */
+  cellColors: Partial<Record<CellCol, PartColor>>
+  /** メモ（第2.2版。仕様書 26.3）：部材ごとに1つ。空の文字はメモなし。改行してよく、長さの上限は無い */
+  memo: string
   /** 枚数（0 は切り出さない寸法だけの行。null は枚数が空＝寸法は計算するが、木取り・必要な枚数・進み具合・比べに入れない） */
   quantity: number | null
   /** 回転してよい（W・H を入れ替えて置いてよい）。初期値 false */
@@ -157,9 +190,15 @@ export interface AdjustClip {
 
 // ---------- セルのコピーと貼り付け（第1.2版。仕様書 16.1） ----------
 
-/** 部材の表の欄（左から 名前・W・H・枚数） */
-export type CellCol = 'name' | 'W' | 'H' | 'qty'
-export const CELL_COLS: readonly CellCol[] = ['name', 'W', 'H', 'qty']
+/** 部材の表の欄（左から 名前・厚み・W・H・枚数。T は厚み。第2.2版で厚みを足した） */
+export type CellCol = 'name' | 'T' | 'W' | 'H' | 'qty'
+export const CELL_COLS: readonly CellCol[] = ['name', 'T', 'W', 'H', 'qty']
+
+/**
+ * 部材の表の列の並びの印（第2.2版）。コピーしたセル（CellClip.columns）に付け、読み込むときに今の並びと同じものだけを使う。
+ * 列の並びが変わると印も変わるので、前の版で保存したクリップ（印なし・違う印）は捨てる（仕様書 26.8）
+ */
+export const CELL_COLS_KEY: string = CELL_COLS.join(',')
 
 /** 部材の表のセルの位置。row は表の行（0 から。job.parts の位置。部材の数以上は空の行） */
 export interface CellPos {
@@ -168,7 +207,7 @@ export interface CellPos {
 }
 
 /**
- * コピーしたセル（四角い形）。cells[行][列] はセルの中身の文字（名前・式は書いたまま・枚数は数字の文字。空は ''）。
+ * コピーしたセル（四角い形）。cells[行][列] はセルの中身の文字（名前・式は書いたまま・厚みと枚数は数字の文字。空は ''）。
  * 1つのセルなら rows = cols = 1
  */
 export interface CellClip {
@@ -185,11 +224,17 @@ export interface CellClip {
    * 無ければ［仕上がり］のタブ（第2.0版までの保存データも無い）。［仕上がり］と［調整］をまたいで貼ることはできない
    */
   source?: 'adjust'
+  /**
+   * 列の並びの印（第2.2版。CELL_COLS_KEY）。copyCells・cutCells・copyPartAdjustCells で作るクリップには必ず付ける。
+   * 保存データを読むとき、この印が今の CELL_COLS_KEY と違う（無い）クリップは前の版のものとして捨てる（shape.ts の isCellClip）。
+   * 貼り付け（pasteCells など）はこの印を見ない
+   */
+  columns?: string
 }
 
 /**
- * 部材の表の四角い範囲（第1.3版）。left は列の位置（0＝名前 … 3＝枚数）。1つのセルは rows = cols = 1。
- * 行全体は left 0・cols 4、列全体は top 0・rows 部材の数（engine/clipboard/cells の rowRange・columnRange）
+ * 部材の表の四角い範囲（第1.3版）。left は列の位置（0＝名前・1＝厚み・2＝W・3＝H・4＝枚数。第2.2版で厚みを足した）。1つのセルは rows = cols = 1。
+ * 行全体は left 0・cols 5、列全体は top 0・rows 部材の数（engine/clipboard/cells の rowRange・columnRange）
  */
 export interface CellRange {
   top: number
@@ -209,6 +254,8 @@ export interface CellCut {
 export type DimensionErrorKind =
   | 'syntax' // 式が読めない
   | 'unknownRef' // 存在しない部材名を参照
+  | 'noThickness' // 厚みが空の部材の厚み（部材名.T）を参照（第2.2版）
+  | 'ambiguousRef' // 同じ名前の部材が2つ以上ある名前を参照（どちらか決まらない。第2.2版）
   | 'unknownAdjust' // 式が使っている調整寸法が削除されている
   | 'cycle' // 循環参照
   | 'nonPositive' // 計算結果が 0 以下
@@ -228,7 +275,7 @@ export interface DimensionError {
   kind: DimensionErrorKind
   /** 画面にそのまま出せる日本語 */
   message: string
-  /** unknownRef の部材名、cycle の部材名の並び */
+  /** unknownRef・noThickness・ambiguousRef の部材名、cycle の部材名の並び */
   refs?: string[]
   /**
    * 入れている途中の形の式（syntax のときだけ。空・終わりが記号や「(」・かっこが閉じていない・「1.」。第1.4版。仕様書 18.5）。

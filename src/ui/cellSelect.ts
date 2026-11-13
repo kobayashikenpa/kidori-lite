@@ -2,7 +2,7 @@
 // 計算（コピー・貼り付け・消す・行を削除）は engine/clipboard/cells.ts と store の reducer が行う
 import type { PasteSkip } from '../engine/clipboard/cells'
 import { formulaText } from '../engine/formula/display'
-import type { Adjust, CellClip, CellCol, CellPos, CellRange } from '../engine/types'
+import type { Adjust, CellClip, CellCol, CellPos, CellRange, PartColor } from '../engine/types'
 
 /** セルの鍵（"行:列"） */
 export const cellKey = (pos: CellPos): string => `${pos.row}:${pos.col}`
@@ -78,14 +78,17 @@ export function clipText(clip: (Pick<CellClip, 'rows' | 'cols' | 'cells'> & { cu
   return `${head}：${clip.rows}行×${clip.cols}列`
 }
 
-/** 名前に番号を振ったときに足す一言（仕様書 18.3） */
+/**
+ * 名前に番号を振ったときに足す一言。第2.2版（仕様書 26.6）で部材の名前は番号を振らずにそのまま貼るので、部材の表では使わない。
+ * 調整寸法の表（仕様書 21.1 の丸つき数字「メラミン②」）だけが使う
+ */
 export const RENAMED_NOTE = '同じ名前にならないよう番号を振りました'
 
 const withRenamed = (text: string, renamed: number) => (renamed > 0 ? `${text}。${RENAMED_NOTE}` : text)
 
 /**
  * 貼り付けの知らせ：「3個のセルに貼りました（貼れなかったもの 1個：…）」。
- * 名前に番号を振ったセルがあれば（renamed は数）「。同じ名前にならないよう番号を振りました」を足す
+ * 調整寸法の表で名前に番号を振ったセルがあれば（renamed は数）「。同じ名前にならないよう番号を振りました」を足す（部材の表は渡さない）
  */
 export function pasteText(pasted: number, skipped: readonly Pick<PasteSkip, 'message'>[], renamed = 0): string {
   if (pasted === 0 && skipped.length === 0) return '貼れるセルがありませんでした'
@@ -148,4 +151,19 @@ export function hasPartCell(cells: readonly CellPos[], partCount: number): boole
   return cells.some((c) => c.row < partCount)
 }
 
-export const CELL_COL_LABEL: Record<CellCol, string> = { name: '名前', W: 'W', H: 'H', qty: '枚数' }
+export const CELL_COL_LABEL: Record<CellCol, string> = { name: '名前', T: '厚み', W: 'W', H: 'H', qty: '枚数' }
+
+/** 色の呼び方（第2.2版。仕様書 26.3） */
+export const PART_COLOR_LABEL: Record<PartColor, string> = { red: '赤', blue: '青', yellow: '黄' }
+
+/** セル・番号に付ける色の class（index.css の .mk-red など。色が無ければ ''） */
+export function markClass(color: PartColor | null | undefined): string {
+  return color ? ` mk-${color}` : ''
+}
+
+/** 選んでいる所の今の色：全部同じならその色（色なしは null）、混ざっていれば 'mixed'、何も無ければ 'mixed'（どれも押した印にしない） */
+export function commonColor(values: readonly (PartColor | null | undefined)[]): PartColor | null | 'mixed' {
+  if (values.length === 0) return 'mixed'
+  const first = values[0] ?? null
+  return values.every((v) => (v ?? null) === first) ? first : 'mixed'
+}

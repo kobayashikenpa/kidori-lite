@@ -46,12 +46,23 @@ describe('tokenize（式の字句の切り出し）', () => {
     expect(kinds('全体.H+全体.W')).toEqual([{ ref: ['全体', 'H'] }, '+', { ref: ['全体', 'W'] }])
   })
 
-  it('天板.D は字句のエラー（寸法は W・H だけ。kidori の式を貼ったときなど）', () => {
+  it('厚みの参照 天板.T も読める（第2.2版。仕様書 26.1）', () => {
+    expect(kinds('全体.H - 天板.T × 2')).toEqual([{ ref: ['全体', 'H'] }, '-', { ref: ['天板', 'T'] }, '*', { number: 2 }])
+  })
+
+  it('全角の 天板．Ｔ も読める', () => {
+    expect(kinds('全体．Ｈ－天板．Ｔ×２')).toEqual([{ ref: ['全体', 'H'] }, '-', { ref: ['天板', 'T'] }, '*', { number: 2 }])
+  })
+
+  it('小文字の 天板.t は字句のエラー（軸は大文字）', () => {
+    expect(tokenize('天板.t').ok).toBe(false)
+  })
+
+  it('天板.D は字句のエラー（寸法は W・H・T（厚み）だけ。kidori の式を貼ったときなど）', () => {
     const r = tokenize('天板.D - 20')
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      expect(r.message).toContain('天板.D')
-      expect(r.message).toContain('W・H')
+      expect(r.message).toBe('「天板.D」は使えません（寸法は W・H・T（厚み）だけです。「部材名.W」「部材名.H」「部材名.T」で書いてください）')
       expect([r.start, r.end]).toEqual([0, 4])
     }
   })

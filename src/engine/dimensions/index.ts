@@ -24,7 +24,7 @@ type Value = { ok: true; value: number } | { ok: false; error: DimensionError }
 
 /**
  * 全部材の仕上がり寸法・木取り寸法・エラーを求める（部材の並び順）。
- * - 参照先の値は、いつもその部材の仕上がり寸法（式の計算結果。仕様書 5.1）
+ * - 参照先の値は、いつもその部材の仕上がり寸法（式の計算結果。仕様書 5.1）。部材名.T は部材の厚み（第2.2版。空なら noThickness）
  * - 調整寸法 {n:id} は adjusts（アプリ全体の一覧）の寸法。無ければ unknownAdjust（削除した調整寸法）
  * - 計算結果が 0 以下（小数第1位に丸めて比べる）は nonPositive
  * - エラーのある寸法を参照している寸法は計算せず、元のエラーの寸法を from で示す
@@ -33,18 +33,24 @@ type Value = { ok: true; value: number } | { ok: false; error: DimensionError }
  * - 木取り寸法 ＝ 調整後 ＋ settings.allowance（W・H それぞれに1回）。調整後が出ない軸は出さない
  * - 式の参照（天板.W）は仕上がりを使うので、調整のエラーはほかの部材に伝わらない
  * - finished・adjusted・cut は W・H の両方が計算できたときだけ。片方だけのときは finishedByAxis・adjustedByAxis・cutByAxis に入る
+ * - 同じ名前が2つ以上ある部材を参照している式は ambiguousRef（第2.2版）。同じ名前の部材そのものは計算し、木取りにも入れる
  * - 名前の無い部材も寸法を計算する（式からは参照できない）。name は表示用の名前（空なら #行番号）。枚数が空（null）の部材も計算する
  */
 export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts: readonly Adjust[]): DimensionResult {
   const res = resolve(job.parts, adjusts)
   const adjustById = new Map(adjusts.map((a) => [a.id, a.value]))
   const allowance = job.settings.allowance
-  // 全角・半角をそろえた部材名 → id（式の中の参照は、そろえた名前で出てくる）
+  // 全角・半角をそろえた部材名 → id・厚み（式の中の参照は、そろえた名前で出てくる）。
+  // 同じ名前の部材を参照している式は resolve で ambiguousRef にしてあるので、ここで同じ名前の部材を引くことはない
   const idByName = new Map<string, string>()
+  const thicknessByName = new Map<string, number | null>()
   for (const p of job.parts) {
     if (!hasName(p)) continue
     const key = normalizePartName(p.name)
-    if (!idByName.has(key)) idByName.set(key, p.id)
+    if (!idByName.has(key)) {
+      idByName.set(key, p.id)
+      thicknessByName.set(key, p.thickness)
+    }
   }
   const ownErrors = new Map<string, DimensionError[]>()
   for (const e of res.errors) {
@@ -99,6 +105,8 @@ export function computeDimensions(job: Pick<Job, 'parts' | 'settings'>, adjusts:
     }
     const r = evaluate(node.ast!, {
       ref: (part, axis) => {
+        // 厚み（第2.2版）：空の厚みは resolve で noThickness にしてあるので、ここには来ない
+        if (axis === 'T') return thicknessByName.get(part) ?? null
         const id = idByName.get(part)
         return id === undefined ? null : (values.get(dimKey(id, axis)) ?? null)
       },

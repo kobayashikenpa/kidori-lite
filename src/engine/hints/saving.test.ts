@@ -10,7 +10,7 @@ import { findSavingHint, savingMessage, smallerSteps } from './saving'
 const ADJ = shelfAdjusts()
 
 function part(id: string, W: string, H: string, quantity: number, rotatable = false): Part {
-  return { id, name: id, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable, finishedDone: false }
+  return { id, name: id, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable, finishedDone: false }
 }
 
 /**

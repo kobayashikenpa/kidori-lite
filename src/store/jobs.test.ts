@@ -10,6 +10,7 @@ import {
   defaultJobName,
   deleteJob,
   makeJob,
+  moveJobParts,
   newPart,
   removeAdjusts,
   removePart,
@@ -193,6 +194,44 @@ describe('部材', () => {
   })
 })
 
+describe('部材の厚み（第2.2版。仕様書 26.1）', () => {
+  it('新しい部材の厚みは空（null）', () => {
+    expect(newPart('p1').thickness).toBeNull()
+    expect(newPart('p1', { name: '天板' }).thickness).toBeNull()
+    expect(newPart('p1', { thickness: 18 }).thickness).toBe(18)
+  })
+
+  it('厚みを入れる・変える・空にする（小数も）。名前や式は変わらない', () => {
+    let job = okJob(updatePart(shelfJob(), 'part-tenita', { thickness: 18 }))
+    expect(job.parts[1]).toMatchObject({ name: '天板', thickness: 18, expr: { W: '全体.W', H: '全体.H' } })
+    job = okJob(updatePart(job, 'part-tenita', { thickness: 2.5 }))
+    expect(job.parts[1].thickness).toBe(2.5)
+    job = okJob(updatePart(job, 'part-tenita', { thickness: null }))
+    expect(job.parts[1].thickness).toBeNull()
+    // 厚みを渡さなければそのまま
+    job = okJob(updatePart(okJob(updatePart(job, 'part-tenita', { thickness: 18 })), 'part-tenita', { quantity: 2 }))
+    expect(job.parts[1].thickness).toBe(18)
+  })
+
+  it('厚み 0・−1・数でないものは入れられない（「厚みは 0 より大きい数を入れてください」）', () => {
+    const msg = { ok: false, message: '厚みは 0 より大きい数を入れてください' }
+    for (const t of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(updatePart(shelfJob(), 'part-tenita', { thickness: t }), String(t)).toEqual(msg)
+      expect(insertPart(shelfJob(), 0, newPart('n', { thickness: t })), String(t)).toEqual(msg)
+      expect(addPart(shelfJob(), newPart('n', { thickness: t })), String(t)).toEqual(msg)
+    }
+    expect(updatePart(shelfJob(), 'part-tenita', { thickness: '18' as unknown as number })).toEqual(msg)
+  })
+
+  it('厚み 18 の部材を上に行を入れる・仕事のコピーで写すと 18 のまま', () => {
+    const src = okJob(updatePart(shelfJob(), 'part-tenita', { thickness: 18 }))
+    const c = copyJob(src, NOW, 'job-copy', counter())
+    expect(c.parts.map((p) => p.thickness)).toEqual([null, 18, null, null])
+    const ins = okJob(insertPart(src, 0, newPart('n1', { name: '地板', thickness: 12 })))
+    expect(ins.parts.map((p) => p.thickness)).toEqual([12, null, 18, null, null])
+  })
+})
+
 describe('調整寸法', () => {
   it('足す・変える・消す', () => {
     let list: AdjustRow[] = shelfAdjusts()
@@ -224,5 +263,63 @@ describe('調整寸法', () => {
     const list = shelfAdjusts()
     expect(updateAdjust(list, MELAMINE_ID, { name: 'メラミン ', value: 1 }).ok).toBe(true)
     expect(updateAdjust(list, MELAMINE_ID, { name: 'シート', value: 0.5 }).ok).toBe(false)
+  })
+})
+
+describe('同じ名前の部材（第2.2版 仕様書 26.6）', () => {
+  /** 貼り付けで「棚板」が2つになった仕事 */
+  function twoShelves(): Job {
+    const job = shelfJob()
+    job.parts.push({ ...job.parts[3], id: 'part-tanaita2' })
+    return job
+  }
+
+  it('打って同じ名前にするのは今までどおり断る（追加・上に入れる・名前の変更）', () => {
+    const msg = { ok: false, message: '「棚板」という部材はすでにあります' }
+    expect(addPart(shelfJob(), newPart('n', { name: '棚板' }))).toEqual(msg)
+    expect(insertPart(shelfJob(), 0, newPart('n', { name: '棚板' }))).toEqual(msg)
+    expect(updatePart(shelfJob(), 'part-gawaita', { name: '棚板' })).toEqual(msg)
+  })
+
+  it('同じ名前の部材の、名前以外（枚数・式・厚み）は変えられる', () => {
+    let job = okJob(updatePart(twoShelves(), 'part-tanaita2', { quantity: 5, thickness: 18 }))
+    job = okJob(updatePart(job, 'part-tanaita2', { expr: { W: '300' } }))
+    expect(job.parts[4]).toMatchObject({ name: '棚板', quantity: 5, thickness: 18, expr: { W: '300' } })
+  })
+
+  it('片方の名前を変えられる。もう1つ同じ名前が残るので、ほかの式は書き換えない', () => {
+    const job = okJob(updatePart(twoShelves(), 'part-tanaita2', { name: '棚板2' }))
+    expect(job.parts.map((p) => p.name)).toEqual(['全体', '天板', '側板', '棚板', '棚板2'])
+  })
+})
+
+describe('色とメモ（第2.2版。仕様書 26.3）', () => {
+  /** 棚板の W のセルを赤・メモ「木目を縦に」、側板の行を青にした見本 */
+  function marked(): Job {
+    const job = shelfJob()
+    job.parts[2] = { ...job.parts[2], rowColor: 'blue' }
+    job.parts[3] = { ...job.parts[3], cellColors: { W: 'red' }, memo: '木目を縦に' }
+    return job
+  }
+
+  it('新しい部材は色なし・メモなし', () => {
+    expect(newPart('p1')).toMatchObject({ rowColor: null, cellColors: {}, memo: '' })
+    expect(newPart('p1').cellColors).not.toBe(newPart('p2').cellColors)
+  })
+
+  it('仕事のコピーは色とメモも写す（セルの色は別のオブジェクト）', () => {
+    const src = marked()
+    const c = copyJob(src, NOW, 'job-copy', counter())
+    expect(c.parts.map((p) => [p.rowColor, p.cellColors, p.memo])).toEqual(src.parts.map((p) => [p.rowColor, p.cellColors, p.memo]))
+    expect(c.parts[3].cellColors).not.toBe(src.parts[3].cellColors)
+  })
+
+  it('上に行を入れる・並べ替え・動かす・消すで、色とメモはその部材についていく（消すと消える）', () => {
+    let job = okJob(insertPart(marked(), 0, newPart('n1', { name: '地板' })))
+    expect(job.parts[4]).toMatchObject({ id: 'part-tanaita', memo: '木目を縦に', cellColors: { W: 'red' } })
+    job = okJob(moveJobParts(job, 4, 1, 0))
+    expect(job.parts[0]).toMatchObject({ id: 'part-tanaita', memo: '木目を縦に' })
+    job = okJob(removePart(job, 'part-gawaita'))
+    expect(job.parts.some((p) => p.rowColor === 'blue')).toBe(false)
   })
 })

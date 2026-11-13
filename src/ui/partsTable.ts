@@ -3,12 +3,13 @@ import { partsReferencing } from '../engine/dimensions/resolve'
 import { isBlankAdjustExpr } from '../engine/formula/adjustExpr'
 import { formulaText } from '../engine/formula/display'
 import { isBlankPart } from '../engine/parts'
-import type { Adjust, Axis, DimensionError, Part, PartDimensions } from '../engine/types'
-import { fmt } from './format'
+import type { Adjust, Axis, CellCol, DimensionError, Part, PartDimensions } from '../engine/types'
+import { THICKNESS_MESSAGE } from '../store/jobs'
+import { fmt, parseNum } from './format'
 import { dimCell, type DimCell } from './partCells'
 
-/** 表の欄（番号の欄は選ばない） */
-export type TableField = 'name' | 'W' | 'H' | 'qty'
+/** 表の欄（番号の欄は選ばない）。第2.2版で厚み（T）が増えた（engine の CellCol と同じ：名前・厚み・W・H・枚数） */
+export type TableField = CellCol
 
 /** 選んでいる欄。row は表の行（0 から。job.parts の位置。parts.length は空の行） */
 export interface TableCell {
@@ -59,17 +60,22 @@ export function inputRow(row: number, partCount: number): number {
   return Math.max(0, Math.min(row, partCount))
 }
 
-/** 「次へ」の行き先：名前 → W → H → 枚数 → 次の行の名前 */
+/**
+ * 「次へ」の行き先（第2.2版。仕様書 26.2）：名前は次の行の名前、厚みは次の行の厚み（縦に進む）。
+ * W・H・枚数は W → H → 枚数 → 次の行の W（横に進み、名前・厚みの列には入らない）。最後の部材の次は空の行（inputRow）
+ */
 export function nextCell(cell: TableCell, partCount: number): TableCell {
+  const below = inputRow(cell.row + 1, partCount)
   switch (cell.field) {
     case 'name':
-      return { row: cell.row, field: 'W' }
+    case 'T':
+      return { row: below, field: cell.field }
     case 'W':
       return { row: cell.row, field: 'H' }
     case 'H':
       return { row: cell.row, field: 'qty' }
     case 'qty':
-      return { row: inputRow(cell.row + 1, partCount), field: 'name' }
+      return { row: below, field: 'W' }
   }
 }
 
@@ -92,6 +98,32 @@ export function quantityFromText(t: string): number | null {
   if (t === '') return null
   const n = Number(t)
   return Number.isInteger(n) && n >= 0 ? n : null
+}
+
+/** 厚みの欄に打っている途中で、続けて数字を打てば 0 より大きい数になる形か（「0」「0.」「.」「0.0」。第2.2版） */
+export function thicknessIncomplete(text: string): boolean {
+  return /^0*\.?0*$/.test(text.trim()) && text.trim() !== ''
+}
+
+/** 厚みの中身そのまま（空は ''。丸めない。式の欄・入力を始めたときの欄。仕様書 25.8・26.8） */
+export function thicknessRaw(t: number | null): string {
+  return t === null ? '' : String(t)
+}
+
+/** 厚みの欄の文字（空は ''。小数第1位まで） */
+export function thicknessText(t: number | null): string {
+  return t === null ? '' : fmt(t)
+}
+
+/**
+ * 厚みの欄に打った文字から厚み（第2.2版。仕様書 26.1）：空は空（null）、0 より大きい数（小数可）はその数。
+ * 0・0.・数でないものは入れられない（理由つき。打っている途中の「2.」は 2 として入れてよい）
+ */
+export function thicknessFromText(t: string): { ok: true; value: number | null } | { ok: false; message: string } {
+  const n = parseNum(t)
+  if (n === null) return { ok: true, value: null }
+  if (!Number.isFinite(n) || n <= 0) return { ok: false, message: THICKNESS_MESSAGE }
+  return { ok: true, value: n }
 }
 
 /** 表の W・H の欄：空、または一覧と同じ欄（数値・式・エラー。仕上がり寸法） */

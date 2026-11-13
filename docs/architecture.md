@@ -794,3 +794,189 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 - 各表：`PartsTable`・`PartAdjustTable`・`AdjustTable` は、キーの上の行（`ExprKeys`・`QtyKeys` の `.pt-show`）をなくし、キーだけを画面の下に出す。入力中は欄も「中」とみなす（`useOutsideEnd` の inside に `barSlot`）。`CutTable` は W・H・枚数のセルを押すと選んだ印（`.picked`）を付け、欄に見るだけで出す（もう一度押すか外を押すと外す）。［調整］の枚数のセルは見るだけ（欄を押しても入力しない）
 - `useGrid.ts` の `stickyBottom()`：画面の上に止めてあるもの（`.topbar`・`.parts-sticky`）の下の端。入力している行を見せるスクロール（`useRevealRow`）と、取っ手を引いたときの端のスクロール（`edgeDelta`）がこの下を上の端とみなす
 - コピー中の表示：`cellSelect.ts` の `clipText(clip, adjusts?)` は、adjusts を渡すと1つのセルの中身を `formulaText`（× ÷ −・メラミン1）で出す（部材の表・［調整］の表・長押しのメニュー）
+
+## 15. 第2.2版の変更（仕様書 26章）
+
+作業は `docs/tasks.md` の E-24〜E-28・U-30〜U-36。計算・保存の側（E-24〜E-28）は 15.1〜15.5 に実装に合わせて書いた（2026-11-13 engine-dev）。画面（U-30〜U-36）は 15.6〜15.12（2026-11-13 ui-dev）。
+
+- **厚み**（E-24・E-25・E-26）：`Part.thickness`（数か空）。部材の寸法の `Axis`（W・H。板に置く2つ）は変えず、式の参照の軸だけ W・H・T（`RefAxis`）。`.T` は参照先の部材の厚みの数字で、計算順・循環の辿り（`resolve.ts` の `deps`）には入らない。木取りの並べ方（`packing/`）は厚みを見ない（11章のまま）
+- **表の列**（E-26）：`CELL_COLS` は 名前・厚み・W・H・枚数（`left` 0〜4）。［仕上がり］［調整］［木取り］の3つの表が同じ列。［調整］では厚みも見るだけ
+- **名前の重なり**（E-27）：貼り付け・オートフィルでは同じ名前を許す（18.3 の番号を振る処理をなくした）。打って入れるとき（`validatePartName`）は今どおり断る。同じ名前の部材を参照している式はエラー（`ambiguousRef`）
+- **色とメモ**（E-28）：`Part` に 行の色（`rowColor`）・列ごとのセルの色（`cellColors`）・メモ（`memo`）。部材のオブジェクトごと動く操作（並べ替え・移動・複製・仕事のコピー・ファイル）はそのままついていく。行をまるごと切り取って同じ仕事に貼ったときは、第2.1版の調整と同じ所（`cells.ts` の `RowMove`。前の `AdjustMove`）で動かす
+- **前の版のデータ**：厚み・色・メモの無い部材は `shape.ts` の `readJob` で「なし」を足してから読む（第2.1版の `adjust` と同じやり方）。ファイルの版（`TRANSFER_VERSION`）は 1 のまま（26.7）
+
+### 15.1 部材の厚みの型・読み込み・行の操作（E-24。spec 26.1・26.7）
+
+```ts
+// types.ts
+export interface Part {
+  id; name; expr; adjust
+  thickness: number | null   // 厚み（第2.2版）。0 より大きい数（小数可）か空（null）。木取りの並べ方には使わない
+  quantity; rotatable; finishedDone
+}
+```
+
+- フィールド名は **`thickness`**（数で持つ。式は入れられない。26.8）。部材の寸法の `Axis`（W・H）は変えていない
+- **読み込み**（`shape.ts`）：`isThickness(v)`（null か 0 より大きい有限の数）を足し、`isPart` は `thickness` を要る。`readJob` は前の版の部材（`adjust`・`thickness` の無いもの）に「なし」（調整 W・H とも空・厚み null）を足してから確かめる（`withPartDefaults`）。厚みが 0 以下・数でない部材は読めない（仕事ごと読めない＝今までと同じ考え方）。保存データ（`parseAppData`）・送るファイル・バックアップ（`readTransferFile`）は全部 `readJob` を通る
+- `store/jobs.ts`：`newPart` は厚み null。`copyJob` は厚みを写す。`insertPart`・`addPart`・`updatePart` は `validatePartFields` で厚みを確かめ、0 以下・数でないものは `THICKNESS_MESSAGE`「厚みは 0 より大きい数を入れてください」で断る。`PartPatch` はそのまま（`thickness` を渡せる。渡さなければそのまま）
+- `clipboard/copy.ts` の `duplicatePart`：厚みも写す。`clipboard/cells.ts` の表の下に足す部材は厚み null
+- `parts.ts` の `isBlankPart`：名前・厚み・W・H・枚数がぜんぶ空のときだけ空（厚みだけの行は残す。26.8）。引数の型に `thickness` が増えた
+- `order.ts`：`SortKey` は `'name' | 'T' | 'W' | 'H' | 'qty'`（`T` が厚み）。厚みは `part.thickness` で比べ、空は一番下・同じ値は今の並び（24.1 と同じ）
+- 送るファイル（`share.ts` の `jobFile`）・バックアップ・取り込み（`rekeyJob`）は部材をまるごと写すので、厚みはそのまま入る（テストで確かめた）。`TRANSFER_VERSION` は 1 のまま
+- store（`reducer.ts`）：action は変えていない。`{ type: 'updatePart', patch: { thickness } }` で厚みを入れる・空にする（null）。`{ type: 'sortParts', key: 'T', order }` で厚みの順
+- テスト用：`fixtures/legacy.ts` の `toV21(value)`（JSON で写し、部材から第2.2版の欄を消す。前の版のデータの読み込みのテストに使う）
+
+### 15.2 式で厚みを使う `天板.T`（E-25。spec 26.1）
+
+```ts
+// types.ts
+export type RefAxis = Axis | 'T'                 // 式の参照の軸。T は厚み（部材の寸法の Axis とは分ける）
+export const REF_AXES: readonly RefAxis[] = ['W', 'H', 'T']
+export type DimensionErrorKind = … | 'noThickness' // 厚みが空の部材の 部材名.T を使っている
+```
+
+- **字句**（`formula/tokenize.ts`）：`parseRefText` は `部材名.T`（全角の `Ｔ` も。小文字の `t` はエラー）を読み、`{ part, axis: RefAxis }` を返す。`Token` の `ref` の軸も `RefAxis`。`天板.D` などの文は「「天板.D」は使えません（寸法は W・H・T（厚み）だけです。「部材名.W」「部材名.H」「部材名.T」で書いてください）」
+- `formula/parse.ts`（`Expr` の `ref`）・`evaluate.ts`（`Ref`・`RefLookup`）の軸も `RefAxis`。`units.ts`・`display.ts`・`rename.ts` は `parseRefText` を使うので、`天板.T` は部材の参照の単位（`partRef`）・表示は「全体.H − 天板.T × 2」・名前を変えると `甲板.T` に書き換わる（そのまま）
+- ［調整］の式（`kind: 'adjust'`）の `天板.T` は今までどおり「調整には部材の寸法は使えません」
+- **依存関係**（`dimensions/resolve.ts`）：`DimNode` に `thicknessDeps: string[]`（厚みを参照している部材の id）を足した。`.T` は `deps`（計算順・循環の辿り）に入れない。参照先が無ければ今までどおり `unknownRef`「「天板」という部材はありません」、厚みが空なら `noThickness`（`noThicknessMessage(name)`「天板 の厚みが入っていません」。`refs` に部材名。field は finished）。自分の厚みを使う式（`A.H = A.T × 2`）は循環ではない
+- **計算**（`dimensions/index.ts` の `computeDimensions`）：`.T` の値は参照先の部材の `thickness`（数字）。厚みは天板の W・H のエラーと関係なく使える。エラーは今までどおり、参照している寸法に `from` 付きで伝わる。厚みは木取り寸法・板の並べ方に足さない
+- **使っている所**（`partsReferencing`）：`deps` か `thicknessDeps` にその部材があれば「使っている」（軸は使っている側の式の W・H）。部材の削除の確認（`ui/partsTable.ts` の `referencingOthers`）はそのまま使える
+- テストの見本：`fixtures/shelf.ts` の `thickShelfJob()`（`shelfJob` に天板の厚み 18・側板の H ＝ `全体.H - 天板.T × 2`。側板の仕上がり H 1764・木取り 1774）。`shelfJob()` は変えていない
+
+### 15.3 部材の表の列に厚みを足す（E-26。spec 26.1・26.3・26.8）
+
+```ts
+// types.ts
+export type CellCol = 'name' | 'T' | 'W' | 'H' | 'qty'     // T は厚み
+export const CELL_COLS: readonly CellCol[] = ['name', 'T', 'W', 'H', 'qty']   // left 0＝名前・1＝厚み・2＝W・3＝H・4＝枚数
+export const CELL_COLS_KEY = CELL_COLS.join(',')           // 'name,T,W,H,qty'（列の並びの印）
+export interface CellClip { rows; cols; cells; cut?; source?; columns?: string }   // columns：列の並びの印
+```
+
+- 3つの表（［仕上がり］［調整］［木取り］）は同じ列。行全体（`rowRange`）は 5 列、範囲（`isCellRange`）は left + cols ≦ 5
+- **セル操作**（`clipboard/cells.ts`）
+  - `cellText`：厚みは数字の文字（`String(thickness)`。空は ''）
+  - 貼り付け・オートフィル（`applyTargets` の `thicknessOf`）：前後の空白を外し、全角をそろえて `数字` か `数字.数字` で 0 より大きいものだけ貼る（例 18・2.5・１８．５）。空は空（null）にする。それ以外（文字・0・負の数・式・「18mm」・「18.」）は貼らずに `skipped` に `{ reason: 'notThickness', message: NOT_THICKNESS_MESSAGE }`（「厚みには 0 より大きい数だけ貼れます」）
+  - クリア・切り取りの元を空にする（`setCellEmpty`）は厚みを null。厚みだけ入った行は外れない（`isBlankPart`。15.1）
+  - 行をまるごと（5列）切り取って同じ仕事の左の端から貼ったとき、5つの欄がぜんぶ貼れた行の調整が動く（`AdjustMove` の `srcs` は `CELL_COLS` の数）
+- **［調整］のタブ**（`clipboard/partAdjustCells.ts`）：厚みは名前・枚数と同じく見るだけ（`partAdjustCellText` は厚みの数字。コピーはできるが、貼り付け・クリア・オートフィルで変わるのは W・H だけ）
+- **コピーしたセルの印**：`copyCells`・`cutCells`・`copyPartAdjustCells`・`cutPartAdjustCells` で作るクリップには `columns: CELL_COLS_KEY` を付ける。`shape.ts` の `isCellClip` は `columns === CELL_COLS_KEY` のものだけを通すので、前の版で保存したクリップ（印なし）は `parseAppData` で捨てる（`cellClip: null`。仕事などほかの中身は読める。26.8）。列の並びがまた変われば印も変わり、古いクリップは捨てられる。貼り付けは印を見ない
+- `migrate/finishedAdjusts.ts` の `inlineCellClipAdjusts` は列の位置を見ていないので変えていない
+- store（`reducer.ts`）：action は変えていない（`copyCells`・`pasteCells`・`fillCells`・`clearCells` で厚みの列がそのまま使える。テストで確かめた）
+- **画面の最小限の直し**（厚みのセルは U-30 で作る）：`ui/cellSelect.ts` の `CELL_COL_LABEL` に `T: '厚み'`。`PartsTable.tsx`：`FIELD_LABEL`・`SORT_KEY` を `Record<CellCol, …>` にして T を足し、`sortChoices` の引数を `CellCol` に、`onPressCell` は厚みの列なら何もしない、見出しは `CELL_COLS.map` で T を出さない（位置 `c` は 0〜4 のまま）、枚数のセルの `data-col` を `colOf('qty')`（4）に。`PartAdjustTable.tsx`：見出しで T を出さない、枚数のセルの位置を `QTY_COL`（4）に。`ui/partsTable.ts` の `TableField`（名前・W・H・枚数）は変えていない
+
+### 15.4 名前はそのまま貼る・同じ名前のエラー（E-27。spec 26.6・26.8）
+
+```ts
+// types.ts
+export type DimensionErrorKind = … | 'ambiguousRef'   // 同じ名前が2つ以上ある部材を参照（どちらか決まらない）
+// parts.ts
+export const DUPLICATE_NAME_MESSAGE = '同じ名前があります'
+export function duplicateNameCounts(parts): Map<string, number>   // そろえた名前 → 数（2つ以上だけ。空の名前は数えない）
+export function duplicateNameIds(parts): Set<string>               // 同じ名前の部材の id
+// dimensions/resolve.ts
+export function ambiguousRefMessage(name, count): string          // 「棚板 が2つあります」
+```
+
+- **貼り付け・オートフィル**（`clipboard/cells.ts` の `applyTargets`）：名前は前後の空白を外して **そのまま** 入れる（18.3 の番号を振る処理 `assignNames`・`numberedName` をなくした）。使えない文字の名前は今までどおり貼らない（`invalidName`）。全角・半角だけ違う名前も書いたまま（`棚板１` は `棚板１`）。結果の `renamed`（`PasteRenamed`）は **いつも空**（画面の知らせの直しは U-33。形だけ残した）。`partAdjustCells.ts` は前から `renamed: []`
+- **同じ名前の見つけ方**（`parts.ts`）：`normalizePartName` でそろえて比べる（全角・半角の違いは同じ）。空の名前・空白だけの名前は数えない。画面は `duplicateNameIds(job.parts)` の部材の名前のセルを赤にし、選んだら `DUPLICATE_NAME_MESSAGE` を出す（U-33）
+- **式**（`dimensions/resolve.ts`）：同じ名前の部材が2つ以上ある名前を参照している式（`棚板.W`・`棚板.H`・`棚板.T`）は、`ambiguousRef`（「棚板 が2つあります」。3つなら「3つ」。`refs` に名前。field は finished）にし、依存関係（`deps`・`thicknessDeps`）に入れない。今までの「重複していれば先のものを使う」はやめた。エラーの並びは unknownRef → ambiguousRef → noThickness。同じ名前の部材そのものの寸法は計算し、木取りにも入れる。参照している寸法にはエラーが `from` 付きで伝わる
+- `partsReferencing`：同じ名前の部材は、どちらも「使われていない」になる（式はどちらも指していないため。片方を消すと、式は残ったほうを指すようになる）
+- **名前の変更**（`formula/rename.ts` の `renamePart`）：打って同じ名前にするのは今までどおり断る（`validatePartName`。文は「「棚板」という部材はすでにあります」のまま。26.8）。同じ名前の部材の片方の名前を変えたとき、もう1つ同じ名前が残るなら、ほかの部材の式は書き換えない（式は残った部材を指すようになり、エラーが消える）
+- `store/jobs.ts` の `insertPart`・`addPart`・`updatePart`：変えていない（打って同じ名前は断る。同じ名前の部材の名前以外の欄は変えられる。テストで確かめた）。複製（`duplicateName`「棚板のコピー」）・行をまるごと切り取って動かすときも今のまま
+
+### 15.5 色とメモの型・付け方・部材についていく（E-28。spec 26.3・26.7・26.8）
+
+```ts
+// types.ts
+export type PartColor = 'red' | 'blue' | 'yellow'
+export const PART_COLORS: readonly PartColor[] = ['red', 'blue', 'yellow']
+export interface Part {
+  …
+  rowColor: PartColor | null                       // 行の色（null はなし）
+  cellColors: Partial<Record<CellCol, PartColor>>  // セルの色（列ごと。無い列は色なし。{} は色なし）
+  memo: string                                     // メモ（'' はメモなし。改行可・長さの上限なし）
+  …
+}
+```
+
+- 行の色とセルの色は別々に持つ（番号で「なし」は行の色だけ消す。26.8）
+- **付け方**（新しいファイル `src/engine/marks.ts`。テストは `marks.test.ts`）
+
+| 関数 | 内容 |
+|---|---|
+| `cellColor(part, col)` | そのセルに見せる色：セルの色 → 無ければ行の色 → どちらも無ければ null（26.3「両方あるときはセルの色」） |
+| `hasMemo(part)` | メモがあるか（空白・改行だけはメモなし）。名前のセルの右上の三角に使う |
+| `setCellColor(job, sel, color)` | 選んだセル（`CellSelection`。範囲でも離れたセルでも）にセルの色。`null` で消す。部材の無い空の行は何もしない（部材を作らない）。変わらなければ同じ仕事 |
+| `setRowColor(job, sel, color)` | 選んだセルのある行（部材）に行の色。`null` で行の色だけ消す。空の行は何もしない。変わらなければ同じ仕事 |
+| `setPartMemo(job, partId, text)` | `{ ok: true, job }`／`{ ok: false, message: '部材が見つかりません' }`。空白・改行だけは ''（メモを消す）、それ以外は打ったまま。同じなら同じ仕事 |
+
+- **読み込み**（`shape.ts`）：`isPartColor(v)` を足した。`isPart` は `rowColor`（null か色）・`cellColors`（知っている列 → 色）・`memo`（文字）を要る。`readJob` は前の版の部材に「なし」（null・{}・''）を足す。色・メモは飾りなので、**知らない色・知らない列・形の違うものは仕事ごと読めなくせず、その色・メモを外して読む**（あとの版で色が増えたファイルを前の版で読んでも読めるように。暫定）
+- **部材についていく**
+  - `store/jobs.ts` の `copyJob`（写す。`cellColors` は別のオブジェクト）・`insertPart`（渡した部材のまま。`newPart` は色なし・メモなし）、`clipboard/copy.ts` の `duplicatePart`（写す）、`order.ts` の `sortParts`・`moveParts`、`removePart`・`deleteRows`（部材ごと消える）は部材のオブジェクトごと扱う
+  - `clipboard/cells.ts`：行をまるごと（5列）切り取って同じ仕事に貼ったときは、調整・行の色・セルの色・メモ（`RowExtras`）を貼った行へ動かす（`RowMove`。元の行は「なし」にしてから貼った先に入れるので、1行ずらしても入れ違わない。ほかの部材の行に貼れば、その行のものは入れ替わる）。セルのコピー・貼り付け・オートフィル・一部の欄の切り取り・ほかの仕事への貼り付けでは写さない。クリアは中身だけ消し、色・メモは残す。行の欄がぜんぶ空になって部材が外れたときは色・メモも消える。表の下に足す部材は色なし・メモなし
+  - 送るファイル（`share.ts` の `jobFile`）・バックアップ・取り込み（`importFile.ts` の `rekeyJob`）にも入る（`cellColors` は写し）
+- **store**（`reducer.ts`。どれも `jobId` を省くと開いている仕事。変わらなければ updatedAt を付けない）
+  - `{ type: 'setCellColor', color: PartColor | null } & SelectionArg`（`cells` か `range`）
+  - `{ type: 'setRowColor', color: PartColor | null } & SelectionArg`
+  - `{ type: 'setPartMemo', partId, text }`（無い部材は「部材が見つかりません」）
+
+### 15.6 厚みの列と厚みの入力（U-30。spec 26.1・26.8）
+
+- 3つの表（`PartsTable`・`PartAdjustTable`・`CutTable`）の列は 番号・名前・厚み・W・H・枚数。見出しも `CELL_COLS` のまま全部出す（E-26 の「T を出さない」をやめた）。`useGrid` の `headEls` は5列そろう
+- 列の幅（`index.css` の `.pt-row`）：`36px 1.25fr 40px 1fr 1fr 42px`（番号・枚数を少し詰め、厚みは 40px）。［調整］（`.pt.adjtab .pt-row`）は名前を詰めて W・H を広く（`36px 1fr 40px 1.15fr 1.15fr 42px`）、［木取り］（`.pt.cut .pt-row`）は `36px 1.1fr 40px 1fr 1fr 64px`。セルの左右の余白は 5px（前は 6px）。厚みの欄は `.pt-thick`（14px・太字・真ん中）
+- `ui/partsTable.ts`：`TableField` は `CellCol`（名前・厚み・W・H・枚数）。`thicknessText(t)`（空は ''）、`thicknessFromText(text)`（空は null、`parseNum` で 0 より大きい数はその数、0・`0.`・数でないものは `THICKNESS_MESSAGE` で断る。打っている途中の `2.` は 2）。テストつき
+- `PartsTable` の厚みの入力：1回押して選ぶ・もう一度押して入力。キーは枚数と同じ形の `FormulaKeys`（`numeric` の `decimal: true`）。書きかけの文字（`thickDraft`）を持ち、キーを押すたびに `pressKey`（小数可）→ `thicknessFromText` → 入れられれば `updatePart` の `patch: { thickness }`（空の行なら `addPart` で部材を作る）。入れられない形（0 など）は保存せず、理由を式の欄のすぐ下に出す。その形のまま入力を終えると、保存してある厚みのまま「厚みは 0 より大きい数を入れてください。厚みは元に戻しました」
+- 式の欄（`ui/fxBar.ts`）：`barField` は 厚み・W・H・枚数（範囲の左上が厚みなら `'T'`）。`partBar` の厚みはどのタブも厚みの数字（`text`）。［仕上がり］の入力中は書きかけの文字と右に「mm」。［調整］［木取り］の厚みは見るだけ（欄を押しても入力しない）
+- 並べ替え：見出しの長押しの「厚み」は 大きい順・小さい順（`sortChoices` の名前以外と同じ。engine の `sortParts` の `T`）
+- ［木取り］の表（`CutTable`）：厚みのセルも押すと枠が付き、式の欄に厚みを見るだけで出す
+
+### 15.7 式で厚みを使う・木取りの画面の厚み（U-31。spec 26.1）
+
+- `ui/formulaEdit.ts` の `refPiece(name, col)`：押したセルから式に入れる寸法（W・H・T の列は `天板.W`・`天板.T`、名前・枚数は null）。入れてよいかは今までどおり `canInsertRef`（25.7 と同じ決まり）。`refColorsOf`・`refCellsOf` は `parseRefText` が T を読むので、そのまま `天板.T` も色の枠の部材に数える（テストつき）
+- `PartsTable` の `putRef`：W・H の入力中に、ほかの部材（同じ部材も）の厚みのセルを押したら `天板.T` を入れる。厚みのセルにも `refFrame`（色の点線の枠）。式の欄（`FormulaView`）では部材の寸法の塊として色つきで出る
+- 木取りの画面（`KidoriScreen`）：`ui/kidoriView.ts` の `thicknessTag(t)`（「t18」。空は ''）・`withThickness(name, t)`（「天板 t18」）。配置図（`SheetDiagram`）の部材名は `labelOf` に厚みを足し、切り出しチェック（`SheetChecklist`）は `tagOf` で名前の横に出す。厚みは `partId` から今の部材を引く（固定した1枚も今の厚み。部材が無くなっていれば出さない）。「部材ごとの進み具合」には出さない（26.1 は配置図・切り出しチェックだけ）
+
+### 15.8 「次へ」の進み方・名前を打つときのスクロール（U-32。spec 26.2・26.4）
+
+- `ui/partsTable.ts` の `nextCell`：名前 → 次の行の名前、厚み → 次の行の厚み、W → H → 枚数 → 次の行の W（次の行は `inputRow(row + 1, partCount)`。最後の部材の次は空の行、空の行のままなら同じ空の行）。［調整］の `nextAdjustTabCell` は変えていない
+- `PartsTable` の名前の欄の改行（`onNameKey`）：名前を確定してから `startInput(nextCell(...))`。次の行の名前の欄を描いて、押した操作の中で注目を移す（スマホのキーボードは出したまま。前の欄の `blur` はしない）
+- スクロール（`ui/scroll.ts`。テストつき）：`visibleRange(view, stickyBottom, padTop)`（見えている範囲：上は止めたタブ・式の欄の下と visualViewport の上の下のほう、下は visualViewport の下とアプリのキーの上の上のほう）、`revealDelta(rect, band, margin)`（行を範囲に入れるスクロールの量）
+- `useGrid.ts` の `useRevealRow`：選んだときに1回（なめらかに）、そのあとは visualViewport の `resize` のたび、選んでから 1.5 秒（`REVEAL_FOLLOW_MS`）の間は `scroll`（iPhone の Safari が見えている範囲を動かしたとき）のたびにも、すぐに合わせ直す
+- `useGrid.ts` の `useKeyboardHeight(active)`：`innerHeight − visualViewport.height`。名前の入力中は表の下にこの高さの余白（`.pt-spacer`）を足す（iPhone の Safari・最近の Android の Chrome はキーボードが出ても画面が縮まないので、いちばん下の行もキーボードの上まで上げられるように）。`useRevealRow` の4つ目の引数に渡して、余白が付いたあとにも合わせ直す
+- 厚み・W・H・枚数（アプリのキー）は今までどおり `usePadHeight`（キーの高さの余白）と `useRevealRow`（キーの上の端まで）
+
+### 15.9 行をドラッグで並べ替える（U-36。spec 26.5・24.2）
+
+- `ui/dragRows.ts`（テストつき）：`gapAt(y, rows, limit)`（指の位置から動かす先の行と行の間）、`targetGap(gap, top, rows)`（動かす行の中・すぐ上・すぐ下は null）、`rowShift(i, top, rows, to)`（ほかの行がよける向き。−1 上・1 下）
+- `useGrid.ts` の番号の指の動き（`startMove`）を1つにまとめた：
+  - 選んでいる行全体の番号（`moveRowsFrom`。24.2）は押してすぐ引ける（`immediate`）。そうでない部材の行の番号（`liftRowsFrom`）は、LONG_PRESS_MS（500ms）動かさずに押すと持ち上がる（`lift`）。持ち上がる前に指が動いたら何もしない（表のスクロール）
+  - 持ち上げたとき・引き始めたとき、各行（`.pt-item`）の位置を測っておき（`measureRows`。transform を付ける前）、指の位置はその位置で比べる（動いて見える行の位置で比べると行き来するため）。持ち上げた行は `data-lift` と `translateY`（指の動き）、ほかの行は `rowShift × 持ち上げた行の高さ` の `translateY`（CSS の transition ですべる）。React はこの style・data 属性を持たないので描き直しで消えない
+  - 指を離したとき：引いていれば `onMoveRows`（engine の `moveParts`）。並べ替える前に transform をすぐ外す（`transition: none`。新しい位置から戻ってくるように見えないよう）。持ち上げて動かさずに離したら長押しのメニュー（`onLongPress`）。すぐ離したら今までどおり番号を押した（行を選ぶ）
+  - 持ち上げたあと・引いている間は、window の `touchmove`（passive: false）で `preventDefault`（番号の列は指でなぞるとスクロールする所なので）。Android の長押しの `contextmenu` は、番号を押している間はメニューを開かない（離したときに決める）
+  - 表の上・下の端に近づけると、今までどおり `edgeDelta` で少しずつスクロールし、動かす先を測り直す
+- `PartsTable`：`liftableRows(row)`（入力中・メニュー・並べ替えのメニューを開いている間・部材の無い行は null。選んでいる行全体の中の番号なら その行全部、外なら その行だけ）、`onLift`（持ち上げた行を選ぶ。選んでいた外の行は外れる）。［調整］［木取り］の表には付けない
+- 24.2 の「動かす先の線」（`MoveLine`・`.pt-moveline`）はなくした（行そのものが動くため）。引いている間は取っ手を隠す
+
+### 15.10 名前はそのまま貼る（画面）・同じ名前の出し方（U-33。spec 26.6・26.8）
+
+- `cellSelect.ts`：部材の表（`PartsTable` のオートフィル・`CellMenu` の貼り付け）は `pasteText`・`fillText` に番号を振った数を渡さない（「番号を振りました」は出ない）。`RENAMED_NOTE` と引数 `renamed` は、調整寸法の表（`AdjustTable`。21.1 の丸つき数字「メラミン②」は今も番号を振る）のために残した
+- 3つの表で `duplicateNameIds(job.parts)`（E-27）の部材の名前のセルに `.dup`（赤字と赤い波線）。読み上げにも「（同じ名前があります）」
+- 範囲の左上が名前のセルで、その部材が同じ名前なら、式の欄のすぐ下に `DUPLICATE_NAME_MESSAGE`「同じ名前があります」（［仕上がり］は名前の入力中は出さない。入力中は今までどおり行の下の理由）。［木取り］の表は名前のセルも押せるようにした（`Picked.field` に `name`）
+- `FormulaBar`：中身が無い（名前のセル）のに理由があるときは、空の欄（`.fx-bar.blank`。点線で同じ高さ）と理由を出す（表の位置がずれない）
+- 打って同じ名前にしたときは今までどおり（`validatePartName` の「「棚板」という部材はすでにあります」）
+
+### 15.11 色（U-34。spec 26.3・26.8）
+
+- `CellMenu`：「行の色」「セルの色」の欄（赤・青・黄・なし）。`target`（`'row' | 'cell'`）は、長押しした所が番号なら row、セルなら cell（`PartsTable`・`PartAdjustTable` の `openMenu` が `menuTarget` に持つ）。row は `setRowColor`、cell は `setCellColor`（どちらも `range`）を dispatch して閉じ、「セルを赤にしました」「行の色を消しました」を出す。今の色が全部同じならそのボタンに印（`aria-pressed`。`commonColor`）。部材の無い行だけを選んでいるときは欄ごと押せない（`fieldset disabled`）
+- 3つの表：各セルに `markClass(cellColor(part, 列))`（`.mk-red` など。engine の `cellColor` はセルの色 → 行の色）。番号のセルは行の色（`markClass(part.rowColor)`）。［木取り］の表も同じ class（見るだけ）。木取りの画面には出さない
+- `ui/cellSelect.ts`：`PART_COLOR_LABEL`（赤・青・黄）・`markClass(color)`・`commonColor(values)`（テストつき）
+- 色（`index.css`）：`--mark-red`・`--mark-blue`・`--mark-yellow`（ライトは淡い色、ダークは暗い色。字の色はそのまま）と、メニューのボタンの字の色 `--mark-*-ink`。`.pt-cell.mk-*` は `.pt-cell` のすぐ後ろに置き、選んだ範囲（`.rs`）・入力中（`.on`）・エラー（`.bad`）・選んだ行の番号（`.hl`）の色が上に重なるようにした（選んでいる間は選んだ色、外すと部材の色）
+
+### 15.12 メモ（U-35。spec 26.3・26.8）
+
+- `components/MemoSheet.tsx`：下から出るシート（`Sheet`）に、スマホのキーボードで打つ欄（`textarea`）と「やめる」「保存」。保存は `setPartMemo`（空白・改行だけなら engine がメモを消す）。`readOnly` のときは全文だけ（［木取り］の表）
+- `CellMenu`：「メモ」（メモがあれば「メモを見る・直す」）。1つの部材を選んでいるときだけ押せる。押すとメニューを閉じて `onMemo(partId)`（`PartsTable`・`PartAdjustTable` がメモの欄を開く。入力中なら入力を終える）
+- 名前のセルの右上の三角：`hasMemo(part)` のとき `.pt-name.memo::after`（`--warn` の色。3つの表）。読み上げに「（メモあり）」
+- `FormulaBar` の `memo`・`onMemo`：式の欄のすぐ下の `.fx-below`（表に重ねる）に、エラー（`.fx-err`）の下にメモ（`.fx-memo`。`-webkit-line-clamp: 2` で2行まで「…」）。押すとメモの欄。中身の無い欄（名前のセル）でもメモがあれば点線の空の欄とメモを出す。どの部材のメモかは式の欄と同じ（範囲の左上・入力中のセルの行。［木取り］は押したセルの行）
+- `useGrid.ts` の `stickyBottom()` は `.parts-sticky .fx-below` の下の端も数える（名前の入力中、行をメモ・エラーの下に見せる）

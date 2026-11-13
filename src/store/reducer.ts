@@ -11,7 +11,6 @@ import {
   fillCells,
   pasteCells,
   type CellSelection,
-  type PasteRenamed,
   type PasteSkip,
 } from '../engine/clipboard/cells'
 import {
@@ -38,9 +37,10 @@ import {
 import { usableAdjusts } from '../engine/adjusts'
 import { duplicatePart } from '../engine/clipboard/copy'
 import { computeDimensions } from '../engine/dimensions'
+import { setCellColor, setPartMemo, setRowColor } from '../engine/marks'
 import type { SortKey, SortOrder } from '../engine/order'
 import { setPartCheck, setPieceCheck, type SheetTarget } from '../engine/progress/checks'
-import type { AdjustCellPos, AdjustRow, AppData, Axis, CellPos, CellRange, Job, Part, Settings, Sheet } from '../engine/types'
+import type { AdjustCellPos, AdjustRow, AppData, Axis, CellPos, CellRange, Job, Part, PartColor, Settings, Sheet } from '../engine/types'
 import {
   addAdjust,
   addPart,
@@ -200,6 +200,18 @@ export type StoreAction =
   | ({ type: 'fillPartAdjustCells'; from: CellRange; to: CellRange } & OnJob)
   /** ［調整］のタブのクリア（W・H の調整を空にする。名前・枚数は変えず、部材も消さない） */
   | ({ type: 'clearPartAdjustCells' } & SelectionArg & OnJob)
+  /**
+   * 選んだセルにセルの色を付ける（第2.2版。仕様書 26.3。セルの長押しのメニューの「色」）。color が null なら消す（「なし」）。
+   * 部材の無い空の行は何もしない（部材を作らない）。変わらなければ updatedAt を付けない
+   */
+  | ({ type: 'setCellColor'; color: PartColor | null } & SelectionArg & OnJob)
+  /**
+   * 選んだセルのある行（部材）に行の色を付ける（第2.2版。番号の長押しのメニューの「色」）。color が null なら行の色だけ消す（セルの色は残る）。
+   * 部材の無い空の行は何もしない。変わらなければ updatedAt を付けない
+   */
+  | ({ type: 'setRowColor'; color: PartColor | null } & SelectionArg & OnJob)
+  /** 部材のメモを入れる（第2.2版。空・空白だけで消す）。同じメモなら updatedAt を付けない */
+  | ({ type: 'setPartMemo'; partId: string; text: string } & OnJob)
   /** 切り出しチェック（その1枚の、ある部材の片をまとめて付け外し） */
   | ({ type: 'setPartCheck'; target: SheetTarget; partId: string; done: boolean } & OnJob)
   /** 切り出しチェック（片1つ） */
@@ -223,8 +235,6 @@ export type StoreAction =
 export interface PasteSummary {
   pasted: number
   skipped: PasteSkip[]
-  /** 名前が重なるので番号を振って貼ったセル（第1.4版。仕様書 18.3） */
-  renamed: PasteRenamed[]
 }
 
 /** 調整寸法の表の貼り付け・オートフィルの結果（第1.7版） */
@@ -414,7 +424,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = pasteCells(j, clip, selectionOf(action), env.newId)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         cutClear = p.cutClear
         return { ok: true, job: p.job }
       })
@@ -436,7 +446,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = fillCells(j, action.from, action.to, env.newId)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         return { ok: true, job: p.job }
       })
       return r.ok && paste ? { ...r, paste } : r
@@ -465,7 +475,7 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = pastePartAdjustCells(j, clip, selectionOf(action))
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         cutClear = p.cutClear
         return { ok: true, job: p.job }
       })
@@ -487,13 +497,19 @@ export function reduce(state: StoreState, action: StoreAction, env: Env): Reduce
       const r = onJob(state, action.jobId, env, (j) => {
         const p = fillPartAdjustCells(j, action.from, action.to)
         if (!p.ok) return p
-        paste = { pasted: p.pasted, skipped: p.skipped, renamed: p.renamed }
+        paste = { pasted: p.pasted, skipped: p.skipped }
         return { ok: true, job: p.job }
       })
       return r.ok && paste ? { ...r, paste } : r
     }
     case 'clearPartAdjustCells':
       return onJob(state, action.jobId, env, (j) => ({ ok: true, job: clearPartAdjustCells(j, selectionOf(action)) }))
+    case 'setCellColor':
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: setCellColor(j, selectionOf(action), action.color) }))
+    case 'setRowColor':
+      return onJob(state, action.jobId, env, (j) => ({ ok: true, job: setRowColor(j, selectionOf(action), action.color) }))
+    case 'setPartMemo':
+      return onJob(state, action.jobId, env, (j) => setPartMemo(j, action.partId, action.text))
     case 'setPartCheck':
       return onJob(state, action.jobId, env, (j) =>
         setPartCheck(j, action.target, action.partId, action.done, env.now, env.newId('frozen')),

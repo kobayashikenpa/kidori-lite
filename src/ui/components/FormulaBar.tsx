@@ -4,6 +4,8 @@
 // - 入力中：中身とカーソル（式を押すとその位置へ。FormulaView の onCaret）。右の「✓」で入力を終える（キーの「閉じる」と同じ）
 // - 見るだけ（［木取り］）：押しても入力しない・✓ は無い
 // エラーの理由は欄のすぐ下に赤で出す（表の位置がずれないよう、欄の下に重ねて出す）。部材名・列の名前は出さない
+// 第2.2版：名前のセル（欄の中身は空）でも「同じ名前があります」を欄の下に出せるよう、中身が無くて理由だけあるときは空の欄（点線）と理由を出す（仕様書 26.6）。
+// 選んでいる行の部材にメモがあれば、エラーの下にメモ（2行まで、続きは「…」）を重ねて出し、押すとメモの欄を開く（仕様書 26.3・26.8）
 import type { PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { Adjust } from '../../engine/types'
@@ -36,13 +38,48 @@ interface Props {
   errors?: readonly string[]
   /** 欄の右に小さく出す補い（枚数の「3枚」など） */
   note?: string
+  /** 選んでいる行の部材のメモ（無ければ出さない） */
+  memo?: string
+  /** メモを押したとき（メモの欄を開く） */
+  onMemo?: () => void
 }
 
 /** ボタンを押しても注目が移らないようにする（画面が跳ねない・スマホのキーボードが出ないように） */
 const keepFocus = (e: PointerEvent) => e.preventDefault()
 
-export function FormulaBar({ slot, content, adjusts, label, editing = false, caret, onCaret, refColors, onPress, onDone, hint, errors = [], note }: Props) {
-  if (!slot || !content) return null
+export function FormulaBar({ slot, content, adjusts, label, editing = false, caret, onCaret, refColors, onPress, onDone, hint, errors = [], note, memo, onMemo }: Props) {
+  if (!slot) return null
+  // 欄のすぐ下に重ねて出すもの：エラーの理由、その下にメモ（表の位置がずれないよう、表に重ねる）
+  const hasMemo = memo !== undefined && memo.trim() !== ''
+  const below = (errors.length > 0 || hasMemo) && (
+    <div className="fx-below">
+      {errors.length > 0 && (
+        <p className="fx-err" role="alert">
+          {errors.join('。')}
+        </p>
+      )}
+      {hasMemo && (
+        <button type="button" className="fx-memo" onPointerDown={keepFocus} onClick={onMemo} aria-label={`メモ：${memo}（押すと全文）`}>
+          <span className="fx-memo-text">
+            <b>メモ</b> {memo}
+          </span>
+        </button>
+      )}
+    </div>
+  )
+  if (!content) {
+    // 中身の無い欄（名前のセルなど）：理由があるときだけ、空の欄（点線。高さは同じ）と理由を出す
+    if (!below) return null
+    return createPortal(
+      <>
+        <div className="fx-row">
+          <div className="fx-bar blank" aria-hidden="true" />
+        </div>
+        {below}
+      </>,
+      slot,
+    )
+  }
   const empty = content.kind === 'expr' ? content.expr.trim() === '' : content.text === ''
   const view = !onPress && !editing
   const body =
@@ -86,11 +123,7 @@ export function FormulaBar({ slot, content, adjusts, label, editing = false, car
           </button>
         )}
       </div>
-      {errors.length > 0 && (
-        <p className="fx-err" role="alert">
-          {errors.join('。')}
-        </p>
-      )}
+      {below}
     </>,
     slot,
   )

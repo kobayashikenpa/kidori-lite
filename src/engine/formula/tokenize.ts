@@ -1,6 +1,6 @@
-// 式の字句の切り出し：数値・参照（部材名.W/H）・調整寸法 {n:調整寸法のid}・記号（+ - * / ( )）。先頭の「＝」は読み飛ばす（第1.6版）
+// 式の字句の切り出し：数値・参照（部材名.W/H、厚みの 部材名.T。第2.2版）・調整寸法 {n:調整寸法のid}・記号（+ - * / ( )）。先頭の「＝」は読み飛ばす（第1.6版）
 // kidori の formula/tokenize.ts をもとに、軸を W・H だけにし、材料の厚み {t:…} を外したもの
-import { AXES, type Axis } from '../types'
+import { REF_AXES, type RefAxis } from '../types'
 
 export type Operator = '+' | '-' | '*' | '/'
 
@@ -13,7 +13,7 @@ interface TokenBase {
 
 export type Token =
   | (TokenBase & { type: 'number'; value: number })
-  | (TokenBase & { type: 'ref'; part: string; axis: Axis })
+  | (TokenBase & { type: 'ref'; part: string; axis: RefAxis })
   | (TokenBase & { type: 'adjust'; adjustId: string })
   | (TokenBase & { type: Operator | '(' | ')' })
 
@@ -118,18 +118,18 @@ export function splitChunks(expr: string): (Token | Chunk)[] {
 }
 
 /**
- * ひとかたまりの文字列を、参照「部材名.W/H」として読む。読めなければ null（天板.D なども null）。
+ * ひとかたまりの文字列を、参照「部材名.W/H/T」として読む（T は厚み。第2.2版）。読めなければ null（天板.D なども null）。
  * 部材名には . を使えないので、. はちょうど1つ。その前が部材名、後ろが軸。
  * 全角はそろえてから読むので、返す部材名はそろえた後の名前（normalizePartName と同じ形）
  */
-export function parseRefText(raw: string): { part: string; axis: Axis } | null {
+export function parseRefText(raw: string): { part: string; axis: RefAxis } | null {
   const text = normalizeFormulaText(raw)
   const dot = text.indexOf('.')
   if (dot <= 0 || dot !== text.lastIndexOf('.')) return null
   const part = text.slice(0, dot)
   const axis = text.slice(dot + 1)
-  if (!(AXES as readonly string[]).includes(axis)) return null
-  return { part, axis: axis as Axis }
+  if (!(REF_AXES as readonly string[]).includes(axis)) return null
+  return { part, axis: axis as RefAxis }
 }
 
 /** 調整寸法のかたまりか（{ で始まるか。全角の ｛ も） */
@@ -149,7 +149,7 @@ export function parseBraceText(raw: string): { kind: 'adjust'; id: string } | nu
   return { kind: 'adjust', id: m[1] }
 }
 
-/** 部材名.D のような、W・H 以外の軸を書いた参照か（部材名.X の形で、. の後ろが英字） */
+/** 部材名.D のような、W・H・T 以外の軸を書いた参照か（部材名.X の形で、. の後ろが英字） */
 function isOtherAxisRef(raw: string): boolean {
   return /^[^.]+\.[A-Za-z]+$/.test(normalizeFormulaText(raw))
 }
@@ -197,7 +197,7 @@ export function tokenize(expr: string): TokenizeResult {
       continue
     }
     if (isOtherAxisRef(text)) {
-      return { ok: false, message: `「${text}」は使えません（寸法は W・H だけです。「部材名.W」「部材名.H」で書いてください）`, start, end }
+      return { ok: false, message: `「${text}」は使えません（寸法は W・H・T（厚み）だけです。「部材名.W」「部材名.H」「部材名.T」で書いてください）`, start, end }
     }
     // 部材名だけ（.W・.H が無い）
     if (!normalized.includes('.') && /\p{L}/u.test(normalized) && validatePartName(text) === null) {

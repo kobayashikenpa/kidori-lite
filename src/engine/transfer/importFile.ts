@@ -74,6 +74,7 @@ function rekeyJob(
       id,
       expr: { W: remapAdjustIds(p.expr.W, adjustMap), H: remapAdjustIds(p.expr.H, adjustMap) },
       adjust: { W: remapAdjustIds(p.adjust.W, adjustMap), H: remapAdjustIds(p.adjust.H, adjustMap) },
+      cellColors: { ...p.cellColors },
       finishedDone: keepProgress ? p.finishedDone : false,
     }
   })

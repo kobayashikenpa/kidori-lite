@@ -10,7 +10,7 @@ import { validatePartName } from './formula/tokenize'
 import { adjustUsages } from './formula/usages'
 import { packJob } from './packing'
 import { compareStandardSizes } from './packing/sizes'
-import { cutQuantity, hasName, partLabel, partLabels, referableParts } from './parts'
+import { cutQuantity, duplicateNameCounts, duplicateNameIds, hasName, isBlankPart, partLabel, partLabels, referableParts } from './parts'
 import { frozenSheetViews } from './progress/frozen'
 import { partCutProgress } from './progress/partProgress'
 import { sheetPartChecklist } from './progress/sheetChecklist'
@@ -20,7 +20,7 @@ const adjusts = shelfAdjusts()
 const dimsOf = (job: Job) => computeDimensions(job, adjusts)
 
 function part(id: string, name: string, W: string, H: string, quantity: number | null, rotatable = false): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable, finishedDone: false }
 }
 
 /** 見本の棚の後ろに部材を足した写し */
@@ -192,5 +192,34 @@ describe('名前を空にする・空から名前を付ける（renamePart）', 
     if (!r.ok) return
     expect(r.parts[5].expr.W).toBe('幕板.W')
     expect(dimsOf({ ...job, parts: r.parts }).parts[5].finished).toEqual({ W: 300, H: 100 })
+  })
+})
+
+describe('何も入っていない部材（isBlankPart）と厚み（第2.2版。仕様書 26.8）', () => {
+  it('厚みだけ入っている行は部材として残す（空とみなさない）', () => {
+    const blank = part('p', '', '', '', null)
+    expect(isBlankPart(blank)).toBe(true)
+    expect(isBlankPart({ ...blank, thickness: 18 })).toBe(false)
+  })
+
+  it('名前・厚み・W・H・枚数がぜんぶ空なら空（回転・仕上がりの完了・調整は見ない）', () => {
+    const blank: Part = { ...part('p', '', ' ', '', null, true), finishedDone: true, adjust: { W: '-1', H: '' }, thickness: null }
+    expect(isBlankPart(blank)).toBe(true)
+  })
+})
+
+describe('同じ名前の部材（duplicateNameIds。第2.2版 仕様書 26.6）', () => {
+  it('同じ名前（全角・半角の違いも同じとみなす）の部材の id を返す。空の名前は数えない', () => {
+    const job = withParts(part('p5', '棚板', '1', '1', 1), part('p6', '棚板１', '1', '1', 1), part('p7', '棚板1', '1', '1', 1), part('p8', '', '1', '1', 1), part('p9', ' ', '1', '1', 1))
+    expect([...duplicateNameIds(job.parts)].sort()).toEqual(['p5', 'p6', 'p7', 'part-tanaita'].sort())
+  })
+
+  it('同じ名前が無ければ空', () => {
+    expect(duplicateNameIds(shelfJob().parts).size).toBe(0)
+  })
+
+  it('同じ名前の数（そろえた名前 → 数。2つ以上だけ）', () => {
+    const job = withParts(part('p5', '棚板', '1', '1', 1), part('p6', '棚板', '1', '1', 1))
+    expect(duplicateNameCounts(job.parts)).toEqual(new Map([['棚板', 3]]))
   })
 })

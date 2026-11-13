@@ -1,34 +1,38 @@
-// 部材の表（仕様書 15.1・15.2・17.1。［仕上がり］のタブ）：番号・名前・W・H・枚数。表の下にいつも空の行。
+// 部材の表（仕様書 15.1・15.2・17.1。［仕上がり］のタブ）：番号・名前・厚み・W・H・枚数（厚みは第2.2版。仕様書 26.1）。表の下にいつも空の行。
 // セルを1回押すと選ぶ（太い枠）、選んでいるセルをもう一度押すと入力（第1.3版）。角の丸い取っ手を引くと範囲が広がる。
-// 番号を押すと行全体、見出しを押すと列全体を選ぶ。範囲は engine の CellRange（left 0＝名前 … 3＝枚数）で持つ。
+// 番号を押すと行全体、見出しを押すと列全体を選ぶ。範囲は engine の CellRange（left 0＝名前・1＝厚み・2＝W・3＝H・4＝枚数）で持つ。
 // セル（範囲）を長押しするとメニュー（CellMenu。仕様書 17.2）。右下の四角い取っ手を上下に引くとオートフィル（仕様書 17.4）。
 // 表の上に、今コピーしているもの と 操作のあとの知らせ を短く出す。
-// 名前はその場でスマホのキーボード。W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（式も使える。枚数は数字だけ）。
+// 名前はその場でスマホのキーボード。厚み・W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（W・H は式も使える。枚数は数字だけ、厚みは数字と小数点）。
 // 入力はキーを押すたびに保存する。空の行に入れたときに部材を作り、何も入っていない部材は表から外す（保存しない）。
 // 寸法の計算は engine（computeDimensions の結果を受け取る）。式の文字の編集は formulaEdit.ts
-// W・H の入力中に、ほかの部材の W・H のセルを押したとき：欄が空かカーソルのすぐ前が ＋ − × ÷ ( なら、その寸法（天板.W）をカーソルの位置に入れる。
+// W・H の入力中に、ほかの部材の W・H・厚みのセルを押したとき：欄が空かカーソルのすぐ前が ＋ − × ÷ ( なら、その寸法（天板.W・天板.T）をカーソルの位置に入れる。
 // そうでなければ入力を終えて押したセルを選ぶ（第2.1版 仕様書 25.7。「＝」のキーは無い。判定は formulaEdit の canInsertRef）。
 // 第2.1版：調整寸法の表は［調整］のタブへ移した（仕様書 25.3）。［仕上がり］の式では調整寸法を使わない（仕様書 25.4）。
 // 選ぶ・取っ手・長押しの指の動きは useGrid（調整寸法の表と同じ仕組み）
 // 第2.1版（仕様書 25.8）：選んでいるセルの中身は、タブのすぐ下の式の欄（FormulaBar。barSlot）に出す。欄を押すか、選んでいるセルをもう一度押すと入力。
 // キーの上にあった行（部材名・W・入れている式）はなくし、エラーの理由は式の欄のすぐ下に出す。
 // 第2.0版（仕様書 24）：見出しを長押しすると並べ替えのメニュー（大きい順・小さい順／あいうえお順・逆の順。並べ替えは engine の sortParts）。
-// 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）
+// 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）。
+// 第2.2版（仕様書 26.5）：行を選んでいなくても、番号を長押しすると行が持ち上がって指についてくる（ほかの行はよける）。離した所に入る。
+// 長押しして動かさずに離すと長押しのメニュー
 import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { normalizePartName, splitLeadingEquals, validatePartName } from '../../engine/formula/tokenize'
 import { formulaUnits } from '../../engine/formula/units'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
-import { hasName } from '../../engine/parts'
-import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
+import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
+import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part, type RefAxis } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
-import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { cellColor, hasMemo } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
-import { canInsertRef, insertAt, refCellsOf, refColorsOf, type Edit } from '../formulaEdit'
+import { canInsertRef, insertAt, refCellsOf, refColorsOf, refPiece, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
+import { THICKNESS_MESSAGE } from '../../store/jobs'
 import {
   addRowsMin,
   inputRow,
@@ -41,16 +45,21 @@ import {
   errorsWhileEditing,
   tableDimCell,
   tableRowCount,
+  thicknessFromText,
+  thicknessIncomplete,
+  thicknessRaw,
+  thicknessText,
   type TableCell,
   type TableField,
 } from '../partsTable'
 import { barErrors, barField, partBar } from '../fxBar'
 import { useLongPress } from '../useLongPress'
-import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
+import { rangeKey, useKeyboardHeight, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
 import { CellMenu } from './CellMenu'
 import { FormulaBar } from './FormulaBar'
 import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
+import { MemoSheet } from './MemoSheet'
 import { Sheet } from './Sheet'
 
 interface Props {
@@ -86,16 +95,17 @@ function cellOf(s: Sel | null, parts: readonly Part[]): TableCell | null {
   return row < 0 ? null : { row, field: s.field }
 }
 
-const FIELD_LABEL: Record<TableField, string> = { name: '名前', W: 'W', H: 'H', qty: '枚数' }
+// 第2.2版：厚み（T）の列（仕様書 26.1）。入れなくてもよい。数字だけ（小数可）。式では 天板.T で使う
+const FIELD_LABEL: Record<CellCol, string> = { name: '名前', T: '厚み', W: 'W', H: 'H', qty: '枚数' }
 
-/** 欄の列の位置（0＝名前 … 3＝枚数） */
+/** 欄の列の位置（0＝名前・1＝厚み・2＝W・3＝H・4＝枚数） */
 const colOf = (f: TableField): number => CELL_COLS.indexOf(f)
 
 /** 見出しの列 → 並べ替えに使う列（engine の SortKey） */
-const SORT_KEY: Record<TableField, SortKey> = { name: 'name', W: 'W', H: 'H', qty: 'qty' }
+const SORT_KEY: Record<CellCol, SortKey> = { name: 'name', T: 'T', W: 'W', H: 'H', qty: 'qty' }
 
 /** 並べ替えのメニューのボタン（仕様書 24.1）：W・H・枚数は大きい順・小さい順、名前はあいうえお順・逆の順 */
-function sortChoices(f: TableField): { order: SortOrder; label: string }[] {
+function sortChoices(f: CellCol): { order: SortOrder; label: string }[] {
   return f === 'name'
     ? [
         { order: 'asc', label: 'あいうえお順' },
@@ -114,6 +124,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   const [minRowsJob, setMinRowsJob] = useState(job.id)
   // 長押しのメニューを開いているか・操作のあとの知らせ（表の上に短く出す）
   const [menuOpen, setMenuOpen] = useState(false)
+  // 長押しした所：番号なら行の色、セルならセルの色（仕様書 26.3）
+  const [menuTarget, setMenuTarget] = useState<'row' | 'cell'>('cell')
+  // メモの欄を開いている部材（仕様書 26.3。開いていなければ null）
+  const [memoFor, setMemoFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   // 見出しを長押しして開いた並べ替えのメニューの列（仕様書 24.1。開いていなければ null）
   const [sortCol, setSortCol] = useState<number | null>(null)
@@ -150,6 +164,16 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     nameDraftRef.current = t
     setNameDraft(t)
   }
+  // 厚みの欄の書きかけ（「2.」のような打っている途中の形を残すため、文字で持つ）と、入れられない理由（式の欄のすぐ下に出す）
+  const [thickDraft, setThickDraftS] = useState('')
+  const thickDraftRef = useRef('')
+  /** 厚みの入力を始めたときの部材と厚み（入れられない形のまま離れたとき、この厚みに戻す） */
+  const thickStartRef = useRef<{ partId: string | null; thickness: number | null }>({ partId: null, thickness: null })
+  const setThickDraft = (t: string) => {
+    thickDraftRef.current = t
+    setThickDraftS(t)
+  }
+  const [thickMsg, setThickMsg] = useState<string | null>(null)
   // 名前を保存できなかった理由（行の下に出す）
   const [nameMsg, setNameMsg] = useState<string | null>(null)
   const nameErrorRef = useRef<string | null>(null)
@@ -190,11 +214,13 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     },
     // 仕事を切り替えたら、選んでいる範囲を外す
     resetKey: job.id,
-    // 選んでいる行の番号を引くと、その行を動かす（仕様書 24.2）
+    // 選んでいる行の番号を引くと、その行を動かす（仕様書 24.2）。番号を長押しすると持ち上げる（仕様書 26.5）
     moveRowsFrom: (row) => movableRows(row),
+    liftRowsFrom: (row) => liftableRows(row),
+    onLift: (rows) => liftDone(rows),
     onMoveRows: (top, rows, to) => moveDone(top, rows, to),
   })
-  const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo, moving, moveLine } = grid
+  const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo, moving } = grid
 
   const setSel = (s: Sel | null) => {
     selSRef.current = s
@@ -250,10 +276,19 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     if (prev && cell && prev.row === cell.row && prev.field === cell.field) return
     setNameMsg(null)
     setRefMsg(null)
+    setThickMsg(null)
     onError(null)
     // 名前の欄から離れるときは、書きかけの名前を確定する（保存できなければ元に戻して理由を出す）
     if (prev?.field === 'name' && !commitName(prev.row, nameDraftRef.current)) {
       onError(`${nameErrorRef.current ?? '名前を保存できませんでした'}。名前は元に戻しました`)
+    }
+    // 厚みの欄に入れられない形（0 など）のまま離れたときは、保存してある厚みのまま（理由を出す）
+    if (prev?.field === 'T' && !thicknessFromText(thickDraftRef.current).ok) {
+      // キーを押すたびに保存しているので、入力を始めたときの厚みに戻す（途中で ⌫ して空を保存していても）
+      const start = thickStartRef.current
+      const now = start.partId ? jobRef.current.parts.find((p) => p.id === start.partId) : undefined
+      if (now && now.thickness !== start.thickness) run({ type: 'updatePart', partId: now.id, patch: { thickness: start.thickness } })
+      onError(`${THICKNESS_MESSAGE}。厚みは元に戻しました`)
     }
     if (!cell) {
       setSel(null)
@@ -271,7 +306,11 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     }
     // アプリのキーを出すときは、スマホのキーボードをしまう
     closeKeyboard()
-    if (cell.field === 'qty') return
+    if (cell.field === 'T') {
+      setThickDraft(thicknessRaw(part?.thickness ?? null))
+      thickStartRef.current = { partId: part?.id ?? null, thickness: part?.thickness ?? null }
+    }
+    if (cell.field === 'qty' || cell.field === 'T') return
     // カーソルは式の終わり。第1.6版までの「＝」で始めた式は「＝」を外した形で開く（入れ直すと「＝」の無い形で保存する）
     const raw = part?.expr[cell.field] ?? ''
     setCursor(formulaUnits(splitLeadingEquals(raw).rest).length)
@@ -347,18 +386,20 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     return claimOpen('pad', () => selectRef.current(null))
   }, [padOpen])
 
-  // キーの高さ（表の下に同じだけ余白を足す）と、入力している行が見えるようにスクロールする
+  // キーの高さ（表の下に同じだけ余白を足す）と、入力している行が見えるようにスクロールする。
+  // 名前の入力中はスマホのキーボードの高さの余白を足す（いちばん下の行もキーボードの上に出せるように。仕様書 26.4）
   const padH = usePadHeight(padRef, padOpen ? sel.field : null)
-  useRevealRow(rowEls, padRef, selKey, padH)
+  const kbdH = useKeyboardHeight(sel?.field === 'name')
+  useRevealRow(rowEls, padRef, selKey, padOpen ? padH : kbdH)
 
   const onNameKey = (row: number, e: ReactKeyboardEvent<HTMLInputElement>) => {
     // 日本語の変換を確定する Enter は除く
     if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
     e.preventDefault()
     if (!commitName(row, nameDraftRef.current)) return
-    // キーボードの「次へ（改行）」：同じ行の W へ（アプリのキーを出す）
-    selectCell({ row, field: 'W' })
-    e.currentTarget.blur()
+    // キーボードの「次へ（改行）」：次の行の名前へ（第2.2版 仕様書 26.2。スマホのキーボードは出したまま。
+    // 押した操作の中で次の欄に注目を移す。見える位置へのスクロールは useRevealRow）
+    startInput(nextCell({ row, field: 'name' }, jobRef.current.parts.length))
   }
 
   const onNameBlur = (row: number) => {
@@ -394,7 +435,29 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     if (q !== part.quantity) run({ type: 'updatePart', partId: part.id, patch: { quantity: q } })
   }
 
-  /** 「次へ」：名前 → W → H → 枚数 → 次の行の名前（入力のまま）。名前に移るときはスマホのキーボードを出す */
+  /**
+   * 厚みのキー（数字と小数点。仕様書 26.1）：押すたびに保存する。0・0. のように入れられない形のときは保存せず、理由を式の欄の下に出す
+   * （空は厚みなし）。空の行に入れたときは部材を作る
+   */
+  const pressThick = (row: number, key: string) => {
+    const text = pressKey(thickDraftRef.current, key, false, false)
+    setThickDraft(text)
+    const r = thicknessFromText(text)
+    if (!r.ok) {
+      // 「0」「0.」「.」のように、続けて打てば入れられる形の途中は理由を出さない（入力を終えたときに元に戻す）
+      setThickMsg(thicknessIncomplete(text) ? null : r.message)
+      return
+    }
+    setThickMsg(null)
+    const part = jobRef.current.parts[row]
+    if (!part) {
+      if (r.value !== null) addFromEmpty({ thickness: r.value })
+      return
+    }
+    if (r.value !== part.thickness) run({ type: 'updatePart', partId: part.id, patch: { thickness: r.value } })
+  }
+
+  /** 「次へ」（入力のまま。仕様書 26.2）：厚みは次の行の厚み、W → H → 枚数 → 次の行の W（nextCell） */
   const goNext = () => {
     const cur = curCell()
     if (!cur) return
@@ -414,22 +477,22 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   }
 
   /**
-   * W・H の入力中に、ほかの部材の W・H のセルを押したとき（仕様書 25.7）：寸法を入れたら true（入力しているセルはそのまま）。
+   * W・H の入力中に、ほかの部材の W・H・厚みのセルを押したとき（仕様書 25.7・26.1）：寸法（天板.W・天板.T）を入れたら true（入力しているセルはそのまま）。
    * 欄が空かカーソルのすぐ前が記号でなければ、部材の無い空の行なら false（呼ぶ側が入力を終えて押したセルを選ぶ）。
    * 名前の無い部材は入れずに知らせる（入力は続ける。true）
    */
   const putRef = (editing: TableCell, row: number, field: TableField): boolean => {
-    if (field !== 'W' && field !== 'H') return false
     if (editing.field !== 'W' && editing.field !== 'H') return false
     const ps = jobRef.current.parts
     const target = ps[row]
     const raw = ps[editing.row]?.expr[editing.field] ?? ''
-    if (!target || !canInsertRef(raw, cursorRef.current)) return false
+    const piece = target ? refPiece(target.name, field) : null
+    if (!target || piece === null || !canInsertRef(raw, cursorRef.current)) return false
     if (!hasName(target)) {
       setRefMsg('名前の無い部材は式で使えません。先に名前を入れてください')
       return true
     }
-    editExpr(editing.row, editing.field, insertAt(splitLeadingEquals(raw).rest, cursorRef.current, `${target.name}.${field}`))
+    editExpr(editing.row, editing.field, insertAt(splitLeadingEquals(raw).rest, cursorRef.current, piece))
     return true
   }
 
@@ -439,7 +502,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     const editing = curCell()
     if (editing) {
       if (editing.row === row && editing.field === field) return
-      // W・H の入力中に、欄が空か記号の後でほかの部材の W・H を押したら、その寸法を式に入れる（入力は続ける）
+      // W・H の入力中に、欄が空か記号の後でほかの部材の W・H・厚みを押したら、その寸法を式に入れる（入力は続ける）
       if (putRef(editing, row, field)) return
       // それ以外は、入力を終えて そのセルを選ぶ
       selectCell(null)
@@ -472,7 +535,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   const fillDone = (from: CellRange, to: CellRange) => {
     const r = run({ type: 'fillCells', from, to })
     if (!r.ok) return
-    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped, r.paste.renamed.length) : null)
+    // 名前も番号を振らずにそのまま入れる（仕様書 26.6）
+    setNotice(r.paste ? fillText(r.paste.pasted, r.paste.skipped) : null)
     // 入れたあとは、引いた先まで選ぶ（エクセルと同じ。起点はそのまま）
     const a = activeRef.current
     selectRange(to, a && rangeHas(to, a) ? a : { row: to.top, col: to.left })
@@ -492,8 +556,20 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     }
     onError(null)
     setNotice(null)
+    setMenuTarget(at.col === null ? 'row' : 'cell')
     setMenuOpen(true)
     navigator.vibrate?.(10)
+  }
+
+  /** その部材のメモの欄を開く（入力中なら入力を終える。セルは選んだまま） */
+  const openMemo = (partId: string) => {
+    if (curCell()) selectCell(null)
+    setMemoFor(partId)
+  }
+  /** メモを保存する（空なら消す）。保存できなければ理由 */
+  const saveMemo = (partId: string, text: string): string | null => {
+    const r = dispatch({ type: 'setPartMemo', partId, text })
+    return r.ok ? null : r.message
   }
 
   // ---------- 並べ替え・行の移動（仕様書 24） ----------
@@ -525,6 +601,27 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     return { top: r.top, rows: Math.min(r.top + r.rows, n) - r.top, limit: n }
   }
 
+  /**
+   * 番号を長押ししたときに持ち上げる行（仕様書 26.5）：選んでいる行全体の中の番号なら その行全部、そうでなければ その行だけ（部材のある行だけ）。
+   * 入力中・メニューを開いている間・部材の無い空の行は持ち上げない（長押しはメニューのまま）
+   */
+  const liftableRows = (row: number): MovableRows | null => {
+    const n = jobRef.current.parts.length
+    if (curCell() || menuOpen || sortCol !== null || row >= n) return null
+    const r = rangeRef.current
+    if (r && r.left === 0 && r.cols === CELL_COLS.length && row >= r.top && row < r.top + r.rows) {
+      return { top: r.top, rows: Math.min(r.top + r.rows, n) - r.top, limit: n }
+    }
+    return { top: row, rows: 1, limit: n }
+  }
+
+  /** 持ち上げたとき：その行を選んだ状態にする（選んでいた外の行は外す） */
+  const liftDone = (rows: MovableRows) => {
+    onError(null)
+    setNotice(null)
+    selectRange({ top: rows.top, left: 0, rows: rows.rows, cols: CELL_COLS.length })
+  }
+
   /** 番号を引いて離したとき：行を動かして保存し、動かした行を選んだままにする */
   const moveDone = (top: number, rows: number, to: number) => {
     const n = jobRef.current.parts.length
@@ -541,6 +638,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   // ---------- 表示 ----------
 
   const dimsOf = (partId: string) => dims.parts.find((d) => d.partId === partId)
+  // 同じ名前の部材（貼り付け・オートフィルでできる。名前を赤で出し、選ぶと「同じ名前があります」。仕様書 26.6）
+  const dupIds = duplicateNameIds(parts)
   const selPart = sel ? parts[sel.row] : undefined
   const selLabel = sel ? (selPart && hasName(selPart) ? selPart.name : `#${sel.row + 1}`) : ''
   const liveNameError =
@@ -550,15 +649,17 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           parts.filter((_, j) => j !== sel.row).map((p) => p.name),
         )
       : null
-  const rowMsg = sel?.field === 'name' ? (nameMsg ?? liveNameError) : null
+  // 同じ名前の部材（貼り付けでできたもの）の名前を、まだ変えていない間は「すでにあります」を出さない（仕様書 26.6。理由は式の欄の下の「同じ名前があります」）
+  const nameUnchanged = sel?.field === 'name' && nameDraft.trim() === (parts[sel.row]?.name ?? '').trim()
+  const rowMsg = sel?.field === 'name' ? (nameMsg ?? (nameUnchanged ? null : liveNameError)) : null
 
   const padAxis: Axis | null = sel && (sel.field === 'W' || sel.field === 'H') ? sel.field : null
   // 入力中の式に入っている部材（色の枠の番号。鍵はそろえた部材名）。入力していないときは空。「＝」で始まる古い式は「＝」を外した形
   const editingExpr = padAxis && selPart ? splitLeadingEquals(selPart.expr[padAxis]).rest : ''
   const refColors = refColorsOf(editingExpr)
   const refCells = refCellsOf(editingExpr)
-  /** 式に入っている部材のセルの色の枠（仕様書 20.2。エクセルと同じく部材ごとに色を変える） */
-  const refFrame = (part: Part | undefined, axis: Axis): string => {
+  /** 式に入っている部材のセルの色の枠（仕様書 20.2。エクセルと同じく部材ごとに色を変える。厚みのセルも。26.1） */
+  const refFrame = (part: Part | undefined, axis: RefAxis): string => {
     if (!part || !hasName(part) || refColors.size === 0) return ''
     const key = normalizePartName(part.name)
     const c = refColors.get(key)
@@ -584,13 +685,17 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   // 式の欄（仕様書 25.8）：入力中はそのセル、選んでいるだけのときは範囲の左上のセル。名前のセルは空
   const barRange = sel ? singleRange({ row: sel.row, col: colOf(sel.field) }) : shown
   const barAt = barField(barRange)
-  const bar = sel?.field === 'name' ? null : partBar(parts, barRange, 'finished')
+  const bar = sel?.field === 'name' ? null : sel?.field === 'T' ? { kind: 'text' as const, text: thickDraft } : partBar(parts, barRange, 'finished')
   const barPart = barRange ? parts[barRange.top] : undefined
   const barWho = barPart && hasName(barPart) ? barPart.name : barRange ? `#${barRange.top + 1}` : ''
   const barEmpty = bar?.kind === 'expr' ? bar.expr.trim() === '' : bar?.text === ''
   const barErrs = refMsg
     ? [refMsg]
-    : barPart && (barAt === 'W' || barAt === 'H') && !(padOpen && barEmpty)
+    : thickMsg && sel?.field === 'T'
+      ? [thickMsg]
+      : barRange && barRange.left === 0 && sel?.field !== 'name' && barPart && dupIds.has(barPart.id)
+        ? [DUPLICATE_NAME_MESSAGE]
+        : barPart && (barAt === 'W' || barAt === 'H') && !(padOpen && barEmpty)
       ? barErrors(dimsOf(barPart.id)?.errors ?? [], barAt, 'finished', padOpen)
       : []
   const qtyNote = (q: number | null | undefined) => (q === null || q === undefined ? '空＝木取りに入れない' : q === 0 ? '寸法だけ（切らない）' : `${q}枚`)
@@ -631,7 +736,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
                 buttonRef={(el) => {
                   headEls.current[c] = el
                 }}
-                className={`pt-hcell${c === 0 ? ' left' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
+                className={`pt-hcell${c === 0 ? ' left' : ''}${f === 'T' ? ' thin' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
                 label={`${FIELD_LABEL[f]} の列を選ぶ（長押しで並べ替え）`}
                 onPress={() => pressColumn(c)}
                 onLong={() => openSort(c)}
@@ -678,11 +783,13 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
             ].join('')
           }
           const inRange = (f: TableField) => shown !== null && rangeHas(shown, { row: i, col: colOf(f) })
+          // セルの色（無ければ行の色。仕様書 26.3）
+          const mark = (f: TableField) => (part ? markClass(cellColor(part, f)) : '')
 
           const numCell = (
             <button
               type="button"
-              className={`pt-cell pt-no${part ? '' : ' muted'}${rowIn ? ' hl' : ''}${grab ? ' grab' : ''}`}
+              className={`pt-cell pt-no${part ? '' : ' muted'}${markClass(part?.rowColor)}${rowIn ? ' hl' : ''}${grab ? ' grab' : ''}`}
               data-row={i}
               aria-label={`${part ? label : `${i + 1}行目`} の行を選ぶ`}
               onClick={() => pressRow(i)}
@@ -720,10 +827,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           ) : (
             <button
               type="button"
-              className={`pt-cell pt-name${rangeCls('name')}`}
+              className={`pt-cell pt-name${mark('name')}${part && dupIds.has(part.id) ? ' dup' : ''}${part && hasMemo(part) ? ' memo' : ''}${rangeCls('name')}`}
               data-row={i}
               data-col={0}
-              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}`}
+              aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}${part && dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}${part && hasMemo(part) ? '（メモあり）' : ''}`}
               aria-selected={inRange('name')}
               onClick={cellPress('name')}
             >
@@ -744,7 +851,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
             return (
               <button
                 type="button"
-                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(axis)}${refFrame(part, axis)}`}
+                className={`pt-cell pt-dim${mark(axis)}${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(axis)}${refFrame(part, axis)}`}
                 data-row={i}
                 data-col={colOf(axis)}
                 aria-label={`${label} の ${axis}：${text || '空'}`}
@@ -780,13 +887,24 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
               <div className={rowClass} role="row">
                 {numCell}
                 {nameCell}
+                <button
+                  type="button"
+                  className={`pt-cell pt-thick num${mark('T')}${isSel('T') ? ' on' : ''}${rangeCls('T')}${refFrame(part, 'T')}`}
+                  data-row={i}
+                  data-col={colOf('T')}
+                  aria-label={`${label} の厚み：${part?.thickness == null ? '空' : thicknessText(part.thickness)}`}
+                  aria-selected={inRange('T')}
+                  onClick={cellPress('T')}
+                >
+                  {isSel('T') ? thickDraft : thicknessText(part?.thickness ?? null)}
+                </button>
                 {dimCellEl('W')}
                 {dimCellEl('H')}
                 <button
                   type="button"
-                  className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
+                  className={`pt-cell pt-qty num${mark('qty')}${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
                   data-row={i}
-                  data-col={3}
+                  data-col={colOf('qty')}
                   aria-label={`${label} の枚数：${part?.quantity ?? '空'}`}
                   aria-selected={inRange('qty')}
                   onClick={cellPress('qty')}
@@ -808,7 +926,6 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           fillBox={fillBox}
           fillLabel={shown && fillTo ? fillHint(shown, fillTo) : null}
           cutBox={cutBox}
-          moveLine={moveLine}
         />
       </div>
       <button type="button" className="btn add-rows" onClick={addRows}>
@@ -816,6 +933,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       </button>
       {/* キーを出している間も、表を指でなぞっていちばん下の行までスクロールできるよう、キーの高さの余白を下に取る */}
       {padOpen && <div className="pt-spacer" style={{ height: padH }} aria-hidden="true" />}
+      {sel?.field === 'name' && kbdH > 0 && <div className="pt-spacer" style={{ height: kbdH }} aria-hidden="true" />}
       {menuOpen && shown && (
         <CellMenu
           job={job}
@@ -827,10 +945,26 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           onClose={() => setMenuOpen(false)}
           onNotice={setNotice}
           onError={onError}
+          target={menuTarget}
+          onMemo={openMemo}
           onInsertAbove={insertAbove}
           onRowsDeleted={() => selectRange(singleRange({ row: shown.top, col: shown.left }))}
         />
       )}
+      {memoFor !== null &&
+        (() => {
+          const i = parts.findIndex((p) => p.id === memoFor)
+          if (i < 0) return null
+          return (
+            <MemoSheet
+              key={memoFor}
+              who={hasName(parts[i]) ? parts[i].name : `#${i + 1}`}
+              memo={parts[i].memo}
+              onSave={(text) => saveMemo(memoFor, text)}
+              onClose={() => setMemoFor(null)}
+            />
+          )
+        })()}
       {sortCol !== null && (
         <Sheet
           title={`${FIELD_LABEL[CELL_COLS[sortCol]]}で並べ替え`}
@@ -862,16 +996,32 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           if (barRange && barAt) startInput({ row: barRange.top, field: barAt })
         }}
         onDone={() => selectCell(null)}
-        hint={barAt === 'qty' ? '枚数を入れる' : '数字か式を入れる'}
+        hint={barAt === 'qty' ? '枚数を入れる' : barAt === 'T' ? '厚みを入れる（空でもよい）' : '数字か式を入れる'}
         errors={barErrs}
-        note={padOpen && sel?.field === 'qty' ? qtyNote(selPart?.quantity) : undefined}
+        note={padOpen && sel?.field === 'qty' ? qtyNote(selPart?.quantity) : padOpen && sel?.field === 'T' ? 'mm' : undefined}
+        memo={barPart && hasMemo(barPart) ? barPart.memo : undefined}
+        onMemo={() => {
+          if (barPart) openMemo(barPart.id)
+        }}
       />
       {padOpen &&
         sel &&
         createPortal(
           <div className="numpad pt-pad" ref={padRef} role="group" aria-label={`${selLabel} の ${FIELD_LABEL[sel.field]} のキー`}>
             <div className="numpad-in">
-              {sel.field === 'qty' ? (
+              {sel.field === 'T' ? (
+                // 厚みのキー：枚数と同じ形の数字キー ＋ 小数点（仕様書 26.1）
+                <FormulaKeys
+                  key={`${sel.row}-T`}
+                  value=""
+                  cursor={0}
+                  onEdit={() => {}}
+                  numeric={{ onKey: (k) => pressThick(sel.row, k), decimal: true }}
+                  ariaLabel="厚みのボタン"
+                  onNext={goNext}
+                  onClose={() => selectCell(null)}
+                />
+              ) : sel.field === 'qty' ? (
                 // 枚数のキーも W・H と同じ並び（仕様書 16.2・20.1）。使わないキーは薄く出して押せない
                 <FormulaKeys
                   key={`${sel.row}-qty`}

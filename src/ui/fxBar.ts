@@ -4,30 +4,31 @@
 import { adjustValueText } from '../engine/adjusts'
 import { splitLeadingEquals } from '../engine/formula/tokenize'
 import { ADJUST_COLS, CELL_COLS, type AdjustRow, type Axis, type CellRange, type DimensionError, type Part } from '../engine/types'
-import { errorsWhileEditing, quantityText } from './partsTable'
+import { errorsWhileEditing, quantityText, thicknessRaw } from './partsTable'
 import type { PartsTab } from './partsTab'
 
 /** 欄の中身：式（部材の寸法・調整寸法の塊を色つきで見せる。expr は保存してある形）か、ただの文字（枚数・調整寸法の寸法） */
 export type BarContent = { kind: 'expr'; expr: string } | { kind: 'text'; text: string }
 
-/** 欄を出す列：範囲の左上が W・H・枚数なら その列、名前・何も選んでいないときは null */
-export function barField(range: CellRange | null): Axis | 'qty' | null {
+/** 欄を出す列：範囲の左上が 厚み・W・H・枚数なら その列、名前・何も選んでいないときは null（厚みは第2.2版。仕様書 26.8） */
+export function barField(range: CellRange | null): Axis | 'T' | 'qty' | null {
   if (!range) return null
   const col = CELL_COLS[range.left]
-  return col === 'W' || col === 'H' || col === 'qty' ? col : null
+  return col === 'T' || col === 'W' || col === 'H' || col === 'qty' ? col : null
 }
 
 /**
  * 部材の表の欄の中身（範囲の左上のセル。部材の無い空の行は空の中身）。
  * - finished（［仕上がり］）と cut（［木取り］）：仕上がりの式（「＝」で始まる古い式は「＝」を外す）
  * - adjust（［調整］）：調整の式
- * - 枚数はどのタブも枚数（空は ''）
+ * - 枚数・厚みはどのタブも その数（空は ''。厚みは［仕上がり］で入れ、［調整］［木取り］は見るだけ）
  */
 export function partBar(parts: readonly Part[], range: CellRange | null, tab: PartsTab): BarContent | null {
   const field = barField(range)
   if (!range || !field) return null
   const part = parts[range.top] as Part | undefined
   if (field === 'qty') return { kind: 'text', text: quantityText(part?.quantity ?? null) }
+  if (field === 'T') return { kind: 'text', text: thicknessRaw(part?.thickness ?? null) }
   if (tab === 'adjust') return { kind: 'expr', expr: part?.adjust[field] ?? '' }
   return { kind: 'expr', expr: splitLeadingEquals(part?.expr[field] ?? '').rest }
 }

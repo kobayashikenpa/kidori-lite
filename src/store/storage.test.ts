@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../engine/dimensions'
+import { toV21 } from '../engine/fixtures/legacy'
 import { legacyShelfJob, MELAMINE_ID, shelfAdjusts, shelfJob } from '../engine/fixtures/shelf'
-import type { AppData } from '../engine/types'
+import { CELL_COLS_KEY, type AppData } from '../engine/types'
 import { BROKEN_KEY_PREFIX, CURRENT_JOB_KEY, DATA_KEY, loadSaved, parseAppData, saveSaved, type KeyValueStorage } from './storage'
 
 class MemoryStorage implements KeyValueStorage {
@@ -81,8 +82,8 @@ describe('保存と読み込み', () => {
     expect(r.status).toBe('ok')
     // 第1.1版までの「コピーした部材」（clipboard）は読んで捨て、コピーしたセルは無し（第1.2版）
     const { clipboard: _old, ...rest } = JSON.parse(v1) as { jobs: { parts: object[] }[] } & Record<string, unknown>
-    // 部材の調整（第2.1版）は無いので、調整なし（W・H とも空）として読む
-    const jobs = rest.jobs.map((j) => ({ ...j, parts: j.parts.map((p) => ({ ...p, adjust: { W: '', H: '' } })) }))
+    // 部材の調整（第2.1版）・厚みと色とメモ（第2.2版）は無いので、調整なし（W・H とも空）・厚みなし・色なし・メモなしとして読む
+    const jobs = rest.jobs.map((j) => ({ ...j, parts: j.parts.map((p) => ({ ...p, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '' })) }))
     expect(r.data).toEqual({ ...rest, jobs, cellClip: null, adjustClip: null })
     expect('clipboard' in r.data).toBe(false)
   })
@@ -115,11 +116,11 @@ describe('保存と読み込み', () => {
 
   it('コピーしたセル（第1.2版）を保存して読み戻せる。形が違うコピーは捨てて、仕事は読める', () => {
     const data = sample()
-    data.cellClip = { rows: 2, cols: 2, cells: [['棚板', '天板.W - 20'], ['', '3']] }
+    data.cellClip = { rows: 2, cols: 2, cells: [['棚板', '18'], ['', '3']], columns: CELL_COLS_KEY }
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     expect(loadSaved(st, ids(), NOW).data).toEqual(data)
-    for (const bad of [{ rows: 2, cols: 1, cells: [['1']] }, { rows: 1, cols: 5, cells: [['', '', '', '', '']] }, { rows: 1, cols: 1, cells: [[3]] }, 'x']) {
+    for (const bad of [{ rows: 2, cols: 1, cells: [['1']], columns: CELL_COLS_KEY }, { rows: 1, cols: 6, cells: [['', '', '', '', '', '']], columns: CELL_COLS_KEY }, { rows: 1, cols: 1, cells: [[3]], columns: CELL_COLS_KEY }, 'x']) {
       st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: bad }))
       const r = loadSaved(st, ids(), NOW)
       expect(r.status).toBe('ok')
@@ -129,23 +130,23 @@ describe('保存と読み込み', () => {
 
   it('切り取りの元が付いたコピー（第1.3版）を保存して読み戻せる。第1.2版の形（元なし）も読める', () => {
     const data = sample()
-    data.cellClip = { rows: 1, cols: 2, cells: [['棚板', '3']], cut: { jobId: 'job-shelf', range: { top: 3, left: 2, rows: 1, cols: 2 } } }
+    data.cellClip = { rows: 1, cols: 2, cells: [['棚板', '3']], cut: { jobId: 'job-shelf', range: { top: 3, left: 3, rows: 1, cols: 2 } }, columns: CELL_COLS_KEY }
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     expect(loadSaved(st, ids(), NOW).data).toEqual(data)
-    const v12 = { rows: 1, cols: 1, cells: [['天板.W']] }
-    st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: v12 }))
-    expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual(v12)
+    const noCut = { rows: 1, cols: 1, cells: [['天板.W']], columns: CELL_COLS_KEY }
+    st.setItem(DATA_KEY, JSON.stringify({ ...data, cellClip: noCut }))
+    expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual(noCut)
   })
 
   it('切り取りの元の形だけが違うときは、元を外してふつうのコピーとして読む', () => {
     const data = sample()
-    const clip = { rows: 1, cols: 2, cells: [['棚板', '3']] }
+    const clip = { rows: 1, cols: 2, cells: [['棚板', '3']], columns: CELL_COLS_KEY }
     const st = new MemoryStorage()
     for (const badCut of [
       'x',
       { jobId: 1, range: { top: 0, left: 0, rows: 1, cols: 2 } },
-      { jobId: 'job-shelf', range: { top: 0, left: 3, rows: 1, cols: 2 } },
+      { jobId: 'job-shelf', range: { top: 0, left: 4, rows: 1, cols: 2 } },
       { jobId: 'job-shelf', range: { top: 0, left: 0, rows: 2, cols: 2 } },
       { jobId: 'job-shelf', range: { top: -1, left: 0, rows: 1, cols: 2 } },
     ]) {
@@ -159,8 +160,8 @@ describe('保存と読み込み', () => {
   it('名前が空・枚数が空（null）の部材も保存して読み戻せる（第1.1版）', () => {
     const data = sample()
     data.jobs[0].parts.push(
-      { id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false },
-      { id: 'p6', name: '', expr: { W: '300', H: '400' }, adjust: { W: '-2', H: '' }, quantity: 1, rotatable: false, finishedDone: false },
+      { id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: null, rotatable: false, finishedDone: false },
+      { id: 'p6', name: '', expr: { W: '300', H: '400' }, adjust: { W: '-2', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: 1, rotatable: false, finishedDone: false },
     )
     const st = new MemoryStorage()
     saveSaved(st, data, null)
@@ -178,6 +179,37 @@ describe('保存と読み込み', () => {
     expect(r.status).toBe('ok')
     expect(r.data.jobs[0].parts.every((p) => p.adjust.W === '' && p.adjust.H === '')).toBe(true)
     expect(r.data.jobs[0].parts.map((p) => p.expr)).toEqual(sample().jobs[0].parts.map((p) => p.expr))
+  })
+
+  it('厚みの無い第2.1版の保存データは、全部の部材の厚みを空（null）として読む（第2.2版。仕様書 26.7）', () => {
+    const st = new MemoryStorage()
+    st.setItem(DATA_KEY, JSON.stringify(toV21(sample())))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data.jobs[0].parts.map((p) => p.thickness)).toEqual([null, null, null, null])
+    expect(r.data).toEqual(sample())
+  })
+
+  it('部材の厚みを保存して読み戻せる（第2.2版）', () => {
+    const data = sample()
+    data.jobs[0].parts[1] = { ...data.jobs[0].parts[1], thickness: 18 }
+    data.jobs[0].parts[3] = { ...data.jobs[0].parts[3], thickness: 2.5 }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+  })
+
+  it('色とメモを保存して読み戻せる（第2.2版）。色・メモの無い第2.1版の保存データは、色なし・メモなしとして読む', () => {
+    const data = sample()
+    data.jobs[0].parts[2] = { ...data.jobs[0].parts[2], rowColor: 'blue' }
+    data.jobs[0].parts[3] = { ...data.jobs[0].parts[3], cellColors: { W: 'red' }, memo: '木目を縦に' }
+    const st = new MemoryStorage()
+    saveSaved(st, data, null)
+    expect(loadSaved(st, ids(), NOW).data).toEqual(data)
+    st.setItem(DATA_KEY, JSON.stringify(toV21(data)))
+    const r = loadSaved(st, ids(), NOW)
+    expect(r.status).toBe('ok')
+    expect(r.data).toEqual(sample())
   })
 
   it('部材の調整を保存して読み戻せる（第2.1版）', () => {
@@ -213,15 +245,30 @@ describe('保存と読み込み', () => {
   })
 
   it('保存してあるコピーしたセルの中の調整寸法も数字に置き換える（仕様書 25.9）', () => {
-    const data = { ...sample(), cellClip: { rows: 1, cols: 2, cells: [['棚板', `天板.W - 20 - {n:${MELAMINE_ID}}`]] } }
+    const data = { ...sample(), cellClip: { rows: 1, cols: 2, cells: [['棚板', `天板.W - 20 - {n:${MELAMINE_ID}}`]], columns: CELL_COLS_KEY } }
     const st = new MemoryStorage()
     st.setItem(DATA_KEY, JSON.stringify(data))
-    expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual({ rows: 1, cols: 2, cells: [['棚板', '天板.W - 20 - 1']] })
+    expect(loadSaved(st, ids(), NOW).data.cellClip).toEqual({ rows: 1, cols: 2, cells: [['棚板', '天板.W - 20 - 1']], columns: CELL_COLS_KEY })
+  })
+
+  it('前の版（第2.1版まで）で保存したコピーしたセル（列の並びの印が無い）は捨てる。仕事・ほかの中身は読める（第2.2版。仕様書 26.8）', () => {
+    const st = new MemoryStorage()
+    for (const old of [
+      { rows: 1, cols: 4, cells: [['棚板', '天板.W - 20', '天板.H - 40', '3']] },
+      { rows: 1, cols: 1, cells: [['天板.W']], cut: { jobId: 'job-shelf', range: { top: 3, left: 1, rows: 1, cols: 1 } } },
+      { rows: 1, cols: 2, cells: [['-1', '']], source: 'adjust' },
+      { rows: 1, cols: 1, cells: [['1']], columns: 'name,W,H,qty' },
+    ]) {
+      st.setItem(DATA_KEY, JSON.stringify(toV21({ ...sample(), cellClip: old })))
+      const r = loadSaved(st, ids(), NOW)
+      expect(r.status).toBe('ok')
+      expect(r.data).toEqual({ ...sample(), cellClip: null })
+    }
   })
 
   it('［調整］でコピーしたセル（source: adjust。第2.1版）を保存して読み戻せる。調整寸法は置き換えない。印の形が違えば捨てる', () => {
     const data = sample()
-    data.cellClip = { rows: 1, cols: 2, cells: [[`-{n:${MELAMINE_ID}}`, '-1']], source: 'adjust', cut: { jobId: 'job-shelf', range: { top: 3, left: 1, rows: 1, cols: 2 } } }
+    data.cellClip = { rows: 1, cols: 2, cells: [[`-{n:${MELAMINE_ID}}`, '-1']], source: 'adjust', cut: { jobId: 'job-shelf', range: { top: 3, left: 2, rows: 1, cols: 2 } }, columns: CELL_COLS_KEY }
     const st = new MemoryStorage()
     saveSaved(st, data, null)
     expect(loadSaved(st, ids(), NOW).data).toEqual(data)

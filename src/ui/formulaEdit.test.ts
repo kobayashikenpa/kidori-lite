@@ -11,6 +11,7 @@ import {
   canInsertRef,
   refCellsOf,
   refColorsOf,
+  refPiece,
   REF_COLOR_COUNT,
   unitCount,
   type Edit,
@@ -237,5 +238,38 @@ describe('refColorsOf（式に入っている部材の色の枠の番号）', ()
 describe('refCellsOf（色の枠を付けるセル）', () => {
   it('式に入っている 部材名.W・部材名.H だけ（全角はそろえる）', () => {
     expect([...refCellsOf('天板.W - 側板．Ｈ * 2 + 天板.W')]).toEqual(['天板.W', '側板.H'])
+  })
+})
+
+describe('厚みのセルを押して 天板.T を入れる（第2.2版。仕様書 26.1）', () => {
+  it('W・H・厚みの列は「部材名.列」、名前・枚数の列は入れない', () => {
+    expect(refPiece('天板', 'T')).toBe('天板.T')
+    expect(refPiece('天板', 'W')).toBe('天板.W')
+    expect(refPiece('天板', 'H')).toBe('天板.H')
+    expect(refPiece('天板', 'name')).toBeNull()
+    expect(refPiece('天板', 'qty')).toBeNull()
+  })
+
+  it('全体.H − の後で天板の厚みを押し、× 2 で 全体.H - 天板.T * 2', () => {
+    const e1 = insertAt('', 0, '全体.H')
+    const e2 = pressOn(e1, '-')
+    expect(canInsertRef(e2.text, e2.cursor)).toBe(true)
+    const e3 = insertAt(e2.text, e2.cursor, refPiece('天板', 'T')!)
+    const e4 = pressOn(pressOn(e3, '*'), '2')
+    expect(e4.text).toBe('全体.H - 天板.T * 2')
+    // 天板.T のすぐ後では入れない（入力を終えて押したセルを選ぶ）
+    expect(canInsertRef(e3.text, e3.cursor)).toBe(false)
+  })
+
+  it('天板.T も色の枠の部材に数え、厚みのセルに枠を付ける', () => {
+    expect([...refColorsOf('全体.H - 天板.T * 2').entries()]).toEqual([
+      ['全体', 0],
+      ['天板', 1],
+    ])
+    expect([...refCellsOf('全体.H - 天板．Ｔ * 2')]).toEqual(['全体.H', '天板.T'])
+  })
+
+  it('天板.T は1つの塊として消える', () => {
+    expect(deleteBefore('全体.H - 天板.T', unitCount('全体.H - 天板.T'))).toEqual({ text: '全体.H -', cursor: 2 })
   })
 })

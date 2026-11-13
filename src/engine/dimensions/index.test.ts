@@ -1,7 +1,8 @@
 // 寸法の計算（仕上がり・木取り）。kidori の dimensions/finished.test.ts・index.test.ts をもとに、
 // 見本を仕様書 6章の棚に、軸を W・H に、木取り寸法を「仕上がり ＋ 切り代（W・H に1回ずつ）」にしたもの
 import { describe, expect, it } from 'vitest'
-import { legacyShelfJob, MELAMINE_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
+import { legacyShelfJob, MELAMINE_ID, shelfAdjusts, shelfJob, thickShelfJob } from '../fixtures/shelf'
+import { packJob } from '../packing'
 import type { Adjust, Axis, Job, Part } from '../types'
 import { computeDimensions } from './index'
 
@@ -11,6 +12,10 @@ function mkPart(name: string, expr: Partial<Record<Axis, string>>, extra: Partia
     name,
     expr: { W: '100', H: '100', ...expr },
     adjust: { W: '', H: '' },
+    thickness: null,
+    rowColor: null,
+    cellColors: {},
+    memo: '',
     quantity: 1,
     rotatable: false,
     finishedDone: false,
@@ -299,5 +304,119 @@ describe('参照の追従', () => {
     const p = dimsOf(job, 'P')
     expect(p.errors.map((e) => [e.axis, e.kind])).toEqual([['W', 'cycle']])
     expect(p.finished).toBeNull()
+  })
+})
+
+describe('厚みを式で使う（天板.T。第2.2版 仕様書 26.1）', () => {
+  it('見本：側板の H ＝ 全体.H − 天板.T × 2 は仕上がり 1764・木取り 1774', () => {
+    const d = dimsOf(thickShelfJob(), '側板')
+    expect(d.errors).toEqual([])
+    expect(d.finished).toEqual({ W: 400, H: 1764 })
+    expect(d.adjusted).toEqual({ W: 400, H: 1764 })
+    expect(d.cut).toEqual({ W: 410, H: 1774 })
+  })
+
+  it('天板の厚みを 20 にすると 1760、2.5 にすると 1795', () => {
+    const job = thickShelfJob()
+    job.parts[1] = { ...job.parts[1], thickness: 20 }
+    expect(dimsOf(job, '側板').finished?.H).toBe(1760)
+    job.parts[1] = { ...job.parts[1], thickness: 2.5 }
+    expect(dimsOf(job, '側板').finished?.H).toBe(1795)
+  })
+
+  it('天板の厚みを空にすると、側板の H が「天板 の厚みが入っていません」のエラーで木取りから外れる', () => {
+    const job = thickShelfJob()
+    job.parts[1] = { ...job.parts[1], thickness: null }
+    const dims = computeDimensions(job, shelfAdjusts())
+    const d = dims.parts[2]
+    expect(d.errors).toEqual([
+      { partId: 'part-gawaita', axis: 'H', field: 'finished', kind: 'noThickness', message: '天板 の厚みが入っていません', refs: ['天板'] },
+    ])
+    expect(d.finishedByAxis).toEqual({ W: 400 })
+    expect(d.cut).toBeNull()
+    expect(packJob(job, dims).skipped).toEqual([{ partId: 'part-gawaita', name: '側板', reason: 'dimensionError' }])
+  })
+
+  it('側板の H を参照している式にもエラーが伝わる', () => {
+    const job = thickShelfJob()
+    job.parts[1] = { ...job.parts[1], thickness: null }
+    job.parts.push(mkPart('幕板', { H: '側板.H' }))
+    const d = dimsOf(job, '幕板')
+    expect(d.errors[0]).toMatchObject({ kind: 'noThickness', from: { partId: 'part-gawaita', axis: 'H' } })
+    expect(d.errors[0].message).toBe('参照している「側板.H」が計算できません（天板 の厚みが入っていません）')
+  })
+
+  it('全角の 全体．Ｈ − 天板．Ｔ × ２ も読める', () => {
+    const job = thickShelfJob()
+    job.parts[2] = { ...job.parts[2], expr: { W: '全体.W', H: '全体．Ｈ − 天板．Ｔ × ２' } }
+    expect(dimsOf(job, '側板').finished?.H).toBe(1764)
+  })
+
+  it('厚みは天板の W・H のエラーと関係なく使える（厚みは数字）', () => {
+    const job = thickShelfJob()
+    job.parts[1] = { ...job.parts[1], expr: { W: '無い.W', H: '全体.H' } }
+    expect(dimsOf(job, '側板').finished?.H).toBe(1764)
+  })
+
+  it('存在しない部材の .T は「「地板」という部材はありません」', () => {
+    const job = withParts(mkPart('幕板', { W: '地板.T × 10' }))
+    expect(dimsOf(job, '幕板').errors).toEqual([
+      { partId: 'id-幕板', axis: 'W', field: 'finished', kind: 'unknownRef', message: '「地板」という部材はありません', refs: ['地板'] },
+    ])
+  })
+
+  it('調整に 天板.T を書くと「調整には部材の寸法は使えません」（調整の欄のエラー）', () => {
+    const job = thickShelfJob()
+    job.parts[3] = { ...job.parts[3], adjust: { W: '-天板.T', H: '' } }
+    const d = dimsOf(job, '棚板')
+    expect(d.errors).toEqual([{ partId: 'part-tanaita', axis: 'W', field: 'adjust', kind: 'syntax', message: '調整には部材の寸法は使えません' }])
+  })
+
+  it('厚みは木取り寸法・板の並べ方に足さない（厚みのある部材の寸法は今までどおり）', () => {
+    const job = shelfJob()
+    job.parts[3] = { ...job.parts[3], thickness: 18 }
+    expect(dimsOf(job, '棚板').cut).toEqual({ W: 389, H: 1770 })
+    const a = packJob(shelfJob(), computeDimensions(shelfJob(), shelfAdjusts()))
+    const b = packJob(job, computeDimensions(job, shelfAdjusts()))
+    expect(b.sheets.map((s) => s.placements.map((p) => [p.x, p.y, p.w, p.h]))).toEqual(a.sheets.map((s) => s.placements.map((p) => [p.x, p.y, p.w, p.h])))
+  })
+})
+
+describe('同じ名前の部材（第2.2版 仕様書 26.6）', () => {
+  /** 見本の棚に、もう1つ「棚板」（W 300×H 500・2枚）を足したもの */
+  function twoShelves(): Job {
+    return withParts(mkPart('棚板', { W: '300', H: '500' }, { id: 'id-棚板2', quantity: 2 }))
+  }
+
+  it('棚板.W を使う式が「棚板 が2つあります」のエラーになり、木取りから外れる', () => {
+    const job = twoShelves()
+    job.parts.push(mkPart('幕板', { W: '棚板.W', H: '100' }))
+    const dims = computeDimensions(job, shelfAdjusts())
+    const d = dims.parts.find((p) => p.name === '幕板')!
+    expect(d.errors).toEqual([{ partId: 'id-幕板', axis: 'W', field: 'finished', kind: 'ambiguousRef', message: '棚板 が2つあります', refs: ['棚板'] }])
+    expect(d.cut).toBeNull()
+    expect(packJob(job, dims).skipped.map((s) => s.name)).toEqual(['幕板'])
+  })
+
+  it('2つの棚板はどちらも寸法を計算し、木取りに入る', () => {
+    const job = twoShelves()
+    const dims = computeDimensions(job, shelfAdjusts())
+    const shelves = dims.parts.filter((p) => p.name === '棚板')
+    expect(shelves.map((p) => [p.finished, p.cut])).toEqual([
+      [{ W: 380, H: 1760 }, { W: 389, H: 1770 }],
+      [{ W: 300, H: 500 }, { W: 310, H: 510 }],
+    ])
+    const placed = packJob(job, dims).sheets.flatMap((s) => s.placements.map((p) => p.partId))
+    expect(placed.filter((id) => id === 'part-tanaita')).toHaveLength(3)
+    expect(placed.filter((id) => id === 'id-棚板2')).toHaveLength(2)
+  })
+
+  it('片方の名前を変えるとエラーが消え、残った棚板を指す', () => {
+    const job = twoShelves()
+    job.parts.push(mkPart('幕板', { W: '棚板.W', H: '100' }))
+    job.parts[4] = { ...job.parts[4], name: '棚板2' }
+    const d = dimsOf(job, '幕板')
+    expect(d.errors).toEqual([])
+    expect(d.finished?.W).toBe(380)
   })
 })

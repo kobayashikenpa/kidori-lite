@@ -2,6 +2,7 @@
 // - 名前は空でもよい。空の部材は画面で「#3」（job.parts の並びで 1 から数えた行番号）と出す
 // - 名前の無い部材は式から参照できない（第1.6版：表のセルを押しても式に入れない）
 // - 枚数が空（quantity: null）の部材は、寸法は計算するが木取り・必要な枚数・進み具合・比べに入れない
+import { normalizePartName } from './formula/tokenize'
 import type { Job, Part } from './types'
 
 /** 名前があるか（前後の空白を外して空でない） */
@@ -35,7 +36,37 @@ export function cutQuantity(quantity: number | null): number {
   return quantity ?? 0
 }
 
-/** 何も入っていない部材か（名前・W・H が空で、枚数も空）。この部材は表から外す（保存しない）。回転・仕上がりの完了は見ない */
-export function isBlankPart(part: Pick<Part, 'name' | 'expr' | 'quantity'>): boolean {
-  return part.name.trim() === '' && part.expr.W.trim() === '' && part.expr.H.trim() === '' && part.quantity === null
+/**
+ * 何も入っていない部材か（名前・厚み・W・H が空で、枚数も空）。この部材は表から外す（保存しない）。
+ * 回転・仕上がりの完了・調整は見ない。厚みだけ入っている行は部材として残す（第2.2版。仕様書 26.8）
+ */
+export function isBlankPart(part: Pick<Part, 'name' | 'expr' | 'quantity' | 'thickness'>): boolean {
+  return part.name.trim() === '' && part.thickness === null && part.expr.W.trim() === '' && part.expr.H.trim() === '' && part.quantity === null
+}
+
+/** 同じ名前の部材の名前のセルに出す文（第2.2版。仕様書 26.6） */
+export const DUPLICATE_NAME_MESSAGE = '同じ名前があります'
+
+/**
+ * 同じ名前の部材の数（第2.2版。仕様書 26.6）：そろえた名前（normalizePartName。全角・半角の違いは同じ）→ 数。2つ以上の名前だけ。
+ * 空の名前（空白だけも）は数えない
+ */
+export function duplicateNameCounts(parts: readonly Pick<Part, 'name'>[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const p of parts) {
+    if (!hasName(p)) continue
+    const key = normalizePartName(p.name)
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  for (const [k, n] of counts) if (n < 2) counts.delete(k)
+  return counts
+}
+
+/**
+ * 同じ名前の部材の id の集まり（第2.2版。仕様書 26.6）。貼り付け・オートフィルで同じ名前になった部材を、
+ * 画面が名前のセルで「同じ名前があります」（DUPLICATE_NAME_MESSAGE）にするのに使う。空の名前は数えない
+ */
+export function duplicateNameIds(parts: readonly Pick<Part, 'id' | 'name'>[]): Set<string> {
+  const counts = duplicateNameCounts(parts)
+  return new Set(parts.filter((p) => hasName(p) && counts.has(normalizePartName(p.name))).map((p) => p.id))
 }

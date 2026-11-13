@@ -62,3 +62,10 @@ describe('formulaText（式を1行の文字にして見せる）', () => {
     expect(formulaText('  ', shelfAdjusts())).toBe('')
   })
 })
+
+describe('厚みの参照の表示（第2.2版）', () => {
+  it('天板.T は部材の参照の1つの単位。表示は「全体.H − 天板.T × 2」', () => {
+    expect(formulaUnits('全体.H-天板．Ｔ*2').map((u) => u.kind)).toEqual(['partRef', 'op', 'partRef', 'op', 'digit'])
+    expect(formulaText('全体.H-天板．Ｔ*2', shelfAdjusts())).toBe('全体.H − 天板.T × 2')
+  })
+})

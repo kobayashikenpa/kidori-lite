@@ -31,6 +31,13 @@
   --refc-2: #1e8a4a;
   --refc-3: #c46a00;
   --refc-4: #c2307a;
+  /* 部材の色（第2.2版 仕様書 26.3）：赤・青・黄。淡く塗って、上の字が読めるように */
+  --mark-red: #fbe0dd;
+  --mark-blue: #dce8f8;
+  --mark-yellow: #f8eec0;
+  --mark-red-ink: #b3261e;
+  --mark-blue-ink: #1f5fa8;
+  --mark-yellow-ink: #8a6a00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -61,6 +68,12 @@
     --refc-2: #6fd69a;
     --refc-3: #ffb35c;
     --refc-4: #ff8cc6;
+    --mark-red: #43211f;
+    --mark-blue: #1b2f4b;
+    --mark-yellow: #3d3413;
+    --mark-red-ink: #f28b82;
+    --mark-blue-ink: #8cb8ec;
+    --mark-yellow-ink: #e3c35a;
   }
 }
 
@@ -1396,6 +1409,12 @@ h3 > .help {
   white-space: nowrap;
   font-weight: 400;
 }
+/* 部材名の横の厚み「t18」（第2.2版 仕様書 26.1） */
+.cl-t {
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--muted);
+}
 .cl-size {
   flex: none;
   white-space: nowrap;
@@ -1458,7 +1477,7 @@ h3 > .help {
   font-weight: 700;
 }
 
-/* ---------- 部材の表（第1.1版 仕様書 15.1）：番号・名前・W・H・枚数。375px に横スクロールなしで収める ---------- */
+/* ---------- 部材の表（第1.1版 仕様書 15.1）：番号・名前・厚み・W・H・枚数（厚みは第2.2版 26.1）。375px に横スクロールなしで収める ---------- */
 .pt {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1468,7 +1487,8 @@ h3 > .help {
 }
 .pt-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 46px;
+  /* 厚みの列は細く（数字3〜4桁）。ほかの列を少しずつ詰めた（第2.2版 仕様書 26.1） */
+  grid-template-columns: 36px minmax(0, 1.25fr) 40px minmax(0, 1fr) minmax(0, 1fr) 42px;
   min-width: 0;
 }
 .pt-item + .pt-item {
@@ -1497,7 +1517,7 @@ h3 > .help {
   font: inherit;
   min-height: 46px;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 5px;
   margin: 0;
   display: flex;
   align-items: center;
@@ -1510,6 +1530,16 @@ h3 > .help {
 }
 .pt-cell:first-child {
   border-left: 0;
+}
+/* 部材の色（第2.2版 仕様書 26.3）。選んだ範囲・エラー・入力中の色はこの上に重ねる（後ろに書く） */
+.pt-cell.mk-red {
+  background: var(--mark-red);
+}
+.pt-cell.mk-blue {
+  background: var(--mark-blue);
+}
+.pt-cell.mk-yellow {
+  background: var(--mark-yellow);
 }
 .pt-cell:disabled {
   cursor: default;
@@ -1529,6 +1559,7 @@ h3 > .help {
   font-weight: 700;
 }
 .pt-name {
+  position: relative;
   justify-content: flex-start;
   font-weight: 700;
   font-size: 15px;
@@ -1555,6 +1586,17 @@ h3 > .help {
   justify-content: center;
   color: var(--ink);
 }
+/* 厚みの欄（第2.2版 仕様書 26.1）：細い列なので小さめの字で真ん中に */
+.pt-thick {
+  justify-content: center;
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pt-hcell.thin {
+  padding: 0 2px;
+}
 .pt-f {
   font-size: 11px;
   font-weight: 400;
@@ -1568,6 +1610,13 @@ h3 > .help {
   background: var(--err-soft);
   font-size: 14px;
   justify-content: center;
+}
+/* 同じ名前の部材の名前（第2.2版 仕様書 26.6）：赤字と下の赤い線。選ぶと式の欄の下に「同じ名前があります」 */
+.pt-name.dup {
+  color: var(--err);
+  text-decoration: underline wavy var(--err);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
 }
 /* 選んでいる欄は枠を付ける */
 .pt-cell.on {
@@ -1583,6 +1632,7 @@ h3 > .help {
 }
 /* 枚数が空の行は薄く（木取りに入らない） */
 .pt-row.noqty .pt-name,
+.pt-row.noqty .pt-thick,
 .pt-row.noqty .pt-dim,
 .pt-row.noqty .pt-qty {
   opacity: 0.5;
@@ -1595,6 +1645,7 @@ h3 > .help {
   background: var(--sunk);
 }
 .pt-row.done .pt-name,
+.pt-row.done .pt-thick,
 .pt-row.done .pt-dim,
 .pt-row.done .pt-qty {
   color: var(--muted);
@@ -1746,7 +1797,7 @@ h3 > .help {
   font-weight: 700;
   white-space: nowrap;
 }
-/* 番号を引いて行を動かす（仕様書 24.2）：選んでいる行の番号は、なぞってもスクロールせずに引ける。動かす先に太い線 */
+/* 番号を引いて行を動かす（仕様書 24.2）：選んでいる行の番号は、なぞってもスクロールせずに引ける */
 .pt-no.grab {
   touch-action: none;
   cursor: grab;
@@ -1755,33 +1806,31 @@ h3 > .help {
 .pt.moving .pt-no {
   cursor: grabbing;
 }
-.pt.moving .pt-row .pt-no.hl {
+/* 番号を長押しして持ち上げた行（第2.2版 仕様書 26.5）：影が付いて少し浮き、指についてくる。ほかの行はすべってよける（transform は useGrid が付ける） */
+.pt.moving .pt-item {
+  transition: transform 0.15s ease;
+}
+.pt-item[data-lift] {
+  position: relative;
+  z-index: 5;
+  transition: none !important;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.pt-item[data-lift] .pt-no {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.pt-moveline {
-  position: absolute;
-  z-index: 4;
-  left: 0;
-  right: 0;
-  height: 4px;
-  margin-top: -2px;
-  pointer-events: none;
-  background: var(--accent);
-  border-radius: 2px;
+/* 引いている間は取っ手を隠す（行についていかないため） */
+.pt.moving .pt-handle {
+  visibility: hidden;
 }
-.pt-moveline-label {
-  position: absolute;
-  left: 4px;
-  top: -11px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 20px;
-  white-space: nowrap;
+@media (prefers-reduced-motion: reduce) {
+  .pt.moving .pt-item {
+    transition: none;
+  }
 }
 /* 長押しで、文字の選択・拡大鏡・画像の保存のメニュー（iPhone）を出さない。名前の入力欄の中は除く */
 .pt.pt-edit {
@@ -1844,6 +1893,11 @@ h3 > .help {
 .cm-keys .btn.wide {
   grid-column: 1 / -1;
 }
+.cm-note {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
 .cm-clip {
   margin: 0;
   font-size: 13px;
@@ -1870,6 +1924,29 @@ h3 > .help {
 }
 .cm-field:disabled .seg {
   opacity: 0.45;
+}
+/* 長押しのメニューの「色」のボタン（第2.2版 仕様書 26.3）：その色で塗り、今の色は太い枠 */
+.btn.mk-btn {
+  font-weight: 700;
+}
+.btn.mk-btn.mk-red {
+  background: var(--mark-red);
+  color: var(--mark-red-ink);
+}
+.btn.mk-btn.mk-blue {
+  background: var(--mark-blue);
+  color: var(--mark-blue-ink);
+}
+.btn.mk-btn.mk-yellow {
+  background: var(--mark-yellow);
+  color: var(--mark-yellow-ink);
+}
+.btn.mk-btn[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 3px var(--accent);
+}
+.cm-field:disabled .btn {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .pt-msg {
   margin: 0;
@@ -2008,7 +2085,10 @@ h3 > .help {
   cursor: default;
 }
 .pt.cut .pt-row {
-  grid-template-columns: 40px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 70px;
+  grid-template-columns: 36px minmax(0, 1.1fr) 40px minmax(0, 1fr) minmax(0, 1fr) 64px;
+}
+.pt.cut .pt-head > span:nth-child(3) {
+  padding: 4px 2px 2px;
 }
 .pt.cut .pt-dim {
   color: var(--cut);
@@ -2141,6 +2221,13 @@ h3 > .help {
 .pa-err {
   font-size: 14px;
 }
+/* ［調整］の表は名前を見るだけなので、名前の列を少し詰めて W・H の調整の値を広く見せる（第2.2版で厚みの列が増えたため） */
+.pt.adjtab .pt-row {
+  grid-template-columns: 36px minmax(0, 1fr) 40px minmax(0, 1.15fr) minmax(0, 1.15fr) 42px;
+}
+.pt.adjtab .pa-label {
+  font-size: 11.5px;
+}
 .pt.pt-edit.adjtab .pt-item:last-child .pt-no {
   border-bottom-left-radius: 9px;
 }
@@ -2202,6 +2289,12 @@ h3 > .help {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
+/* 中身の無い欄（名前のセルを選んで、欄の下に理由だけ出すとき）：何も選んでいないときと同じ点線の空の欄 */
+.fx-bar.blank {
+  border-style: dashed;
+  background: none;
+  cursor: default;
+}
 /* ［木取り］のタブの式の欄は見るだけ */
 .fx-bar.view {
   cursor: default;
@@ -2244,13 +2337,18 @@ h3 > .help {
   cursor: pointer;
   touch-action: manipulation;
 }
-/* エラーの理由は欄のすぐ下に、表に重ねて出す（表の位置がずれないように） */
-.fx-err {
+/* エラーの理由・メモは欄のすぐ下に、表に重ねて出す（表の位置がずれないように）。エラーが上、メモがその下（第2.2版 仕様書 26.8） */
+.fx-below {
   position: absolute;
   left: 0;
   right: 0;
   top: calc(100% + 2px);
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fx-err {
   margin: 0;
   padding: 4px 10px;
   border-radius: 6px;
@@ -2260,6 +2358,67 @@ h3 > .help {
   background: var(--err-soft);
   box-shadow: var(--shadow);
   overflow-wrap: anywhere;
+}
+/* メモ（第2.2版 仕様書 26.3）：2行まで、続きは「…」。押すとメモの欄 */
+.fx-memo {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fx-memo-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fx-memo-text b {
+  color: var(--warn);
+  margin-right: 4px;
+}
+/* メモのある部材の名前のセル：右上の角に小さな三角（第2.2版 仕様書 26.3。.pt-name は position: relative） */
+.pt-name.memo::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 11px 11px 0;
+  border-color: transparent var(--warn) transparent transparent;
+  pointer-events: none;
+}
+/* メモの欄（下から出るシート） */
+.memo-input {
+  min-height: 120px;
+  resize: vertical;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.memo-full {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
 }
 /* ［木取り］のタブで押して選んだセルの印（仕上がりの式を上の欄に出しているセル） */
 .pt.cut button.pt-cell {

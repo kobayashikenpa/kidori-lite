@@ -9,40 +9,59 @@ const at = (top: number, left: number, rows = 1, cols = 1): CellRange => ({ top,
 describe('式の欄に出す中身（仕様書 25.8）', () => {
   const parts = shelfJob().parts // 0 全体・1 天板・2 側板・3 棚板
 
-  it('W・H・枚数のセルだけ。名前のセル・何も選んでいないときは null', () => {
-    expect(barField(at(3, 1))).toBe('W')
-    expect(barField(at(3, 2))).toBe('H')
-    expect(barField(at(3, 3))).toBe('qty')
+  it('厚み・W・H・枚数のセルだけ。名前のセル・何も選んでいないときは null', () => {
+    expect(barField(at(3, 1))).toBe('T')
+    expect(barField(at(3, 2))).toBe('W')
+    expect(barField(at(3, 3))).toBe('H')
+    expect(barField(at(3, 4))).toBe('qty')
     expect(barField(at(3, 0))).toBeNull()
     expect(barField(null)).toBeNull()
     // 範囲は左上のセル（行全体は名前から始まるので空）
-    expect(barField(at(0, 0, 2, 4))).toBeNull()
-    expect(barField(at(1, 1, 3, 2))).toBe('W')
+    expect(barField(at(0, 0, 2, 5))).toBeNull()
+    expect(barField(at(1, 2, 3, 2))).toBe('W')
   })
 
   it('［仕上がり］は仕上がりの式、数字は数字、枚数は枚数', () => {
-    expect(partBar(parts, at(3, 1), 'finished')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
-    expect(partBar(parts, at(0, 1), 'finished')).toEqual({ kind: 'expr', expr: '400' })
-    expect(partBar(parts, at(3, 3), 'finished')).toEqual({ kind: 'text', text: '3' })
+    expect(partBar(parts, at(3, 2), 'finished')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
+    expect(partBar(parts, at(0, 2), 'finished')).toEqual({ kind: 'expr', expr: '400' })
+    expect(partBar(parts, at(3, 4), 'finished')).toEqual({ kind: 'text', text: '3' })
     expect(partBar(parts, at(3, 0), 'finished')).toBeNull()
   })
 
   it('［調整］は調整の式、［木取り］は仕上がりの式（見るだけ）', () => {
-    expect(partBar(parts, at(3, 1), 'adjust')).toEqual({ kind: 'expr', expr: `-{n:${MELAMINE_ID}}` })
-    expect(partBar(parts, at(3, 2), 'adjust')).toEqual({ kind: 'expr', expr: '' })
-    expect(partBar(parts, at(3, 1), 'cut')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
-    expect(partBar(parts, at(0, 3), 'cut')).toEqual({ kind: 'text', text: '0' })
+    expect(partBar(parts, at(3, 2), 'adjust')).toEqual({ kind: 'expr', expr: `-{n:${MELAMINE_ID}}` })
+    expect(partBar(parts, at(3, 3), 'adjust')).toEqual({ kind: 'expr', expr: '' })
+    expect(partBar(parts, at(3, 2), 'cut')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
+    expect(partBar(parts, at(0, 4), 'cut')).toEqual({ kind: 'text', text: '0' })
+  })
+
+  it('厚みはどのタブも その数（空は空。第2.2版）', () => {
+    const thick = shelfJob().parts
+    thick[1] = { ...thick[1], thickness: 18 }
+    expect(partBar(thick, at(1, 1), 'finished')).toEqual({ kind: 'text', text: '18' })
+    expect(partBar(thick, at(1, 1), 'adjust')).toEqual({ kind: 'text', text: '18' })
+    expect(partBar(thick, at(1, 1), 'cut')).toEqual({ kind: 'text', text: '18' })
+    expect(partBar(thick, at(2, 1), 'finished')).toEqual({ kind: 'text', text: '' })
+    expect(partBar(thick, at(9, 1), 'finished')).toEqual({ kind: 'text', text: '' })
+  })
+
+  it('厚みは丸めずにそのまま出す（18.25 は 18.25。どのタブも。仕様書 26.8）', () => {
+    const thick = shelfJob().parts
+    thick[1] = { ...thick[1], thickness: 18.25 }
+    for (const tab of ['finished', 'adjust', 'cut'] as const) {
+      expect(partBar(thick, at(1, 1), tab)).toEqual({ kind: 'text', text: '18.25' })
+    }
   })
 
   it('部材の無い空の行は空の中身（そこに入れられるので欄は出す）', () => {
-    expect(partBar(parts, at(4, 1), 'finished')).toEqual({ kind: 'expr', expr: '' })
-    expect(partBar(parts, at(4, 3), 'finished')).toEqual({ kind: 'text', text: '' })
+    expect(partBar(parts, at(4, 2), 'finished')).toEqual({ kind: 'expr', expr: '' })
+    expect(partBar(parts, at(4, 4), 'finished')).toEqual({ kind: 'text', text: '' })
   })
 
   it('「＝」で始まる古い式は「＝」を外して出す', () => {
     const old = shelfJob().parts
     old[3] = { ...old[3], expr: { W: '＝天板.W - 20', H: '' } }
-    expect(partBar(old, at(3, 1), 'finished')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
+    expect(partBar(old, at(3, 2), 'finished')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
   })
 
   it('調整寸法の表は寸法のセルだけ（その数字）', () => {

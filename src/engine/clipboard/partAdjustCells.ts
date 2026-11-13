@@ -1,12 +1,13 @@
 // ［調整］のタブの表のセル操作（第2.1版。仕様書 25.2・25.9）。新しく作ったもの（kidori には無い）。
-// 表の形は［仕上がり］と同じ（番号・名前・W・H・枚数。セルの位置・範囲は cells.ts と同じ CellPos・CellRange）。
-// - W・H の欄の中身は部材の調整の式（Part.adjust）。名前・枚数の欄は見るだけ（選べてコピーもできるが、貼り付け・クリア・オートフィルで変わるのは W・H だけ）
+// 表の形は［仕上がり］と同じ（番号・名前・厚み・W・H・枚数。セルの位置・範囲は cells.ts と同じ CellPos・CellRange）。
+// - W・H の欄の中身は部材の調整の式（Part.adjust）。名前・厚み（第2.2版）・枚数の欄は見るだけ
+//   （選べてコピーもできるが、貼り付け・クリア・オートフィルで変わるのは W・H だけ）
 // - 部材のある行だけ。空の行には貼らず、部材も作らない（貼り付け・オートフィルは部材のある行までで止める。数えない）
 // - コピーしたセルには［調整］から写した印（CellClip.source = 'adjust'）を付ける。［仕上がり］でコピーしたもの（印なし）は貼れない。
 //   逆に［調整］でコピーしたものは［仕上がり］に貼れない（cells.ts の pasteCells）
 // - 部材の名前は変えないので、番号を振ることも、貼れない理由（skipped）も無い（結果の形は pasteCells にそろえて空の配列を返す）
 // 仕事は書き換えず、新しい仕事を返す（updatedAt とコピーしたセル AppData.cellClip の保存は store の側で行う）
-import { CELL_COLS, type CellClip, type CellCol, type CellPos, type CellRange, type Job } from '../types'
+import { CELL_COLS, CELL_COLS_KEY, type CellClip, type CellCol, type CellPos, type CellRange, type Job } from '../types'
 import {
   cellText,
   COPY_SHAPE_MESSAGE,
@@ -16,7 +17,6 @@ import {
   selectionShape,
   type CellSelection,
   type CopyCellsResult,
-  type PasteRenamed,
   type PasteSkip,
 } from './cells'
 
@@ -29,7 +29,7 @@ const keyOf = (row: number, col: number): string => `${row}:${col}`
 /** 調整の式を入れる欄（W・H） */
 const isAxisCol = (col: CellCol): col is 'W' | 'H' => col === 'W' || col === 'H'
 
-/** ［調整］のタブのセルの中身：W・H は調整の式、名前・枚数は今の中身（cellText と同じ）。空の行は '' */
+/** ［調整］のタブのセルの中身：W・H は調整の式、名前・厚み・枚数は今の中身（cellText と同じ）。空の行は '' */
 export function partAdjustCellText(job: Pick<Job, 'parts'>, pos: CellPos): string {
   if (!isAxisCol(pos.col)) return cellText(job, pos)
   return job.parts[pos.row]?.adjust[pos.col] ?? ''
@@ -45,7 +45,7 @@ export function copyPartAdjustCells(job: Pick<Job, 'parts'>, selected: CellSelec
     for (let j = 0; j < shape.cols; j++) line.push(partAdjustCellText(job, { row: shape.top + i, col: CELL_COLS[shape.left + j] }))
     cells.push(line)
   }
-  return { ok: true, clip: { rows: shape.rows, cols: shape.cols, cells, source: 'adjust' } }
+  return { ok: true, clip: { rows: shape.rows, cols: shape.cols, cells, source: 'adjust', columns: CELL_COLS_KEY } }
 }
 
 /** ［調整］のタブでセルを切り取る：コピーと同じ中身に、元（仕事の id と範囲）を clip.cut に付ける。仕事はまだ変えない */
@@ -64,8 +64,6 @@ export type PartAdjustPasteResult =
       pasted: number
       /** いつも空（［調整］では貼れない理由が無い。pasteCells と同じ形にそろえる） */
       skipped: PasteSkip[]
-      /** いつも空（名前を変えないので番号は振らない） */
-      renamed: PasteRenamed[]
       /** 切り取りをほかの仕事に貼ったとき、元の仕事で空にする W・H のセル（clearPartAdjustCutSource に渡す）。それ以外は null */
       cutClear: { jobId: string; cells: CellPos[] } | null
     }
@@ -121,7 +119,7 @@ function sameAsClip(job: Pick<Job, 'parts'>, clip: CellClip, cell: CellPos): boo
  * ［調整］のタブでコピーしたセルを貼る（W・H の調整の式だけ変わる）。
  * - 1つのセルのコピー：選んだセル全部に同じものを貼る（同じ調整をまとめて何行にも貼れる）
  * - 範囲のコピー：選んだセルの一番左上から同じ形で貼る。表の右をはみ出す列は貼らない
- * - 名前・枚数の欄に当たる所、部材の無い行は貼らない（数えない。部材も作らない）
+ * - 名前・厚み・枚数の欄に当たる所、部材の無い行は貼らない（数えない。部材も作らない）
  * - ［仕上がり］でコピーしたもの（clip.source が 'adjust' でない）は断る
  * - 切り取り（clip.cut）：元の W・H を空にする（名前・枚数は消さない）。貼る先と重なるセル・切り取ったあとに書き換えたセルは空にしない。
  *   同じ仕事なら返す job の中で空にし、違う仕事なら cutClear で返す。クリップをふつうのコピーに変えるのは store の側
@@ -168,7 +166,7 @@ export function pastePartAdjustCells(job: Job, clip: CellClip, selected: CellSel
       .filter((c): c is { row: number; col: 'W' | 'H' } => c !== null)
     cutClear = { jobId: cut.jobId, cells: srcCells }
   }
-  return { ok: true, job: r.job, pasted: r.pasted, skipped: [], renamed: [], cutClear }
+  return { ok: true, job: r.job, pasted: r.pasted, skipped: [], cutClear }
 }
 
 /**
@@ -202,7 +200,7 @@ export function fillPartAdjustCells(job: Job, from: CellRange, to: CellRange): P
     }
   }
   const a = applyTargets(job, targets, [])
-  return { ok: true, job: a.job, pasted: a.pasted, skipped: [], renamed: [], cutClear: null }
+  return { ok: true, job: a.job, pasted: a.pasted, skipped: [], cutClear: null }
 }
 
 /**

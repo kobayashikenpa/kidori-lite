@@ -14,7 +14,7 @@ export function shelfAdjusts(): Adjust[] {
 }
 
 function part(id: string, name: string, W: string, H: string, quantity: number, adjustW = ''): Part {
-  return { id, name, expr: { W, H }, adjust: { W: adjustW, H: '' }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: adjustW, H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity, rotatable: false, finishedDone: false }
 }
 
 /**
@@ -42,5 +42,16 @@ export function shelfJob(id = 'job-shelf', name = '棚'): Job {
 export function legacyShelfJob(id = 'job-shelf', name = '棚'): Job {
   const job = shelfJob(id, name)
   job.parts[3] = { ...job.parts[3], expr: { W: `天板.W - 20 - {n:${MELAMINE_ID}}`, H: '天板.H - 20 × 2' }, adjust: { W: '', H: '' } }
+  return job
+}
+
+/**
+ * 厚みを使う形の棚（第2.2版。仕様書 26.1。docs/tasks.md の「テストの見本」）：shelfJob に、天板の厚み 18・側板の H ＝ `全体.H - 天板.T × 2`。
+ * 側板の仕上がり H は 1800 − 36 ＝ 1764（木取り 1774）。ほかの部材は shelfJob と同じ（今までのテストの結果を変えないため別の関数）
+ */
+export function thickShelfJob(id = 'job-shelf', name = '棚'): Job {
+  const job = shelfJob(id, name)
+  job.parts[1] = { ...job.parts[1], thickness: 18 }
+  job.parts[2] = { ...job.parts[2], expr: { W: '全体.W', H: '全体.H - 天板.T × 2' } }
   return job
 }

@@ -1,8 +1,8 @@
-// 部材の表の［調整］のタブ（第2.1版。仕様書 25.2・25.3・25.7）：［仕上がり］と同じ表の形（番号・名前・W・H・枚数）。
+// 部材の表の［調整］のタブ（第2.1版。仕様書 25.2・25.3・25.7）：［仕上がり］と同じ表の形（番号・名前・厚み・W・H・枚数）。
 // W・H の欄は「調整の値 ｜ 調整後の寸法」（例：−メラミン1 ｜ 379）。調整が空の欄は仕上がり寸法を薄く、エラーは赤で「エラー」。
 // 部材のある行だけ（空の行・「＋ 5行足す」は出さない。仕様書 25.9）。
 // 操作は［仕上がり］と同じ：1回押して選ぶ・もう一度押して入力（W・H だけ。アプリのキー）・取っ手で範囲・番号で行・見出しで列・
-// 長押しのメニュー（切り取り・コピー・貼り付け・クリアだけ。CellMenu の adjust）・オートフィル（指の動きは useGrid）。名前・枚数は見るだけ。
+// 長押しのメニュー（切り取り・コピー・貼り付け・クリアだけ。CellMenu の adjust）・オートフィル（指の動きは useGrid）。名前・厚み・枚数は見るだけ。
 // 表の下に調整寸法の表（AdjustTable）を置き、W・H の入力中に欄が空か記号の後でその行を押すと、その調整寸法を入れる（仕様書 25.3・25.7）。
 // 入力中にほかの部材の W・H を押したら、入れずに入力を終えてそのセルを選ぶ（調整に部材の寸法は使えない。仕様書 25.9）。
 // 選んでいるセルの中身は、タブのすぐ下の式の欄（FormulaBar。仕様書 25.8）に出す（W・H は調整の式、枚数は枚数を見るだけ、名前は空）。
@@ -13,22 +13,24 @@ import { isUsableAdjust } from '../../engine/adjusts'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { formulaUnits } from '../../engine/formula/units'
 import { adjustIdsInExpr } from '../../engine/formula/usages'
-import { hasName } from '../../engine/parts'
+import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type AdjustRow, type Axis, type CellClip, type CellRange, type DimensionResult, type Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
-import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { cellColor, hasMemo } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import { canInsertRef, insertAt, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { barErrors, barField, partBar } from '../fxBar'
-import { adjustCellLabel, adjustDimCell, errorsWhileEditing, nextAdjustTabCell, type AdjustDimCell } from '../partsTable'
+import { adjustCellLabel, adjustDimCell, errorsWhileEditing, nextAdjustTabCell, thicknessText, type AdjustDimCell } from '../partsTable'
 import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
 import { AdjustTable } from './AdjustTable'
 import { CellMenu } from './CellMenu'
 import { FormulaBar } from './FormulaBar'
 import { FormulaKeys } from './FormulaKeys'
 import { GridOverlay } from './GridOverlay'
+import { MemoSheet } from './MemoSheet'
 
 interface Props {
   job: Job
@@ -59,11 +61,18 @@ function cellOf(s: Sel | null, job: Job): Cell | null {
 }
 
 const colOf = (axis: Axis): number => CELL_COLS.indexOf(axis)
+/** 厚み・枚数の列の位置（第2.2版で厚みの列が名前の右に入った） */
+const THICK_COL = CELL_COLS.indexOf('T')
+const QTY_COL = CELL_COLS.indexOf('qty')
 
 export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, barSlot }: Props) {
   const parts = job.parts
   const rowCount = parts.length
   const [menuOpen, setMenuOpen] = useState(false)
+  // 長押しした所：番号なら行の色、セルならセルの色（仕様書 26.3）
+  const [menuTarget, setMenuTarget] = useState<'row' | 'cell'>('cell')
+  // メモの欄を開いている部材（仕様書 26.3）
+  const [memoFor, setMemoFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [selS, setSelS] = useState<Sel | null>(null)
   const sel = cellOf(selS, job)
@@ -250,8 +259,15 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     }
     onError(null)
     setNotice(null)
+    setMenuTarget(at.col === null ? 'row' : 'cell')
     setMenuOpen(true)
     navigator.vibrate?.(10)
+  }
+
+  /** その部材のメモの欄を開く（入力中なら入力を終える） */
+  const openMemo = (partId: string) => {
+    if (curCell()) endInput()
+    setMemoFor(partId)
   }
 
   const padOpen = sel !== null
@@ -275,6 +291,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   // ---------- 表示 ----------
 
   const dimsOf = (partId: string) => dims.parts.find((d) => d.partId === partId)
+  // 同じ名前の部材の名前は赤（選ぶと式の欄の下に「同じ名前があります」。仕様書 26.6）
+  const dupIds = duplicateNameIds(parts)
   const axisErrors = (partId: string, axis: Axis) => dimsOf(partId)?.errors.filter((x) => x.axis === axis) ?? []
   const selPart = sel ? parts[sel.row] : undefined
   const editingText = sel && selPart ? selPart.adjust[sel.axis] : ''
@@ -298,7 +316,9 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   const barWho = barPart && hasName(barPart) ? barPart.name : barRange ? `#${barRange.top + 1}` : ''
   const barErrs = refMsg
     ? [refMsg]
-    : barPart && (barAt === 'W' || barAt === 'H')
+    : barRange && barRange.left === 0 && barPart && dupIds.has(barPart.id)
+      ? [DUPLICATE_NAME_MESSAGE]
+      : barPart && (barAt === 'W' || barAt === 'H')
       ? barErrors(dimsOf(barPart.id)?.errors ?? [], barAt, 'adjust', padOpen)
       : []
 
@@ -341,7 +361,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   ref={(el) => {
                     headEls.current[c] = el
                   }}
-                  className={`pt-hcell${c === 0 ? ' left' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
+                  className={`pt-hcell${c === 0 ? ' left' : ''}${f === 'T' ? ' thin' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
                   aria-label={`${CELL_COL_LABEL[f]} の列を選ぶ`}
                   onClick={() => pressColumn(c)}
                 >
@@ -372,6 +392,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
               ].join('')
             }
             const inRange = (col: number) => shown !== null && rangeHas(shown, { row: i, col })
+            // セルの色（無ければ行の色。［仕上がり］と同じ部材・同じ列に同じ色。仕様書 26.3）
+            const mark = (col: number) => markClass(cellColor(part, CELL_COLS[col]))
 
             const dimEl = (axis: Axis) => {
               const c = adjustDimCell(part, d, axis, adjusts)
@@ -382,7 +404,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
               return (
                 <button
                   type="button"
-                  className={`pt-cell pt-dim pa${c.kind === 'error' && !typing ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(col)}`}
+                  className={`pt-cell pt-dim pa${mark(col)}${c.kind === 'error' && !typing ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(col)}`}
                   data-row={i}
                   data-col={col}
                   aria-label={`${label} の ${axis}（調整）：${adjustCellLabel(c)}`}
@@ -407,7 +429,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                 <div className={rowClass} role="row">
                   <button
                     type="button"
-                    className={`pt-cell pt-no${rowIn ? ' hl' : ''}`}
+                    className={`pt-cell pt-no${markClass(part.rowColor)}${rowIn ? ' hl' : ''}`}
                     data-row={i}
                     aria-label={`${label} の行を選ぶ`}
                     onClick={() => pressRow(i)}
@@ -421,25 +443,37 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   </button>
                   <button
                     type="button"
-                    className={`pt-cell pt-name${rangeCls(0)}`}
+                    className={`pt-cell pt-name${mark(0)}${dupIds.has(part.id) ? ' dup' : ''}${hasMemo(part) ? ' memo' : ''}${rangeCls(0)}`}
                     data-row={i}
                     data-col={0}
-                    aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}（見るだけ）`}
+                    aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}${hasMemo(part) ? '（メモあり）' : ''}（見るだけ）`}
                     aria-selected={inRange(0)}
                     onClick={() => pressCell(i, 0)}
                   >
                     {named ? part.name : ''}
                   </button>
+                  {/* 厚みは［仕上がり］で入れる。ここは見るだけ（仕様書 26.1） */}
+                  <button
+                    type="button"
+                    className={`pt-cell pt-thick num${mark(THICK_COL)}${rangeCls(THICK_COL)}`}
+                    data-row={i}
+                    data-col={THICK_COL}
+                    aria-label={`${label} の厚み：${part.thickness === null ? '空' : thicknessText(part.thickness)}（見るだけ）`}
+                    aria-selected={inRange(THICK_COL)}
+                    onClick={() => pressCell(i, THICK_COL)}
+                  >
+                    {thicknessText(part.thickness)}
+                  </button>
                   {dimEl('W')}
                   {dimEl('H')}
                   <button
                     type="button"
-                    className={`pt-cell pt-qty num${rangeCls(3)}`}
+                    className={`pt-cell pt-qty num${mark(QTY_COL)}${rangeCls(QTY_COL)}`}
                     data-row={i}
-                    data-col={3}
+                    data-col={QTY_COL}
                     aria-label={`${label} の枚数：${part.quantity ?? '空'}（見るだけ）`}
-                    aria-selected={inRange(3)}
-                    onClick={() => pressCell(i, 3)}
+                    aria-selected={inRange(QTY_COL)}
+                    onClick={() => pressCell(i, QTY_COL)}
                   >
                     {part.quantity ?? ''}
                   </button>
@@ -472,6 +506,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
           onClose={() => setMenuOpen(false)}
           onNotice={setNotice}
           onError={onError}
+          target={menuTarget}
+          onMemo={openMemo}
           adjust
         />
       )}
@@ -496,7 +532,28 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
         onDone={endInput}
         hint="− と調整寸法の行で入れる（空は調整なし）"
         errors={barErrs}
+        memo={barPart && hasMemo(barPart) ? barPart.memo : undefined}
+        onMemo={() => {
+          if (barPart) openMemo(barPart.id)
+        }}
       />
+      {memoFor !== null &&
+        (() => {
+          const i = parts.findIndex((p) => p.id === memoFor)
+          if (i < 0) return null
+          return (
+            <MemoSheet
+              key={memoFor}
+              who={hasName(parts[i]) ? parts[i].name : `#${i + 1}`}
+              memo={parts[i].memo}
+              onSave={(text) => {
+                const r = dispatch({ type: 'setPartMemo', partId: memoFor, text })
+                return r.ok ? null : r.message
+              }}
+              onClose={() => setMemoFor(null)}
+            />
+          )
+        })()}
       {padOpen &&
         sel &&
         selPart &&

@@ -28,7 +28,7 @@ describe('expandPieces・packJob：固定した片を計算から除く', () => 
   it('部材を足しても、固定した1枚の並べ方は変わらず、足した部材は残りの計算に並ぶ', () => {
     const job0 = freezeAt(shelfJob(), 0)
     const frozen = JSON.parse(JSON.stringify(job0.frozenSheets[0]))
-    const extra: Part = { id: 'part-ji', name: '地板', expr: { W: '400', H: '600' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false }
+    const extra: Part = { id: 'part-ji', name: '地板', expr: { W: '400', H: '600' }, adjust: { W: '', H: '' }, thickness: null, rowColor: null, cellColors: {}, memo: '', quantity: 1, rotatable: false, finishedDone: false }
     const job = { ...job0, parts: [...job0.parts, extra] }
     expect(job.frozenSheets[0]).toEqual(frozen)
     expect(names(job)).toEqual([['地板', '棚板', '棚板']])
