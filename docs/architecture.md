@@ -930,3 +930,9 @@ export interface Part {
 - 式の欄（`ui/fxBar.ts`）：`barField` は 厚み・W・H・枚数（範囲の左上が厚みなら `'T'`）。`partBar` の厚みはどのタブも厚みの数字（`text`）。［仕上がり］の入力中は書きかけの文字と右に「mm」。［調整］［木取り］の厚みは見るだけ（欄を押しても入力しない）
 - 並べ替え：見出しの長押しの「厚み」は 大きい順・小さい順（`sortChoices` の名前以外と同じ。engine の `sortParts` の `T`）
 - ［木取り］の表（`CutTable`）：厚みのセルも押すと枠が付き、式の欄に厚みを見るだけで出す
+
+### 15.7 式で厚みを使う・木取りの画面の厚み（U-31。spec 26.1）
+
+- `ui/formulaEdit.ts` の `refPiece(name, col)`：押したセルから式に入れる寸法（W・H・T の列は `天板.W`・`天板.T`、名前・枚数は null）。入れてよいかは今までどおり `canInsertRef`（25.7 と同じ決まり）。`refColorsOf`・`refCellsOf` は `parseRefText` が T を読むので、そのまま `天板.T` も色の枠の部材に数える（テストつき）
+- `PartsTable` の `putRef`：W・H の入力中に、ほかの部材（同じ部材も）の厚みのセルを押したら `天板.T` を入れる。厚みのセルにも `refFrame`（色の点線の枠）。式の欄（`FormulaView`）では部材の寸法の塊として色つきで出る
+- 木取りの画面（`KidoriScreen`）：`ui/kidoriView.ts` の `thicknessTag(t)`（「t18」。空は ''）・`withThickness(name, t)`（「天板 t18」）。配置図（`SheetDiagram`）の部材名は `labelOf` に厚みを足し、切り出しチェック（`SheetChecklist`）は `tagOf` で名前の横に出す。厚みは `partId` から今の部材を引く（固定した1枚も今の厚み。部材が無くなっていれば出さない）。「部材ごとの進み具合」には出さない（26.1 は配置図・切り出しチェックだけ）

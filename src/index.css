@@ -1396,6 +1396,12 @@ h3 > .help {
   white-space: nowrap;
   font-weight: 400;
 }
+/* 部材名の横の厚み「t18」（第2.2版 仕様書 26.1） */
+.cl-t {
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--muted);
+}
 .cl-size {
   flex: none;
   white-space: nowrap;

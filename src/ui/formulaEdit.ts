@@ -4,6 +4,7 @@
 // 部材の参照（全体.W）・調整寸法 {n:…} は1つの単位なので、1回の ◀ ▶・1字消す で塊ごと動く・消える
 import { normalizeFormulaText, parseRefText, splitLeadingEquals } from '../engine/formula/tokenize'
 import { formulaUnits, type Unit, type UnitKind } from '../engine/formula/units'
+import type { CellCol } from '../engine/types'
 
 export interface Edit {
   text: string
@@ -135,6 +136,14 @@ export function canInsertRef(text: string, cursor: number): boolean {
   return prev.kind === 'op' || (prev.kind === 'paren' && normalizeFormulaText(prev.text) === '(')
 }
 
+/**
+ * 入力中に押したセルから式に入れる部材の寸法（第2.2版。仕様書 26.1）：W・H・厚み（T）の列なら「天板.W」「天板.T」、名前・枚数の列は null。
+ * 入れてよいかは canInsertRef で、名前の無い部材かは呼ぶ側で見る
+ */
+export function refPiece(partName: string, col: CellCol): string | null {
+  return col === 'W' || col === 'H' || col === 'T' ? `${partName}.${col}` : null
+}
+
 /** 色の枠の色の数（index.css の .refc-0 〜 .refc-4） */
 export const REF_COLOR_COUNT = 5
 
@@ -152,7 +161,7 @@ export function refColorsOf(text: string): Map<string, number> {
   return out
 }
 
-/** 式に入っている部材の寸法（「そろえた部材名.W」の形の集まり）。色の枠を付けるセルを決める */
+/** 式に入っている部材の寸法（「そろえた部材名.W」の形の集まり。厚みは「…T」）。色の枠を付けるセルを決める */
 export function refCellsOf(text: string): Set<string> {
   const out = new Set<string>()
   for (const u of formulaUnits(text)) {

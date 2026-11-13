@@ -20,3 +20,14 @@ export function scrapLabel(r: Pick<Rect, 'w' | 'h'>, orientation: SheetOrientati
 export function skippedErrorPlace(e: Pick<DimensionError, 'field' | 'axis'>): string {
   return `［${e.field === 'adjust' ? '調整' : '仕上がり'}］の ${e.axis}`
 }
+
+/** 部材名の横に付ける厚みの印（第2.2版。仕様書 26.1）：「t18」（小数第1位まで）。厚みが空なら '' */
+export function thicknessTag(thickness: number | null | undefined): string {
+  return thickness === null || thickness === undefined ? '' : `t${fmt(thickness)}`
+}
+
+/** 部材名に厚みの印を付ける：「棚板 t18」。厚みが空なら名前のまま */
+export function withThickness(name: string, thickness: number | null | undefined): string {
+  const tag = thicknessTag(thickness)
+  return tag === '' ? name : `${name} ${tag}`
+}

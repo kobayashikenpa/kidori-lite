@@ -6,7 +6,7 @@
 // 名前はその場でスマホのキーボード。厚み・W・H・枚数はスマホのキーボードを出さず、画面の下のアプリのキーで入れる（W・H は式も使える。枚数は数字だけ、厚みは数字と小数点）。
 // 入力はキーを押すたびに保存する。空の行に入れたときに部材を作り、何も入っていない部材は表から外す（保存しない）。
 // 寸法の計算は engine（computeDimensions の結果を受け取る）。式の文字の編集は formulaEdit.ts
-// W・H の入力中に、ほかの部材の W・H のセルを押したとき：欄が空かカーソルのすぐ前が ＋ − × ÷ ( なら、その寸法（天板.W）をカーソルの位置に入れる。
+// W・H の入力中に、ほかの部材の W・H・厚みのセルを押したとき：欄が空かカーソルのすぐ前が ＋ − × ÷ ( なら、その寸法（天板.W・天板.T）をカーソルの位置に入れる。
 // そうでなければ入力を終えて押したセルを選ぶ（第2.1版 仕様書 25.7。「＝」のキーは無い。判定は formulaEdit の canInsertRef）。
 // 第2.1版：調整寸法の表は［調整］のタブへ移した（仕様書 25.3）。［仕上がり］の式では調整寸法を使わない（仕様書 25.4）。
 // 選ぶ・取っ手・長押しの指の動きは useGrid（調整寸法の表と同じ仕組み）
@@ -21,12 +21,12 @@ import { formulaUnits } from '../../engine/formula/units'
 import { columnRange, rowRange } from '../../engine/clipboard/cells'
 import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
 import { hasName } from '../../engine/parts'
-import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part } from '../../engine/types'
+import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part, type RefAxis } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
-import { canInsertRef, insertAt, refCellsOf, refColorsOf, type Edit } from '../formulaEdit'
+import { canInsertRef, insertAt, refCellsOf, refColorsOf, refPiece, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
 import { THICKNESS_MESSAGE } from '../../store/jobs'
@@ -453,22 +453,22 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   }
 
   /**
-   * W・H の入力中に、ほかの部材の W・H のセルを押したとき（仕様書 25.7）：寸法を入れたら true（入力しているセルはそのまま）。
+   * W・H の入力中に、ほかの部材の W・H・厚みのセルを押したとき（仕様書 25.7・26.1）：寸法（天板.W・天板.T）を入れたら true（入力しているセルはそのまま）。
    * 欄が空かカーソルのすぐ前が記号でなければ、部材の無い空の行なら false（呼ぶ側が入力を終えて押したセルを選ぶ）。
    * 名前の無い部材は入れずに知らせる（入力は続ける。true）
    */
   const putRef = (editing: TableCell, row: number, field: TableField): boolean => {
-    if (field !== 'W' && field !== 'H') return false
     if (editing.field !== 'W' && editing.field !== 'H') return false
     const ps = jobRef.current.parts
     const target = ps[row]
     const raw = ps[editing.row]?.expr[editing.field] ?? ''
-    if (!target || !canInsertRef(raw, cursorRef.current)) return false
+    const piece = target ? refPiece(target.name, field) : null
+    if (!target || piece === null || !canInsertRef(raw, cursorRef.current)) return false
     if (!hasName(target)) {
       setRefMsg('名前の無い部材は式で使えません。先に名前を入れてください')
       return true
     }
-    editExpr(editing.row, editing.field, insertAt(splitLeadingEquals(raw).rest, cursorRef.current, `${target.name}.${field}`))
+    editExpr(editing.row, editing.field, insertAt(splitLeadingEquals(raw).rest, cursorRef.current, piece))
     return true
   }
 
@@ -478,7 +478,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     const editing = curCell()
     if (editing) {
       if (editing.row === row && editing.field === field) return
-      // W・H の入力中に、欄が空か記号の後でほかの部材の W・H を押したら、その寸法を式に入れる（入力は続ける）
+      // W・H の入力中に、欄が空か記号の後でほかの部材の W・H・厚みを押したら、その寸法を式に入れる（入力は続ける）
       if (putRef(editing, row, field)) return
       // それ以外は、入力を終えて そのセルを選ぶ
       selectCell(null)
@@ -596,8 +596,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   const editingExpr = padAxis && selPart ? splitLeadingEquals(selPart.expr[padAxis]).rest : ''
   const refColors = refColorsOf(editingExpr)
   const refCells = refCellsOf(editingExpr)
-  /** 式に入っている部材のセルの色の枠（仕様書 20.2。エクセルと同じく部材ごとに色を変える） */
-  const refFrame = (part: Part | undefined, axis: Axis): string => {
+  /** 式に入っている部材のセルの色の枠（仕様書 20.2。エクセルと同じく部材ごとに色を変える。厚みのセルも。26.1） */
+  const refFrame = (part: Part | undefined, axis: RefAxis): string => {
     if (!part || !hasName(part) || refColors.size === 0) return ''
     const key = normalizePartName(part.name)
     const c = refColors.get(key)
@@ -823,7 +823,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
                 {nameCell}
                 <button
                   type="button"
-                  className={`pt-cell pt-thick num${isSel('T') ? ' on' : ''}${rangeCls('T')}`}
+                  className={`pt-cell pt-thick num${isSel('T') ? ' on' : ''}${rangeCls('T')}${refFrame(part, 'T')}`}
                   data-row={i}
                   data-col={colOf('T')}
                   aria-label={`${label} の厚み：${part?.thickness == null ? '空' : thicknessText(part.thickness)}`}

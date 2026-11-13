@@ -23,7 +23,7 @@ import { SavingHint } from '../components/SavingHint'
 import { SheetChecklist } from '../components/SheetChecklist'
 import { SheetDiagram } from '../components/SheetDiagram'
 import { fmt } from '../format'
-import { pct, scrapLabel, skippedErrorPlace } from '../kidoriView'
+import { pct, scrapLabel, skippedErrorPlace, thicknessTag, withThickness } from '../kidoriView'
 import { cutModeLabel, sheetLabel } from '../settings'
 
 /** 画面に出す1枚（固定した1枚、または計算した1枚） */
@@ -116,9 +116,15 @@ export function KidoriScreen() {
   const finished = entries.filter((e) => e.view?.complete)
   const count = entries.length
   const colorOf = (partId: string) => Math.max(0, job.parts.findIndex((p) => p.id === partId))
-  // 配置図の部材名は今の表示名（固定した1枚も、名前の変更や「#行番号」のずれについてくる）
+  // 配置図の部材名は今の表示名（固定した1枚も、名前の変更や「#行番号」のずれについてくる）。
+  // 厚みのある部材は名前の横に「t18」（第2.2版 仕様書 26.1。厚みも今の部材から引く）
   const labels = partLabels(job.parts)
-  const labelOf = (partId: string) => labels.get(partId)
+  const thicknessOf = (partId: string) => job.parts.find((p) => p.id === partId)?.thickness ?? null
+  const labelOf = (partId: string) => {
+    const name = labels.get(partId)
+    return name === undefined ? undefined : withThickness(name, thicknessOf(partId))
+  }
+  const tagOf = (partId: string) => thicknessTag(thicknessOf(partId))
   const empty = count === 0 && result.unplaced.length === 0 && result.skipped.length === 0
 
   const toggle = (e: SheetEntry, row: SheetPartRow, el: HTMLElement) => {
@@ -142,6 +148,7 @@ export function KidoriScreen() {
       count={count}
       colorOf={colorOf}
       labelOf={labelOf}
+      tagOf={tagOf}
       error={checkError?.key === e.key ? checkError.message : null}
       onToggle={(row, el) => toggle(e, row, el)}
     />
@@ -152,7 +159,7 @@ export function KidoriScreen() {
       <h2>
         <Help title="木取り">
           部材の木取り寸法（調整後の寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方・切り代は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブでも変えられ、同じ値です）。
-          部材は右（端切りをした側）の上から詰め、端材は左下に残ります。
+          部材は右（端切りをした側）の上から詰め、端材は左下に残ります。厚みを入れた部材は、配置図と切り出しチェックの名前の横に「t18」のように厚みが出ます（厚みで板は分けません）。
           部材を切ったら、配置図の下の切り出しチェックを押します。1つ目のチェックで、その1枚の並べ方を固定します（部材や設定を変えても、その1枚は変わりません）。
           全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。
         </Help>
@@ -273,11 +280,13 @@ interface SheetCardProps {
   count: number
   colorOf: (partId: string) => number
   labelOf: (partId: string) => string | undefined
+  /** 部材の厚みの印（「t18」。空なら ''） */
+  tagOf: (partId: string) => string
   error: string | null
   onToggle: (row: SheetPartRow, el: HTMLElement) => void
 }
 
-function SheetCard({ entry, count, colorOf, labelOf, error, onToggle }: SheetCardProps) {
+function SheetCard({ entry, count, colorOf, labelOf, tagOf, error, onToggle }: SheetCardProps) {
   const { layout, no } = entry
   const landscape = layout.orientation === 'landscape'
   const complete = entry.view?.complete === true
@@ -338,6 +347,7 @@ function SheetCard({ entry, count, colorOf, labelOf, error, onToggle }: SheetCar
         rows={entry.rows}
         checked={entry.checked}
         rowKey={(r) => `${entry.key}:${r.partId}`}
+        tagOf={tagOf}
         onToggle={onToggle}
       />
       {error && (
