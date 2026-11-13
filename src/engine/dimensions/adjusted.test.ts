@@ -17,6 +17,7 @@ function mkPart(name: string, expr: Partial<Record<Axis, string>>, adjust: Parti
     name,
     expr: { W: '100', H: '100', ...expr },
     adjust: { W: '', H: '', ...adjust },
+    thickness: null,
     quantity,
     rotatable: false,
     finishedDone: false,

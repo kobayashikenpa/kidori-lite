@@ -34,7 +34,15 @@ function isExpr(v: unknown): v is Part['expr'] {
   return isRecord(v) && isString(v.W) && isString(v.H)
 }
 
-/** 部材（第2.1版から調整 adjust も要る。調整の無い古い部材は readJob で調整を足してから確かめる） */
+/** 厚み（第2.2版）：0 より大きい数か、空（null） */
+export function isThickness(v: unknown): v is number | null {
+  return v === null || isPositive(v)
+}
+
+/**
+ * 部材（第2.1版から調整 adjust、第2.2版から厚み thickness も要る。
+ * 無い古い部材は readJob で「なし」を足してから確かめる）
+ */
 export function isPart(v: unknown): v is Part {
   return (
     isRecord(v) &&
@@ -42,6 +50,7 @@ export function isPart(v: unknown): v is Part {
     isString(v.name) &&
     isExpr(v.expr) &&
     isExpr(v.adjust) &&
+    isThickness(v.thickness) &&
     // 枚数は 0 以上の整数か、空（null。第1.1版）
     (v.quantity === null || (Number.isInteger(v.quantity) && (v.quantity as number) >= 0)) &&
     typeof v.rotatable === 'boolean' &&
@@ -121,15 +130,33 @@ export function isJob(v: unknown): v is Job {
  * - 第1.3版までの切り方「おまかせ」（'auto'）は縦切り優先（'vertical'）にして読む（仕様書 18.2）
  * - 第2.0版までの部材（調整 adjust が無い）は、調整なし（W・H とも空）にして読む（第2.1版。仕様書 25.5）。
  *   調整があって形が違う（文字でない・軸が無い）部材は読めない
+ * - 第2.1版までの部材（厚み thickness が無い）は、厚みなし（null）にして読む（第2.2版。仕様書 26.7）。
+ *   厚みがあって 0 以下・数でない部材は読めない
  */
 export function readJob(v: unknown): Job | null {
   if (!isRecord(v)) return null
   let job: Record<string, unknown> = v
   if (isRecord(v.settings) && v.settings.cutMode === 'auto') job = { ...job, settings: { ...v.settings, cutMode: 'vertical' } }
-  if (Array.isArray(v.parts) && v.parts.some((p) => isRecord(p) && p.adjust === undefined)) {
-    job = { ...job, parts: v.parts.map((p: unknown) => (isRecord(p) && p.adjust === undefined ? { ...p, adjust: { W: '', H: '' } } : p)) }
+  if (Array.isArray(v.parts) && v.parts.some(needsPartDefaults)) {
+    job = { ...job, parts: v.parts.map(withPartDefaults) }
   }
   return isJob(job) ? job : null
+}
+
+/** 前の版の部材で、あとの版で足した欄が無いか */
+function needsPartDefaults(p: unknown): boolean {
+  return isRecord(p) && (p.adjust === undefined || p.thickness === undefined)
+}
+
+/** 前の版の部材に、あとの版で足した欄の「なし」を足す（調整 W・H とも空・厚み null）。ある欄はそのまま */
+function withPartDefaults(p: unknown): unknown {
+  if (!needsPartDefaults(p)) return p
+  const r = p as Record<string, unknown>
+  return {
+    ...r,
+    ...(r.adjust === undefined ? { adjust: { W: '', H: '' } } : {}),
+    ...(r.thickness === undefined ? { thickness: null } : {}),
+  }
 }
 
 /** 仕事の並びを読む（readJob）。1つでも読めなければ null */

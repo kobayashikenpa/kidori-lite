@@ -1,12 +1,12 @@
 // 部材の並べ替えと行の移動（第2.0版。仕様書 24）。
-// - 並べ替え：W・H は仕上がり寸法、枚数、名前（あいうえお順）で比べる。空・エラーの部材は、大きい順・小さい順のどちらでも一番下。
+// - 並べ替え：W・H は仕上がり寸法、枚数、厚み（第2.2版）、名前（あいうえお順）で比べる。空・エラーの部材は、大きい順・小さい順のどちらでも一番下。
 //   値が同じ部材は今の並びのまま（安定）
 // - 行の移動：続いた行（from から count 行）を、別の位置（元の並びの行と行の間）へ動かす
 // どちらも部材の中身（寸法・枚数・回転・切り出しチェックの記録）は変えず、並びだけを変える。名前の無い部材の「#3」は新しい行の番号になる
 import type { Axis, DimensionResult, Part } from './types'
 
-/** 並べ替えに使う列 */
-export type SortKey = 'name' | 'W' | 'H' | 'qty'
+/** 並べ替えに使う列（T は厚み。第2.2版） */
+export type SortKey = 'name' | 'T' | 'W' | 'H' | 'qty'
 
 /** 並べる向き：asc は小さい順（名前はあいうえお順）、desc は大きい順（名前は逆の順） */
 export type SortOrder = 'asc' | 'desc'
@@ -20,6 +20,7 @@ function sortValue(part: Part, dims: DimensionResult, key: SortKey): number | st
     return name === '' ? null : name
   }
   if (key === 'qty') return part.quantity
+  if (key === 'T') return part.thickness
   const axis: Axis = key
   if (part.expr[axis].trim() === '') return null
   const d = dims.parts.find((x) => x.partId === part.id)

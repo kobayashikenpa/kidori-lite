@@ -28,7 +28,7 @@ describe('readTransferFile：読めるファイル', () => {
 
   it('名前が空・枚数が空の部材があっても読める', () => {
     const job = shelfJob()
-    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, quantity: null, rotatable: false, finishedDone: false })
+    job.parts.push({ id: 'p5', name: '', expr: { W: '300', H: '400' }, adjust: { W: '', H: '' }, thickness: null, quantity: null, rotatable: false, finishedDone: false })
     const r = readTransferFile(buildJobFile(job, shelfAdjusts()))
     expect(r.ok && r.kind === 'job' && r.summary.partCount).toBe(5)
   })

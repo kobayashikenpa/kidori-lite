@@ -33,6 +33,7 @@ export function sampleJob(
     name,
     expr: { W, H },
     adjust: { W: adjustW, H: '' },
+    thickness: null,
     quantity,
     rotatable: false,
     finishedDone: false,

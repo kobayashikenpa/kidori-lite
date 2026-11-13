@@ -21,7 +21,7 @@ const rows: AdjustRow[] = [
 const job = (id: string, name: string, adjustW: string): Pick<Job, 'id' | 'name' | 'parts'> => ({
   id,
   name,
-  parts: [{ id: `${id}-p`, name: '棚板', expr: { W: '400', H: '300' }, adjust: { W: adjustW, H: '' }, quantity: 1, rotatable: false, finishedDone: false }],
+  parts: [{ id: `${id}-p`, name: '棚板', expr: { W: '400', H: '300' }, adjust: { W: adjustW, H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false }],
 })
 
 describe('調整寸法の表の行（仕様書 21.1）', () => {

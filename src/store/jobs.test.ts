@@ -193,6 +193,44 @@ describe('部材', () => {
   })
 })
 
+describe('部材の厚み（第2.2版。仕様書 26.1）', () => {
+  it('新しい部材の厚みは空（null）', () => {
+    expect(newPart('p1').thickness).toBeNull()
+    expect(newPart('p1', { name: '天板' }).thickness).toBeNull()
+    expect(newPart('p1', { thickness: 18 }).thickness).toBe(18)
+  })
+
+  it('厚みを入れる・変える・空にする（小数も）。名前や式は変わらない', () => {
+    let job = okJob(updatePart(shelfJob(), 'part-tenita', { thickness: 18 }))
+    expect(job.parts[1]).toMatchObject({ name: '天板', thickness: 18, expr: { W: '全体.W', H: '全体.H' } })
+    job = okJob(updatePart(job, 'part-tenita', { thickness: 2.5 }))
+    expect(job.parts[1].thickness).toBe(2.5)
+    job = okJob(updatePart(job, 'part-tenita', { thickness: null }))
+    expect(job.parts[1].thickness).toBeNull()
+    // 厚みを渡さなければそのまま
+    job = okJob(updatePart(okJob(updatePart(job, 'part-tenita', { thickness: 18 })), 'part-tenita', { quantity: 2 }))
+    expect(job.parts[1].thickness).toBe(18)
+  })
+
+  it('厚み 0・−1・数でないものは入れられない（「厚みは 0 より大きい数を入れてください」）', () => {
+    const msg = { ok: false, message: '厚みは 0 より大きい数を入れてください' }
+    for (const t of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(updatePart(shelfJob(), 'part-tenita', { thickness: t }), String(t)).toEqual(msg)
+      expect(insertPart(shelfJob(), 0, newPart('n', { thickness: t })), String(t)).toEqual(msg)
+      expect(addPart(shelfJob(), newPart('n', { thickness: t })), String(t)).toEqual(msg)
+    }
+    expect(updatePart(shelfJob(), 'part-tenita', { thickness: '18' as unknown as number })).toEqual(msg)
+  })
+
+  it('厚み 18 の部材を上に行を入れる・仕事のコピーで写すと 18 のまま', () => {
+    const src = okJob(updatePart(shelfJob(), 'part-tenita', { thickness: 18 }))
+    const c = copyJob(src, NOW, 'job-copy', counter())
+    expect(c.parts.map((p) => p.thickness)).toEqual([null, 18, null, null])
+    const ins = okJob(insertPart(src, 0, newPart('n1', { name: '地板', thickness: 12 })))
+    expect(ins.parts.map((p) => p.thickness)).toEqual([12, null, 18, null, null])
+  })
+})
+
 describe('調整寸法', () => {
   it('足す・変える・消す', () => {
     let list: AdjustRow[] = shelfAdjusts()

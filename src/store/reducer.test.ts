@@ -404,3 +404,34 @@ describe('並べ替えと行の移動（第2.0版。仕様書 24）', () => {
     expect(run(s0, { type: 'moveParts', from: 1, count: 1, to: 2 }).state).toBe(s0)
   })
 })
+
+describe('部材の厚み（第2.2版。仕様書 26.1）', () => {
+  const order = (s: StoreState) => currentJob(s)?.parts.map((p) => p.id)
+
+  it('updatePart で厚みを入れる・空にする（updatedAt が付く）。0 以下は断る', () => {
+    let s = run(start(), { type: 'updatePart', partId: 'part-tenita', patch: { thickness: 18 } }, env(T1)).state
+    expect(currentJob(s)?.parts[1]).toMatchObject({ thickness: 18 })
+    expect(currentJob(s)?.updatedAt).toBe(T1.toISOString())
+    s = run(s, { type: 'updatePart', partId: 'part-tenita', patch: { thickness: null } }).state
+    expect(currentJob(s)?.parts[1].thickness).toBeNull()
+    expect(reduce(s, { type: 'updatePart', partId: 'part-tenita', patch: { thickness: 0 } }, env())).toEqual({
+      ok: false,
+      message: '厚みは 0 より大きい数を入れてください',
+    })
+  })
+
+  it('厚みの大きい順に並べ替える（18・12・空）', () => {
+    let s = run(start(), { type: 'updatePart', partId: 'part-tenita', patch: { thickness: 12 } }).state
+    s = run(s, { type: 'updatePart', partId: 'part-tanaita', patch: { thickness: 18 } }).state
+    s = run(s, { type: 'sortParts', key: 'T', order: 'desc' }).state
+    expect(order(s)).toEqual(['part-tanaita', 'part-tenita', 'part-zentai', 'part-gawaita'])
+  })
+
+  it('仕事のコピー・複製で厚みがついていく', () => {
+    const s = run(start(), { type: 'updatePart', partId: 'part-tenita', patch: { thickness: 18 } }).state
+    const c = run(s, { type: 'copyJob', jobId: 'job-shelf' })
+    expect(c.state.data.jobs.find((j) => j.id === c.id)?.parts[1].thickness).toBe(18)
+    const d = run(s, { type: 'duplicatePart', partId: 'part-tenita' })
+    expect(currentJob(d.state)?.parts[2]).toMatchObject({ name: '天板のコピー', thickness: 18 })
+  })
+})

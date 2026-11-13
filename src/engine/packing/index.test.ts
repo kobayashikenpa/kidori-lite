@@ -19,7 +19,7 @@ function withMode(mode: CutMode, job: Job = shelfJob()): Job {
 }
 
 function part(id: string, W: string, H: string, quantity = 1, rotatable = false): Part {
-  return { id, name: id, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable, finishedDone: false }
+  return { id, name: id, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable, finishedDone: false }
 }
 
 /** 見本の設定（4×8・刃厚3・端切り5・切り代10）で、指定の部材だけの仕事 */

@@ -677,7 +677,7 @@ architecture.md には「15. 第2.2版の変更」を足してある。各作業
 
 テストの見本（6章の棚＋厚み。E-25 で作る）：天板の厚み 18、側板の H を `全体.H - 天板.T × 2` にすると、側板の仕上がり H は 1800 − 36 ＝ **1764**（木取り 1774）。
 
-- [ ] **E-24 部材の厚みの型・読み込み・行の操作・仕事のコピー・並べ替え**（engine-dev。依存なし。spec 26.1・26.7）
+- [x] **E-24 部材の厚みの型・読み込み・行の操作・仕事のコピー・並べ替え**（engine-dev。依存なし。spec 26.1・26.7）
   - `src/engine/types.ts`：`Part` に厚みを足す（例：`thickness: number | null`。null は空。名前は engine-dev が決める。未決事項 1）。`Axis`（W・H）は変えない（板に置く2つの寸法のまま。厚みは式の参照だけで使う＝E-25）
   - `src/engine/shape.ts`（`isPart`・`readJob`）：厚みの無い前の版の保存データ・ファイルは「厚みなし」として読む（第2.1版の `adjust` と同じやり方）。厚みが 0 以下・数でないものは読めない
   - `src/store/jobs.ts`：`newPart`（厚みは空）・`copyJob`（写す）・`insertPart`・`updatePart`（`PartPatch` で厚みを変えられる。0 以下・数でないものは断る「厚みは 0 より大きい数を入れてください」）。`src/engine/clipboard/copy.ts` の `duplicatePart`（写す）。`src/engine/clipboard/cells.ts` の `applyTargets` で表の下に足す部材（厚みは空）

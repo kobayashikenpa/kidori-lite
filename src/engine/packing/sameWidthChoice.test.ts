@@ -8,7 +8,7 @@ import { packJob } from './index'
 
 /** 部材（回転しない。縦切り優先では W が帯の幅になる） */
 function part(id: string, w: number, h: number, quantity = 1): Part {
-  return { id, name: id, expr: { W: String(w), H: String(h) }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
+  return { id, name: id, expr: { W: String(w), H: String(h) }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
 }
 
 /** 3×6（910×1820）。刃厚・端切り・切り代 0 で、帯の幅・長さをそのまま数えられるようにする */

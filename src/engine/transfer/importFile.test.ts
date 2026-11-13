@@ -3,6 +3,7 @@
 import { usableAdjusts } from '../adjusts'
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from '../dimensions'
+import { toV21 } from '../fixtures/legacy'
 import { freezeAt } from '../fixtures/progress'
 import { legacyShelfJob, MELAMINE_ID, SHEET_ID, shelfAdjusts, shelfJob } from '../fixtures/shelf'
 import { packJob } from '../packing'
@@ -271,7 +272,7 @@ describe('バックアップを取り込む', () => {
 /** 部材1つ（W の調整に調整寸法 {n:s-x} を足す）の仕事 */
 function oneAdjustJob(): Job {
   const job = shelfJob()
-  job.parts = [{ id: 'p1', name: '板', expr: { W: '100', H: '200' }, adjust: { W: '+{n:s-x}', H: '' }, quantity: 1, rotatable: false, finishedDone: false }]
+  job.parts = [{ id: 'p1', name: '板', expr: { W: '100', H: '200' }, adjust: { W: '+{n:s-x}', H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false }]
   return job
 }
 
@@ -283,3 +284,35 @@ function legacyFile(adjusts: Adjust[] = shelfAdjusts().slice(0, 1), job: Job = l
   const text = JSON.stringify({ app: 'kidori-lite', kind: 'job', version: 1, job, adjusts }).replaceAll(',"adjust":{"W":"","H":""}', '')
   return readFile(text)
 }
+
+describe('部材の厚み（第2.2版。仕様書 26.1・26.7）', () => {
+  /** 天板 18・棚板 2.5 の棚 */
+  function thickShelf(id = 'job-shelf', name = '棚'): Job {
+    const job = shelfJob(id, name)
+    job.parts[1] = { ...job.parts[1], thickness: 18 }
+    job.parts[3] = { ...job.parts[3], thickness: 2.5 }
+    return job
+  }
+
+  it('送るファイルに厚みが入り、取り込むと厚み 18 のまま', () => {
+    const file = readFile(buildJobFile(thickShelf(), shelfAdjusts()))
+    expect(file.kind === 'job' && file.job.parts.map((p) => p.thickness)).toEqual([null, 18, null, 2.5])
+    const r = importTransfer(receiver(), file, ids(), NOW)
+    expect(r.data.jobs[1].parts.map((p) => p.thickness)).toEqual([null, 18, null, 2.5])
+  })
+
+  it('バックアップから戻すと厚み 18 のまま', () => {
+    const src: AppData = { version: 1, jobs: [thickShelf('job-a', '棚A')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    const r = importTransfer(receiver(), readFile(buildBackupFile(src)), ids(), NOW)
+    expect(r.data.jobs[1].parts.map((p) => p.thickness)).toEqual([null, 18, null, 2.5])
+  })
+
+  it('厚みの無い第2.1版の送るファイル・バックアップは、全部の部材の厚みを空にして取り込む。寸法は同じ', () => {
+    const one = importTransfer(receiver(), readFile(JSON.stringify(toV21(JSON.parse(buildJobFile(shelfJob(), shelfAdjusts()))))), ids(), NOW)
+    expect(one.data.jobs[1].parts.map((p) => p.thickness)).toEqual([null, null, null, null])
+    expect(dimsOf(one.data.jobs[1], usableAdjusts(one.data.adjusts))).toEqual(dimsOf(shelfJob(), shelfAdjusts()))
+    const src: AppData = { version: 1, jobs: [shelfJob('job-a', '棚A'), shelfJob('job-b', '棚B')], adjusts: shelfAdjusts(), cellClip: null, adjustClip: null }
+    const all = importTransfer(receiver(), readFile(JSON.stringify(toV21(JSON.parse(buildBackupFile(src))))), ids(), NOW)
+    expect(all.data.jobs.slice(1).flatMap((j) => j.parts.map((p) => p.thickness))).toEqual(Array(8).fill(null))
+  })
+})

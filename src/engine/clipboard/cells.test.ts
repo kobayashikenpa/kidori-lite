@@ -25,7 +25,7 @@ function ids(): (prefix: string) => string {
 const c = (row: number, col: CellCol): CellPos => ({ row, col })
 
 function part(id: string, name: string, W = '100', H = '200', quantity: number | null = 1): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
 }
 
 function jobOf(...parts: Part[]): Job {
@@ -322,7 +322,7 @@ describe('pasteCells：範囲をコピーしたとき', () => {
       ['棚板', '全体.W', '700', 2],
       ['', '天板.W - 20', '天板.H - 20 × 2', 3],
     ])
-    expect(r.job.parts[4]).toMatchObject({ id: 'part-new1', rotatable: false, finishedDone: false })
+    expect(r.job.parts[4]).toMatchObject({ id: 'part-new1', rotatable: false, finishedDone: false, thickness: null })
   })
 
   it('列が表の右（枚数）をはみ出す分は貼らない（数にも入れない）', () => {

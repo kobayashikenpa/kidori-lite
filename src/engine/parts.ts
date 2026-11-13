@@ -35,7 +35,10 @@ export function cutQuantity(quantity: number | null): number {
   return quantity ?? 0
 }
 
-/** 何も入っていない部材か（名前・W・H が空で、枚数も空）。この部材は表から外す（保存しない）。回転・仕上がりの完了は見ない */
-export function isBlankPart(part: Pick<Part, 'name' | 'expr' | 'quantity'>): boolean {
-  return part.name.trim() === '' && part.expr.W.trim() === '' && part.expr.H.trim() === '' && part.quantity === null
+/**
+ * 何も入っていない部材か（名前・厚み・W・H が空で、枚数も空）。この部材は表から外す（保存しない）。
+ * 回転・仕上がりの完了・調整は見ない。厚みだけ入っている行は部材として残す（第2.2版。仕様書 26.8）
+ */
+export function isBlankPart(part: Pick<Part, 'name' | 'expr' | 'quantity' | 'thickness'>): boolean {
+  return part.name.trim() === '' && part.thickness === null && part.expr.W.trim() === '' && part.expr.H.trim() === '' && part.quantity === null
 }

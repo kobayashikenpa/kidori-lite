@@ -2,14 +2,14 @@
 import { describe, expect, it } from 'vitest'
 import { computeDimensions } from './dimensions'
 import { shelfAdjusts, shelfJob } from './fixtures/shelf'
-import { movedTop, moveParts, sameOrder, sortParts } from './order'
+import { movedTop, moveParts, sameOrder, sortParts, type SortKey } from './order'
 import { partLabels } from './parts'
 import type { Job, Part } from './types'
 
 const adjusts = shelfAdjusts()
 
 function part(id: string, name: string, W: string, H: string, quantity: number | null): Part {
-  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: '', H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
 }
 
 /** 見本の棚の後ろに部材を足した写し */
@@ -19,7 +19,7 @@ function withParts(...parts: Part[]): Job {
 }
 
 const ids = (parts: readonly Part[]) => parts.map((p) => p.id)
-const sorted = (job: Job, key: 'name' | 'W' | 'H' | 'qty', order: 'asc' | 'desc') =>
+const sorted = (job: Job, key: SortKey, order: 'asc' | 'desc') =>
   ids(sortParts(job.parts, computeDimensions(job, adjusts), key, order))
 
 describe('並べ替え（仕様書 24.1）', () => {
@@ -137,10 +137,36 @@ describe('行の移動（仕様書 24.2）', () => {
 
 describe('名前の中の数字は大きさで比べる', () => {
   it('棚板2 が 棚板10 より前（あいうえお順）', () => {
-    const mk = (id: string, name: string) => ({ id, name, expr: { W: '1', H: '1' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false })
+    const mk = (id: string, name: string) => ({ id, name, expr: { W: '1', H: '1' }, adjust: { W: '', H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false })
     const parts = [mk('a', '棚板10'), mk('b', '棚板2'), mk('c', '棚板1')]
     const dims = { parts: [], errors: [] }
     const out = sortParts(parts, dims as never, 'name', 'asc')
     expect(out.map((p) => p.name)).toEqual(['棚板1', '棚板2', '棚板10'])
+  })
+})
+
+describe('厚みで並べ替える（第2.2版。仕様書 26.1）', () => {
+  /** 天板 18・側板 12・全体と棚板は空 */
+  function thickShelf(): Job {
+    const job = shelfJob()
+    job.parts[1] = { ...job.parts[1], thickness: 18 }
+    job.parts[2] = { ...job.parts[2], thickness: 12 }
+    return job
+  }
+
+  it('大きい順は 18・12・空（空は一番下、その中は今の並び）', () => {
+    expect(sorted(thickShelf(), 'T', 'desc')).toEqual(['part-tenita', 'part-gawaita', 'part-zentai', 'part-tanaita'])
+  })
+
+  it('小さい順は 12・18・空', () => {
+    expect(sorted(thickShelf(), 'T', 'asc')).toEqual(['part-gawaita', 'part-tenita', 'part-zentai', 'part-tanaita'])
+  })
+
+  it('同じ厚みは今の並び（安定）。小数も大きさで比べる', () => {
+    const job = thickShelf()
+    job.parts[0] = { ...job.parts[0], thickness: 18 }
+    job.parts[3] = { ...job.parts[3], thickness: 2.5 }
+    expect(sorted(job, 'T', 'desc')).toEqual(['part-zentai', 'part-tenita', 'part-gawaita', 'part-tanaita'])
+    expect(sorted(job, 'T', 'asc')).toEqual(['part-tanaita', 'part-gawaita', 'part-zentai', 'part-tenita'])
   })
 })

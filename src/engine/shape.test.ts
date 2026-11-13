@@ -1,11 +1,12 @@
 // 保存データ・ファイルの形の確かめ（部材の調整。第2.1版。仕様書 25.2・25.5）
 import { describe, expect, it } from 'vitest'
+import { toV21 } from './fixtures/legacy'
 import { shelfJob } from './fixtures/shelf'
 import { isPart, readJob, readJobs } from './shape'
 
-/** 第2.0版までの部材（調整 adjust が無い）にした仕事 */
+/** 第2.0版までの部材（調整 adjust も、第2.2版の厚みも無い）にした仕事 */
 function oldJob(id = 'job-old') {
-  const job = JSON.parse(JSON.stringify(shelfJob(id))) as Record<string, unknown> & { parts: Record<string, unknown>[] }
+  const job = toV21(shelfJob(id)) as unknown as Record<string, unknown> & { parts: Record<string, unknown>[] }
   for (const p of job.parts) delete p.adjust
   return job
 }
@@ -50,11 +51,48 @@ describe('部材の調整（adjust）の読み込み', () => {
     expect(isPart(oldJob().parts[0])).toBe(false)
   })
 
-  it('おまかせ（auto）で調整の無い古い仕事も読める', () => {
+  it('おまかせ（auto）で調整の無い古い仕事も読める（厚みも無い）', () => {
     const job = oldJob() as unknown as { settings: Record<string, unknown> }
     job.settings.cutMode = 'auto'
     const r = readJob(job)
     expect(r?.settings.cutMode).toBe('vertical')
     expect(r?.parts[0].adjust).toEqual({ W: '', H: '' })
+    expect(r?.parts[0].thickness).toBeNull()
+  })
+})
+
+describe('部材の厚み（thickness。第2.2版 仕様書 26.1・26.7）', () => {
+  it('厚みの無い第2.1版の部材は、厚みなし（null）として読む。ほかの中身は変わらない', () => {
+    const src = shelfJob()
+    const job = readJob(toV21(src))
+    expect(job).not.toBeNull()
+    expect(job!.parts.map((p) => p.thickness)).toEqual([null, null, null, null])
+    expect(job!.parts.map((p) => [p.name, p.expr, p.adjust, p.quantity])).toEqual(src.parts.map((p) => [p.name, p.expr, p.adjust, p.quantity]))
+  })
+
+  it('厚みのある部材はそのまま読む（小数も）', () => {
+    const src = shelfJob()
+    src.parts[1] = { ...src.parts[1], thickness: 18 }
+    src.parts[3] = { ...src.parts[3], thickness: 2.5 }
+    const job = readJob(JSON.parse(JSON.stringify(src)))
+    expect(job!.parts.map((p) => p.thickness)).toEqual([null, 18, null, 2.5])
+  })
+
+  it('厚みが 0 以下・数でない部材は読めない（仕事ごと読めない）', () => {
+    for (const thickness of [0, -1, '18', Number.NaN, Number.POSITIVE_INFINITY, {}, []]) {
+      const job = JSON.parse(JSON.stringify(shelfJob())) as { parts: Record<string, unknown>[] }
+      job.parts[0].thickness = thickness
+      expect(readJob(job), String(thickness)).toBeNull()
+    }
+  })
+
+  it('isPart は厚み（数か null）のある部材だけを通す', () => {
+    expect(isPart(shelfJob().parts[0])).toBe(true)
+    expect(isPart(toV21(shelfJob()).parts[0])).toBe(false)
+  })
+
+  it('調整も厚みも無い第2.0版の部材も読める', () => {
+    const job = readJob(oldJob())
+    expect(job!.parts.every((p) => p.thickness === null && p.adjust.W === '')).toBe(true)
   })
 })

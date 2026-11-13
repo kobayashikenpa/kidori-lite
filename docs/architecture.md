@@ -804,3 +804,24 @@ export interface CellClip { rows; cols; cells: string[][]; cut?: CellCut; source
 - **名前の重なり**（E-27）：貼り付け・オートフィルでは同じ名前を許す（18.3 の番号を振る処理をなくす）。打って入れるとき（`validatePartName`）は今どおり断る。同じ名前の部材を参照している式はエラー（どちらか決まらない）
 - **色とメモ**（E-28）：`Part` に 行の色・列ごとのセルの色・メモ を足す。部材のオブジェクトごと動く操作（並べ替え・移動・複製・仕事のコピー・ファイル）はそのままついていく。行をまるごと切り取って同じ仕事に貼ったときは、第2.1版の調整と同じ所（`cells.ts` の `AdjustMove`）で動かす
 - **前の版のデータ**：厚み・色・メモの無い部材は `shape.ts` の `readJob` で「なし」を足してから読む（第2.1版の `adjust` と同じやり方）。ファイルの版（`TRANSFER_VERSION`）は 1 のまま（26.7）
+
+### 15.1 部材の厚みの型・読み込み・行の操作（E-24。spec 26.1・26.7）
+
+```ts
+// types.ts
+export interface Part {
+  id; name; expr; adjust
+  thickness: number | null   // 厚み（第2.2版）。0 より大きい数（小数可）か空（null）。木取りの並べ方には使わない
+  quantity; rotatable; finishedDone
+}
+```
+
+- フィールド名は **`thickness`**（数で持つ。式は入れられない。26.8）。部材の寸法の `Axis`（W・H）は変えていない
+- **読み込み**（`shape.ts`）：`isThickness(v)`（null か 0 より大きい有限の数）を足し、`isPart` は `thickness` を要る。`readJob` は前の版の部材（`adjust`・`thickness` の無いもの）に「なし」（調整 W・H とも空・厚み null）を足してから確かめる（`withPartDefaults`）。厚みが 0 以下・数でない部材は読めない（仕事ごと読めない＝今までと同じ考え方）。保存データ（`parseAppData`）・送るファイル・バックアップ（`readTransferFile`）は全部 `readJob` を通る
+- `store/jobs.ts`：`newPart` は厚み null。`copyJob` は厚みを写す。`insertPart`・`addPart`・`updatePart` は `validatePartFields` で厚みを確かめ、0 以下・数でないものは `THICKNESS_MESSAGE`「厚みは 0 より大きい数を入れてください」で断る。`PartPatch` はそのまま（`thickness` を渡せる。渡さなければそのまま）
+- `clipboard/copy.ts` の `duplicatePart`：厚みも写す。`clipboard/cells.ts` の表の下に足す部材は厚み null
+- `parts.ts` の `isBlankPart`：名前・厚み・W・H・枚数がぜんぶ空のときだけ空（厚みだけの行は残す。26.8）。引数の型に `thickness` が増えた
+- `order.ts`：`SortKey` は `'name' | 'T' | 'W' | 'H' | 'qty'`（`T` が厚み）。厚みは `part.thickness` で比べ、空は一番下・同じ値は今の並び（24.1 と同じ）
+- 送るファイル（`share.ts` の `jobFile`）・バックアップ・取り込み（`rekeyJob`）は部材をまるごと写すので、厚みはそのまま入る（テストで確かめた）。`TRANSFER_VERSION` は 1 のまま
+- store（`reducer.ts`）：action は変えていない。`{ type: 'updatePart', patch: { thickness } }` で厚みを入れる・空にする（null）。`{ type: 'sortParts', key: 'T', order }` で厚みの順
+- テスト用：`fixtures/legacy.ts` の `toV21(value)`（JSON で写し、部材から第2.2版の欄を消す。前の版のデータの読み込みのテストに使う）

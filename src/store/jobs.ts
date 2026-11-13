@@ -58,7 +58,7 @@ export function copyJobName(name: string): string {
 }
 
 /**
- * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式・調整（第2.1版。仕様書 25.5）のまま写し、id は新しくする。
+ * 仕事をコピーする。設定はそのまま引き継ぐ（仕様書 4）。部材は式・調整（第2.1版。仕様書 25.5）・厚み（第2.2版）のまま写し、id は新しくする。
  * 切った記録（固定した1枚）と仕上がりの完了のチェックは写さない（暫定。kidori と同じく切った記録は写さない）。
  * 元の仕事は書き換えない
  */
@@ -69,6 +69,7 @@ export function copyJob(job: Job, now: Date, id: string, makeId: (prefix: string
     name: p.name,
     expr: { W: p.expr.W, H: p.expr.H },
     adjust: { W: p.adjust.W, H: p.adjust.H },
+    thickness: p.thickness,
     quantity: p.quantity,
     rotatable: p.rotatable,
     finishedDone: false,
@@ -126,14 +127,19 @@ export function setSheet(job: Job, sheet: Sheet): OpResult {
 
 // ---------- 部材 ----------
 
-/** 新しい部材の下書き（枚数 1・回転しない・調整なし） */
+/** 新しい部材の下書き（枚数 1・回転しない・調整なし・厚みは空） */
 export function newPart(id: string, p: Partial<Omit<Part, 'id'>> = {}): Part {
-  return { id, name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, quantity: 1, rotatable: false, finishedDone: false, ...p }
+  return { id, name: '', expr: { W: '', H: '' }, adjust: { W: '', H: '' }, thickness: null, quantity: 1, rotatable: false, finishedDone: false, ...p }
 }
+
+/** 厚みに入れられないものを断る文（第2.2版。仕様書 26.1） */
+export const THICKNESS_MESSAGE = '厚みは 0 より大きい数を入れてください'
 
 function validatePartFields(part: Part): string | null {
   // 枚数は空（null。計算に入れない）でもよい（第1.1版）
   if (part.quantity !== null && !(Number.isInteger(part.quantity) && part.quantity >= 0)) return '枚数は 0 以上の整数を入れてください'
+  // 厚みは空（null）か 0 より大きい数（第2.2版）
+  if (part.thickness !== null && !(typeof part.thickness === 'number' && Number.isFinite(part.thickness) && part.thickness > 0)) return THICKNESS_MESSAGE
   return null
 }
 

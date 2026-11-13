@@ -14,7 +14,7 @@ export function shelfAdjusts(): Adjust[] {
 }
 
 function part(id: string, name: string, W: string, H: string, quantity: number, adjustW = ''): Part {
-  return { id, name, expr: { W, H }, adjust: { W: adjustW, H: '' }, quantity, rotatable: false, finishedDone: false }
+  return { id, name, expr: { W, H }, adjust: { W: adjustW, H: '' }, thickness: null, quantity, rotatable: false, finishedDone: false }
 }
 
 /**
