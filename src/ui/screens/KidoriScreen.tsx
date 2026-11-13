@@ -5,6 +5,7 @@
 // チェックの付け外しは store の setPartCheck（engine の setPartCheck）。
 // pieceId は1枚の中でだけ重ならないので、1枚をまたぐキーは1枚の id（固定した1枚の id、計算した1枚は「c」＋何枚目か）と組にする
 // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算し直す（useMemo）
+// 第2.3版（仕様書 27.1・27.4）：見出し「木取り」ⓘ の行を画面の上に止め、その右に「↶ 戻る」「↷ 進む」（UndoRedo。部材の画面と同じ履歴）
 import { usableAdjusts } from '../../engine/adjusts'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { computeDimensions } from '../../engine/dimensions'
@@ -22,6 +23,8 @@ import { Help } from '../components/Help'
 import { SavingHint } from '../components/SavingHint'
 import { SheetChecklist } from '../components/SheetChecklist'
 import { SheetDiagram } from '../components/SheetDiagram'
+import { UndoRedo } from '../components/UndoRedo'
+import { useTopbarHeight } from '../useTopbarHeight'
 import { fmt } from '../format'
 import { pct, scrapLabel, skippedErrorPlace, thicknessTag, withThickness } from '../kidoriView'
 import { cutModeLabel, sheetLabel } from '../settings'
@@ -54,7 +57,7 @@ const DRIFT_REASON: Record<FrozenSheetView['drift'][number]['reason'], string> =
 }
 
 export function KidoriScreen() {
-  const { job, data, dispatch } = useJobStore()
+  const { job, data, dispatch, historyRevision } = useJobStore()
   const adjusts = usableAdjusts(data.adjusts)
   // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する（仕事は、部材・設定・固定した1枚・名前を変えたときだけ新しくなる。
   // 名前はこの画面では変えないので、仕事と調整寸法を見ていれば足りる）
@@ -72,8 +75,16 @@ export function KidoriScreen() {
   const [openFinished, setOpenFinished] = useState(false)
   // チェックで失敗したときの知らせ（その1枚の中に出す）
   const [checkError, setCheckError] = useState<{ key: string; message: string } | null>(null)
+  // 戻す・進むのあとは、前の操作のエラーの文を消す（第2.3版）
+  const [errRev, setErrRev] = useState(historyRevision)
+  if (errRev !== historyRevision) {
+    setErrRev(historyRevision)
+    setCheckError(null)
+  }
   // チェックを付け外しすると1枚の並びが変わる（計算した1枚が固定した1枚になって前に来る）ので、押した行が画面の同じ位置に残るようにスクロールを戻す
   const anchor = useRef<{ key: string; top: number } | null>(null)
+  // 見出しの行を止める位置（上の仕事の名前の帯の高さ）
+  const stickyTop = useTopbarHeight()
   useLayoutEffect(() => {
     const a = anchor.current
     if (!a) return
@@ -156,14 +167,19 @@ export function KidoriScreen() {
 
   return (
     <section>
-      <h2>
-        <Help title="木取り">
-          部材の木取り寸法（調整後の寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方・切り代は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブでも変えられ、同じ値です）。
-          部材は右（端切りをした側）の上から詰め、端材は左下に残ります。厚みを入れた部材は、配置図と切り出しチェックの名前の横に「t18」のように厚みが出ます（厚みで板は分けません）。
-          部材を切ったら、配置図の下の切り出しチェックを押します。1つ目のチェックで、その1枚の並べ方を固定します（部材や設定を変えても、その1枚は変わりません）。
-          全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。
-        </Help>
-      </h2>
+      <div className="kd-sticky" style={{ top: stickyTop }}>
+        <h2>
+          <Help title="木取り">
+            部材の木取り寸法（調整後の寸法 ＋ 切り代）を板に並べた結果です。板・刃厚・端切り・切り方・切り代は、この画面の上で変えられます（切り代は部材の画面の［木取り］のタブでも変えられ、同じ値です）。
+            部材は右（端切りをした側）の上から詰め、端材は左下に残ります。厚みを入れた部材は、配置図と切り出しチェックの名前の横に「t18」のように厚みが出ます（厚みで板は分けません）。
+            部材を切ったら、配置図の下の切り出しチェックを押します。1つ目のチェックで、その1枚の並べ方を固定します（部材や設定を変えても、その1枚は変わりません）。
+            全部チェックすると「切り終わり」として下にたたみ、チェックを全部外すと固定が外れます。
+            ↶ 戻る・↷ 進む で、部材と木取りの画面の操作を1回ずつ戻せます（50回まで。アプリを閉じる・ほかの仕事を開くと消えます）。セルの入力は入力を終えるまでが1回。仕事の画面の操作は戻せません。チェックを戻すと、固定した1枚もチェックした時の形に戻ります。見出しの行は、画面をスクロールしても上に残ります。
+          </Help>
+        </h2>
+        {/* 戻る・進む（仕様書 27.1。部材の画面と同じ履歴） */}
+        <UndoRedo />
+      </div>
 
       <BoardSettings job={job} compare={compare} result={result} empty={empty} dispatch={dispatch} />
 

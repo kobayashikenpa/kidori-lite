@@ -16,6 +16,8 @@
 // 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）。
 // 第2.2版（仕様書 26.5）：行を選んでいなくても、番号を長押しすると行が持ち上がって指についてくる（ほかの行はよける）。離した所に入る。
 // 長押しして動かさずに離すと長押しのメニュー
+// 第2.3版（仕様書 27.2・27.4）：セルの入力を始めるたびに新しい印（group）を作り、その入力の中の保存に渡す（入力を終えるまでが「戻る」1回）。
+// 何も入っていない行を外す後片付けは follow（直前の1回に含める）。戻す・進むのあと（revision が変わる）は、入力を終えて選んでいる範囲を外す
 import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { normalizePartName, splitLeadingEquals, validatePartName } from '../../engine/formula/tokenize'
@@ -25,6 +27,8 @@ import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
 import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part, type RefAxis } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
+import type { DispatchOptions } from '../../store/history'
+import type { Dispatch } from '../../store/useJobStore'
 import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
 import { cellColor, hasMemo } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
@@ -32,7 +36,7 @@ import { fmt } from '../format'
 import { canInsertRef, insertAt, refCellsOf, refColorsOf, refPiece, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { pressKey } from '../numpad'
-import { THICKNESS_MESSAGE } from '../../store/jobs'
+import { newId, THICKNESS_MESSAGE } from '../../store/jobs'
 import {
   addRowsMin,
   inputRow,
@@ -53,6 +57,7 @@ import {
   type TableField,
 } from '../partsTable'
 import { barErrors, barField, partBar } from '../fxBar'
+import { gridResetKey } from '../undoRedo'
 import { useLongPress } from '../useLongPress'
 import { rangeKey, useKeyboardHeight, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type MovableRows, type PressAt } from '../useGrid'
 import { CellMenu } from './CellMenu'
@@ -68,10 +73,12 @@ interface Props {
   adjusts: readonly Adjust[]
   /** 今コピー（切り取り）しているセル（アプリ全体で1つ） */
   clip: CellClip | null
-  dispatch: (action: StoreAction) => ReduceResult
+  dispatch: Dispatch
   onError: (message: string | null) => void
   /** 式の欄の置き場所（PartsScreen のタブのすぐ下。仕様書 25.8） */
   barSlot: HTMLElement | null
+  /** 戻す・進むのたびに変わる数（変わったら入力を終えて、選んでいる範囲を外す。仕様書 27.4） */
+  revision: number
   ref?: Ref<PartsTableHandle>
 }
 
@@ -117,7 +124,7 @@ function sortChoices(f: CellCol): { order: SortOrder; label: string }[] {
       ]
 }
 
-export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlot, ref }: Props) {
+export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlot, revision, ref }: Props) {
   const parts = job.parts
   // 「＋ 5行足す」で増やした行の数の下限（アプリを開いている間だけ、仕事ごとに覚える。保存しない）
   const [minRows, setMinRows] = useState(() => sessionTableMinRows(job.id))
@@ -177,6 +184,21 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   // 名前を保存できなかった理由（行の下に出す）
   const [nameMsg, setNameMsg] = useState<string | null>(null)
   const nameErrorRef = useRef<string | null>(null)
+  // 今のセルの入力の印（仕様書 27.2。入力を始めるたびに新しくする。入力していなければ null）
+  const groupRef = useRef<string | null>(null)
+  // 戻す・進むのあと：入力を終え（保存はしない。押した時点で入力は確定している）、メニュー・知らせを閉じる。範囲は useGrid の resetKey で外す
+  const [rev, setRev] = useState(revision)
+  if (rev !== revision) {
+    setRev(revision)
+    setSelS(null)
+    setNameMsg(null)
+    setRefMsg(null)
+    setThickMsg(null)
+    setMenuOpen(false)
+    setSortCol(null)
+    setMemoFor(null)
+    setNotice(null)
+  }
 
   // 同じ操作の中で続けて使えるよう、最新の仕事と選んでいる欄を手元にも持つ
   const jobRef = useRef(job)
@@ -212,8 +234,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     onRelease: () => {
       if (curCell()) selectRef.current(null)
     },
-    // 仕事を切り替えたら、選んでいる範囲を外す
-    resetKey: job.id,
+    // 仕事を切り替えたら・戻す・進むのあとは、選んでいる範囲を外す（仕様書 27.4）
+    resetKey: gridResetKey(job.id, revision),
     // 選んでいる行の番号を引くと、その行を動かす（仕様書 24.2）。番号を長押しすると持ち上げる（仕様書 26.5）
     moveRowsFrom: (row) => movableRows(row),
     liftRowsFrom: (row) => liftableRows(row),
@@ -228,16 +250,22 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   }
   const curCell = () => cellOf(selSRef.current, jobRef.current.parts)
 
-  const run = (action: StoreAction): ReduceResult => {
-    const r = dispatch(action)
+  const run = (action: StoreAction, opts?: DispatchOptions): ReduceResult => {
+    const r = dispatch(action, opts)
     if (r.ok) jobRef.current = currentJob(r.state) ?? jobRef.current
     else onError(r.message)
     return r
   }
+  /** 今のセルの入力の中の保存（同じ印で「戻る」1回にまとめる） */
+  const inInput = (): DispatchOptions => (groupRef.current ? { group: groupRef.current } : {})
+  const runInput = (action: StoreAction): ReduceResult => run(action, inInput())
+  const newGroup = () => {
+    groupRef.current = newId('group')
+  }
 
   /** 空の行に入れたとき：部材を作り、選んでいる欄をその部材にする */
   const addFromEmpty = (part: Partial<Omit<Part, 'id'>>): boolean => {
-    const r = run({ type: 'addPart', part: { name: '', expr: { W: '', H: '' }, quantity: null, ...part } })
+    const r = runInput({ type: 'addPart', part: { name: '', expr: { W: '', H: '' }, quantity: null, ...part } })
     if (!r.ok || !r.id) return false
     const cur = selSRef.current
     if (cur && cur.partId === null) setSel({ partId: r.id, field: cur.field })
@@ -252,13 +280,13 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     const part = jobRef.current.parts[row]
     if (!part) {
       if (name === '') return true
-      const r = dispatch({ type: 'addPart', part: { name, expr: { W: '', H: '' }, quantity: null } })
+      const r = dispatch({ type: 'addPart', part: { name, expr: { W: '', H: '' }, quantity: null } }, inInput())
       if (!r.ok) return nameFailed(r.message)
       jobRef.current = currentJob(r.state) ?? jobRef.current
       const cur = selSRef.current
       if (cur && cur.partId === null && r.id) setSel({ partId: r.id, field: cur.field })
     } else if (name !== part.name) {
-      const r = dispatch({ type: 'updatePart', partId: part.id, patch: { name } })
+      const r = dispatch({ type: 'updatePart', partId: part.id, patch: { name } }, inInput())
       if (!r.ok) return nameFailed(r.message)
       jobRef.current = currentJob(r.state) ?? jobRef.current
     }
@@ -287,13 +315,16 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       // キーを押すたびに保存しているので、入力を始めたときの厚みに戻す（途中で ⌫ して空を保存していても）
       const start = thickStartRef.current
       const now = start.partId ? jobRef.current.parts.find((p) => p.id === start.partId) : undefined
-      if (now && now.thickness !== start.thickness) run({ type: 'updatePart', partId: now.id, patch: { thickness: start.thickness } })
+      if (now && now.thickness !== start.thickness) runInput({ type: 'updatePart', partId: now.id, patch: { thickness: start.thickness } })
       onError(`${THICKNESS_MESSAGE}。厚みは元に戻しました`)
     }
     if (!cell) {
+      groupRef.current = null
       setSel(null)
       return
     }
+    // 新しいセルの入力を始める（「次へ」で進んだときも）：新しい印（前の入力の確定・厚みの戻しは前の印のまま）
+    newGroup()
     const ps = jobRef.current.parts
     const row = inputRow(cell.row, ps.length)
     const part = ps[row]
@@ -322,6 +353,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     jobRef.current = nextJob
     const row = nextJob.parts.findIndex((p) => p.id === partId)
     if (row < 0) return
+    // 名前の入力を始める（行を上に挿入した行も。挿入とその行への入力は別の2回。仕様書 27.4）
+    newGroup()
     // 先に表を描き直して名前の欄を作り、押した操作の中で注目を移す（スマホのキーボードが出るように）
     flushSync(() => {
       setSel({ partId, field: 'name' })
@@ -355,7 +388,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       .map((p, i) => ({ p, i }))
       .filter(({ p, i }) => isBlankPart(p) && p.id !== selPartId && !(i >= rangeTop && i < rangeTop + rangeRows))
     if (blank.length === 0) return
-    for (const { p } of blank) dispatch({ type: 'removePart', partId: p.id })
+    // 後片付け：直前の1回に含める（行を上に挿入して何も入れずに離れたときは、挿入ごと履歴に残らない。仕様書 27.4）
+    for (const { p } of blank) dispatch({ type: 'removePart', partId: p.id }, { follow: true })
     const above = blank.filter(({ i }) => i < rangeTop).length
     const r = rangeRef.current
     const a = activeRef.current
@@ -422,7 +456,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       if (e.text.trim() !== '') addFromEmpty({ expr: { W: '', H: '', [axis]: e.text } })
       return
     }
-    if (e.text !== part.expr[axis]) run({ type: 'updatePart', partId: part.id, patch: { expr: { ...part.expr, [axis]: e.text } } })
+    if (e.text !== part.expr[axis]) runInput({ type: 'updatePart', partId: part.id, patch: { expr: { ...part.expr, [axis]: e.text } } })
   }
 
   const pressQty = (row: number, key: string) => {
@@ -432,7 +466,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       if (q !== null) addFromEmpty({ quantity: q })
       return
     }
-    if (q !== part.quantity) run({ type: 'updatePart', partId: part.id, patch: { quantity: q } })
+    if (q !== part.quantity) runInput({ type: 'updatePart', partId: part.id, patch: { quantity: q } })
   }
 
   /**
@@ -454,7 +488,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
       if (r.value !== null) addFromEmpty({ thickness: r.value })
       return
     }
-    if (r.value !== part.thickness) run({ type: 'updatePart', partId: part.id, patch: { thickness: r.value } })
+    if (r.value !== part.thickness) runInput({ type: 'updatePart', partId: part.id, patch: { thickness: r.value } })
   }
 
   /** 「次へ」（入力のまま。仕様書 26.2）：厚みは次の行の厚み、W → H → 枚数 → 次の行の W（nextCell） */
