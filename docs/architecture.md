@@ -945,3 +945,15 @@ export interface Part {
 - `useGrid.ts` の `useRevealRow`：選んだときに1回（なめらかに）、そのあとは visualViewport の `resize` のたび、選んでから 1.5 秒（`REVEAL_FOLLOW_MS`）の間は `scroll`（iPhone の Safari が見えている範囲を動かしたとき）のたびにも、すぐに合わせ直す
 - `useGrid.ts` の `useKeyboardHeight(active)`：`innerHeight − visualViewport.height`。名前の入力中は表の下にこの高さの余白（`.pt-spacer`）を足す（iPhone の Safari・最近の Android の Chrome はキーボードが出ても画面が縮まないので、いちばん下の行もキーボードの上まで上げられるように）。`useRevealRow` の4つ目の引数に渡して、余白が付いたあとにも合わせ直す
 - 厚み・W・H・枚数（アプリのキー）は今までどおり `usePadHeight`（キーの高さの余白）と `useRevealRow`（キーの上の端まで）
+
+### 15.9 行をドラッグで並べ替える（U-36。spec 26.5・24.2）
+
+- `ui/dragRows.ts`（テストつき）：`gapAt(y, rows, limit)`（指の位置から動かす先の行と行の間）、`targetGap(gap, top, rows)`（動かす行の中・すぐ上・すぐ下は null）、`rowShift(i, top, rows, to)`（ほかの行がよける向き。−1 上・1 下）
+- `useGrid.ts` の番号の指の動き（`startMove`）を1つにまとめた：
+  - 選んでいる行全体の番号（`moveRowsFrom`。24.2）は押してすぐ引ける（`immediate`）。そうでない部材の行の番号（`liftRowsFrom`）は、LONG_PRESS_MS（500ms）動かさずに押すと持ち上がる（`lift`）。持ち上がる前に指が動いたら何もしない（表のスクロール）
+  - 持ち上げたとき・引き始めたとき、各行（`.pt-item`）の位置を測っておき（`measureRows`。transform を付ける前）、指の位置はその位置で比べる（動いて見える行の位置で比べると行き来するため）。持ち上げた行は `data-lift` と `translateY`（指の動き）、ほかの行は `rowShift × 持ち上げた行の高さ` の `translateY`（CSS の transition ですべる）。React はこの style・data 属性を持たないので描き直しで消えない
+  - 指を離したとき：引いていれば `onMoveRows`（engine の `moveParts`）。並べ替える前に transform をすぐ外す（`transition: none`。新しい位置から戻ってくるように見えないよう）。持ち上げて動かさずに離したら長押しのメニュー（`onLongPress`）。すぐ離したら今までどおり番号を押した（行を選ぶ）
+  - 持ち上げたあと・引いている間は、window の `touchmove`（passive: false）で `preventDefault`（番号の列は指でなぞるとスクロールする所なので）。Android の長押しの `contextmenu` は、番号を押している間はメニューを開かない（離したときに決める）
+  - 表の上・下の端に近づけると、今までどおり `edgeDelta` で少しずつスクロールし、動かす先を測り直す
+- `PartsTable`：`liftableRows(row)`（入力中・メニュー・並べ替えのメニューを開いている間・部材の無い行は null。選んでいる行全体の中の番号なら その行全部、外なら その行だけ）、`onLift`（持ち上げた行を選ぶ。選んでいた外の行は外れる）。［調整］［木取り］の表には付けない
+- 24.2 の「動かす先の線」（`MoveLine`・`.pt-moveline`）はなくした（行そのものが動くため）。引いている間は取っ手を隠す

@@ -13,7 +13,9 @@
 // 第2.1版（仕様書 25.8）：選んでいるセルの中身は、タブのすぐ下の式の欄（FormulaBar。barSlot）に出す。欄を押すか、選んでいるセルをもう一度押すと入力。
 // キーの上にあった行（部材名・W・入れている式）はなくし、エラーの理由は式の欄のすぐ下に出す。
 // 第2.0版（仕様書 24）：見出しを長押しすると並べ替えのメニュー（大きい順・小さい順／あいうえお順・逆の順。並べ替えは engine の sortParts）。
-// 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）
+// 選んでいる行の番号を上下に引くと、その行を動かす（engine の moveParts。指の動きは useGrid）。
+// 第2.2版（仕様書 26.5）：行を選んでいなくても、番号を長押しすると行が持ち上がって指についてくる（ほかの行はよける）。離した所に入る。
+// 長押しして動かさずに離すと長押しのメニュー
 import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { normalizePartName, splitLeadingEquals, validatePartName } from '../../engine/formula/tokenize'
@@ -202,11 +204,13 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     },
     // 仕事を切り替えたら、選んでいる範囲を外す
     resetKey: job.id,
-    // 選んでいる行の番号を引くと、その行を動かす（仕様書 24.2）
+    // 選んでいる行の番号を引くと、その行を動かす（仕様書 24.2）。番号を長押しすると持ち上げる（仕様書 26.5）
     moveRowsFrom: (row) => movableRows(row),
+    liftRowsFrom: (row) => liftableRows(row),
+    onLift: (rows) => liftDone(rows),
     onMoveRows: (top, rows, to) => moveDone(top, rows, to),
   })
-  const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo, moving, moveLine } = grid
+  const { range, active, rangeRef, activeRef, selectRange, dragging, fillTo, moving } = grid
 
   const setSel = (s: Sel | null) => {
     selSRef.current = s
@@ -566,6 +570,27 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     return { top: r.top, rows: Math.min(r.top + r.rows, n) - r.top, limit: n }
   }
 
+  /**
+   * 番号を長押ししたときに持ち上げる行（仕様書 26.5）：選んでいる行全体の中の番号なら その行全部、そうでなければ その行だけ（部材のある行だけ）。
+   * 入力中・メニューを開いている間・部材の無い空の行は持ち上げない（長押しはメニューのまま）
+   */
+  const liftableRows = (row: number): MovableRows | null => {
+    const n = jobRef.current.parts.length
+    if (curCell() || menuOpen || sortCol !== null || row >= n) return null
+    const r = rangeRef.current
+    if (r && r.left === 0 && r.cols === CELL_COLS.length && row >= r.top && row < r.top + r.rows) {
+      return { top: r.top, rows: Math.min(r.top + r.rows, n) - r.top, limit: n }
+    }
+    return { top: row, rows: 1, limit: n }
+  }
+
+  /** 持ち上げたとき：その行を選んだ状態にする（選んでいた外の行は外す） */
+  const liftDone = (rows: MovableRows) => {
+    onError(null)
+    setNotice(null)
+    selectRange({ top: rows.top, left: 0, rows: rows.rows, cols: CELL_COLS.length })
+  }
+
   /** 番号を引いて離したとき：行を動かして保存し、動かした行を選んだままにする */
   const moveDone = (top: number, rows: number, to: number) => {
     const n = jobRef.current.parts.length
@@ -862,7 +887,6 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           fillBox={fillBox}
           fillLabel={shown && fillTo ? fillHint(shown, fillTo) : null}
           cutBox={cutBox}
-          moveLine={moveLine}
         />
       </div>
       <button type="button" className="btn add-rows" onClick={addRows}>
