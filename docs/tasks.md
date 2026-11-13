@@ -687,7 +687,7 @@ architecture.md には「15. 第2.2版の変更」を足してある。各作業
   - `src/store/reducer.ts`：`updatePart` で厚みを渡せる。`sortParts` の key に厚み
   - 完了の条件：厚みの無い第2.1版の保存データ・送るファイル・バックアップがそのまま読めて全部の部材の厚みが空になる／厚み 18 の部材を 仕事のコピー・複製・送って取り込む・バックアップから戻す で厚み 18 のまま／厚み 0・−1 は入れられない／厚みだけの行は外れない／厚みの大きい順で 18・12・空 の順に並ぶ、のテストが通る（`shape.test.ts`・`jobs.test.ts`・`copy.test.ts`・`share.test.ts`・`importFile.test.ts`・`order.test.ts`）
 
-- [ ] **E-25 式で厚みを使う（`天板.T`）**（engine-dev。依存 E-24。spec 26.1）
+- [x] **E-25 式で厚みを使う（`天板.T`）**（engine-dev。依存 E-24。spec 26.1）
   - `src/engine/formula/tokenize.ts`（`parseRefText`・`tokenize`）：参照の軸に `T` を足す（全角の `Ｔ` も）。参照の軸の型は W・H・T（例：`RefAxis = Axis | 'T'`。部材の寸法の `Axis` とは分ける）。`天板.D` などのエラーの文を「寸法は W・H・T（厚み）だけです」に
   - `src/engine/formula/parse.ts`・`evaluate.ts`（`Ref`・`RefLookup`・`refsOf`）・`display.ts`（`formulaText`）：`.T` の参照を読める・出せる。［調整］の式（`kind: 'adjust'`）では今までどおり部材の寸法（`.T` も）はエラー
   - `src/engine/dimensions/resolve.ts`・`index.ts`（`computeDimensions`）：`.T` は参照先の部材の厚み（式ではなく数字なので、計算順・循環の辿りには入らない）。厚みが空の部材の `.T` はエラー「天板 の厚みが入っていません」（エラーの種類を足すかは engine-dev が決める）。存在しない部材の `.T` は今までどおり「「天板」という部材はありません」

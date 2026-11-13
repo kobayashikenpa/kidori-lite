@@ -124,3 +124,20 @@ describe('エラーの文は画面に見えている言葉で（仕様書 18.6�
     }
   })
 })
+
+describe('厚みの参照（第2.2版。仕様書 26.1）', () => {
+  it('仕上がりの式で 天板.T を読める', () => {
+    const r = parse('全体.H - 天板.T × 2', adjusts, { kind: 'finished' })
+    expect(r.ok && r.ast).toEqual({
+      type: 'binary',
+      op: '-',
+      left: { type: 'ref', part: '全体', axis: 'H' },
+      right: { type: 'binary', op: '*', left: { type: 'ref', part: '天板', axis: 'T' }, right: { type: 'number', value: 2 } },
+    })
+  })
+
+  it('調整の式に 天板.T を書くと「調整には部材の寸法は使えません」', () => {
+    const r = parse('-天板.T', adjusts, { kind: 'adjust' })
+    expect(!r.ok && r.error.message).toBe('調整には部材の寸法は使えません')
+  })
+})

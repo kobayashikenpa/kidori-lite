@@ -1,22 +1,22 @@
 // 構文木の計算と、参照の取り出し
 // kidori の formula/evaluate.ts をもとに、材料の厚みを外し、逃げ（nige）を調整寸法（adjust）にしたもの
-import type { Adjust, Axis } from '../types'
+import type { Adjust, RefAxis } from '../types'
 import { parse, type Expr, type FormulaError } from './parse'
 
-/** ほかの部材の寸法への参照（部材名.W など） */
+/** ほかの部材の寸法への参照（部材名.W など。T は厚み。第2.2版） */
 export interface Ref {
   part: string
-  axis: Axis
+  axis: RefAxis
 }
 
 export type EvalResult = { ok: true; value: number } | { ok: false; error: FormulaError }
 
-/** 参照の値を返す関数。値がない（部材がない）ときは null */
-export type RefLookup = (part: string, axis: Axis) => number | null
+/** 参照の値を返す関数。値がない（部材がない）ときは null。axis が T なら部材の厚み（第2.2版） */
+export type RefLookup = (part: string, axis: RefAxis) => number | null
 
 /** 式の中の参照の値を返す。見つからなければ null */
 export interface Lookup {
-  /** 部材の仕上がり寸法。部材が無ければ null */
+  /** 部材の仕上がり寸法（T は厚み）。部材が無ければ null */
   ref: RefLookup
   /** 調整寸法の寸法。調整寸法が無ければ（削除した）null */
   adjust(adjustId: string): number | null

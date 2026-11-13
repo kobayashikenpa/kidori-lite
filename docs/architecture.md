@@ -825,3 +825,20 @@ export interface Part {
 - 送るファイル（`share.ts` の `jobFile`）・バックアップ・取り込み（`rekeyJob`）は部材をまるごと写すので、厚みはそのまま入る（テストで確かめた）。`TRANSFER_VERSION` は 1 のまま
 - store（`reducer.ts`）：action は変えていない。`{ type: 'updatePart', patch: { thickness } }` で厚みを入れる・空にする（null）。`{ type: 'sortParts', key: 'T', order }` で厚みの順
 - テスト用：`fixtures/legacy.ts` の `toV21(value)`（JSON で写し、部材から第2.2版の欄を消す。前の版のデータの読み込みのテストに使う）
+
+### 15.2 式で厚みを使う `天板.T`（E-25。spec 26.1）
+
+```ts
+// types.ts
+export type RefAxis = Axis | 'T'                 // 式の参照の軸。T は厚み（部材の寸法の Axis とは分ける）
+export const REF_AXES: readonly RefAxis[] = ['W', 'H', 'T']
+export type DimensionErrorKind = … | 'noThickness' // 厚みが空の部材の 部材名.T を使っている
+```
+
+- **字句**（`formula/tokenize.ts`）：`parseRefText` は `部材名.T`（全角の `Ｔ` も。小文字の `t` はエラー）を読み、`{ part, axis: RefAxis }` を返す。`Token` の `ref` の軸も `RefAxis`。`天板.D` などの文は「「天板.D」は使えません（寸法は W・H・T（厚み）だけです。「部材名.W」「部材名.H」「部材名.T」で書いてください）」
+- `formula/parse.ts`（`Expr` の `ref`）・`evaluate.ts`（`Ref`・`RefLookup`）の軸も `RefAxis`。`units.ts`・`display.ts`・`rename.ts` は `parseRefText` を使うので、`天板.T` は部材の参照の単位（`partRef`）・表示は「全体.H − 天板.T × 2」・名前を変えると `甲板.T` に書き換わる（そのまま）
+- ［調整］の式（`kind: 'adjust'`）の `天板.T` は今までどおり「調整には部材の寸法は使えません」
+- **依存関係**（`dimensions/resolve.ts`）：`DimNode` に `thicknessDeps: string[]`（厚みを参照している部材の id）を足した。`.T` は `deps`（計算順・循環の辿り）に入れない。参照先が無ければ今までどおり `unknownRef`「「天板」という部材はありません」、厚みが空なら `noThickness`（`noThicknessMessage(name)`「天板 の厚みが入っていません」。`refs` に部材名。field は finished）。自分の厚みを使う式（`A.H = A.T × 2`）は循環ではない
+- **計算**（`dimensions/index.ts` の `computeDimensions`）：`.T` の値は参照先の部材の `thickness`（数字）。厚みは天板の W・H のエラーと関係なく使える。エラーは今までどおり、参照している寸法に `from` 付きで伝わる。厚みは木取り寸法・板の並べ方に足さない
+- **使っている所**（`partsReferencing`）：`deps` か `thicknessDeps` にその部材があれば「使っている」（軸は使っている側の式の W・H）。部材の削除の確認（`ui/partsTable.ts` の `referencingOthers`）はそのまま使える
+- テストの見本：`fixtures/shelf.ts` の `thickShelfJob()`（`shelfJob` に天板の厚み 18・側板の H ＝ `全体.H - 天板.T × 2`。側板の仕上がり H 1764・木取り 1774）。`shelfJob()` は変えていない

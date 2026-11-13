@@ -1,13 +1,13 @@
 // 式の構文解析：字句 → 構文木（AST）。普通の四則演算の優先順位。先頭や ( の直後などの - は符号
 // kidori の formula/parse.ts をもとに、材料の厚みを外したもの
 import { adjustName } from '../defaults'
-import type { Adjust, Axis } from '../types'
+import type { Adjust, RefAxis } from '../types'
 import { normalizeFormulaText, tokenize, type Operator, type Token } from './tokenize'
 
 /** 式の構文木 */
 export type Expr =
   | { type: 'number'; value: number }
-  | { type: 'ref'; part: string; axis: Axis }
+  | { type: 'ref'; part: string; axis: RefAxis }
   | { type: 'adjust'; adjustId: string }
   | { type: 'neg'; arg: Expr }
   | { type: 'binary'; op: Operator; left: Expr; right: Expr }

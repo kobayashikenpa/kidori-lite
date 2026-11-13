@@ -6,6 +6,14 @@ export type Axis = 'W' | 'H'
 
 export const AXES: readonly Axis[] = ['W', 'H']
 
+/**
+ * 式の参照の軸（第2.2版。仕様書 26.1）：W・H は部材の仕上がり寸法、T は部材の厚み（Part.thickness）。
+ * 部材の寸法の軸（Axis）とは分ける（T は板に置く寸法ではない）
+ */
+export type RefAxis = Axis | 'T'
+
+export const REF_AXES: readonly RefAxis[] = ['W', 'H', 'T']
+
 // ---------- 入力 ----------
 
 /** 切り方：縦切り優先 / 横切り優先（第1.4版で「おまかせ」をなくした。古いデータの 'auto' は読むときに 'vertical' にする。仕様書 18.2） */
@@ -215,6 +223,7 @@ export interface CellCut {
 export type DimensionErrorKind =
   | 'syntax' // 式が読めない
   | 'unknownRef' // 存在しない部材名を参照
+  | 'noThickness' // 厚みが空の部材の厚み（部材名.T）を参照（第2.2版）
   | 'unknownAdjust' // 式が使っている調整寸法が削除されている
   | 'cycle' // 循環参照
   | 'nonPositive' // 計算結果が 0 以下
@@ -234,7 +243,7 @@ export interface DimensionError {
   kind: DimensionErrorKind
   /** 画面にそのまま出せる日本語 */
   message: string
-  /** unknownRef の部材名、cycle の部材名の並び */
+  /** unknownRef・noThickness の部材名、cycle の部材名の並び */
   refs?: string[]
   /**
    * 入れている途中の形の式（syntax のときだけ。空・終わりが記号や「(」・かっこが閉じていない・「1.」。第1.4版。仕様書 18.5）。

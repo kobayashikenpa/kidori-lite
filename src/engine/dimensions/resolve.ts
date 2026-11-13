@@ -18,6 +18,11 @@ export interface DimNode extends DimRef {
   ast: Expr | null
   /** 参照している寸法（存在する部材だけ） */
   deps: DimRef[]
+  /**
+   * 厚み（部材名.T。第2.2版）を参照している部材の id（存在する部材だけ。重なりなし・出てきた順）。
+   * 厚みは式ではなく数字なので、計算順・循環の辿り（deps）には入れない。部材の削除の前の確認（partsReferencing）に使う
+   */
+  thicknessDeps: string[]
 }
 
 export interface Resolution {
@@ -25,7 +30,7 @@ export interface Resolution {
   nodes: Map<string, DimNode>
   /** すべての寸法の計算順。参照先が先に並ぶ（循環している寸法も含む） */
   order: DimRef[]
-  /** 式そのもののエラー（syntax・unknownRef・cycle。仕上がりの欄なので field はいつも finished）。部材の並び順 → W・H の順 */
+  /** 式そのもののエラー（syntax・unknownRef・noThickness・cycle。仕上がりの欄なので field はいつも finished）。部材の並び順 → W・H の順 */
   errors: DimensionError[]
 }
 
@@ -35,7 +40,9 @@ export function dimKey(partId: string, axis: Axis): string {
 
 /**
  * 部材の式から依存関係を作り、計算順と、存在しない部材・循環参照を求める。
- * adjusts（アプリ全体の調整寸法）は、式のエラーの文に調整寸法の表示名を出すため（第1.4版）
+ * adjusts（アプリ全体の調整寸法）は、式のエラーの文に調整寸法の表示名を出すため（第1.4版）。
+ * 厚みの参照（部材名.T。第2.2版）は依存関係に入れず、参照先の部材が無ければ unknownRef、厚みが空なら noThickness
+ * （「天板 の厚みが入っていません」）にする
  */
 export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Resolution {
   // そろえた部材名 → 部材（名前は重複しない前提。重複していれば先のものを使う）。名前の無い部材は参照できない
@@ -60,18 +67,27 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
       // 仕上がりの式（調整寸法は使えない。第2.1版 仕様書 25.4）
       const parsed = parse(p.expr[axis], adjusts, { kind: 'finished' })
       if (!parsed.ok) {
-        nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: null, deps: [] })
+        nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: null, deps: [], thicknessDeps: [] })
         addError({ partId: p.id, axis, field: 'finished', kind: 'syntax', message: parsed.error.message, ...(parsed.error.incomplete ? { incomplete: true } : {}) })
         continue
       }
       const deps: DimRef[] = []
+      const thicknessDeps: string[] = []
       const unknown: string[] = []
+      const noThickness: string[] = []
       for (const ref of refsOf(parsed.ast)) {
         const target = byName.get(ref.part)
-        if (target) deps.push({ partId: target.id, axis: ref.axis })
-        else if (!unknown.includes(ref.part)) unknown.push(ref.part)
+        if (!target) {
+          if (!unknown.includes(ref.part)) unknown.push(ref.part)
+        } else if (ref.axis === 'T') {
+          // 厚みは数字なので計算順・循環の辿りに入れない（第2.2版）
+          if (!thicknessDeps.includes(target.id)) thicknessDeps.push(target.id)
+          if (target.thickness === null && !noThickness.includes(target.name)) noThickness.push(target.name)
+        } else {
+          deps.push({ partId: target.id, axis: ref.axis })
+        }
       }
-      nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: parsed.ast, deps })
+      nodes.set(dimKey(p.id, axis), { partId: p.id, axis, ast: parsed.ast, deps, thicknessDeps })
       if (unknown.length > 0) {
         addError({
           partId: p.id,
@@ -80,6 +96,16 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
           kind: 'unknownRef',
           message: unknown.map((n) => `「${n}」という部材はありません`).join('。'),
           refs: unknown,
+        })
+      }
+      if (noThickness.length > 0) {
+        addError({
+          partId: p.id,
+          axis,
+          field: 'finished',
+          kind: 'noThickness',
+          message: noThickness.map(noThicknessMessage).join('。'),
+          refs: noThickness,
         })
       }
     }
@@ -175,14 +201,25 @@ export function resolve(parts: readonly Part[], adjusts?: readonly Adjust[]): Re
   return { nodes, order, errors }
 }
 
-/** その部材の寸法を式で使っている、ほかの部材（部材の並び順。軸は W→H。name は表示用の名前）。部材の削除の前の確認に使う */
+/** 厚みが空の部材の厚み（部材名.T）を使っているときのエラーの文（第2.2版。仕様書 26.1） */
+export function noThicknessMessage(name: string): string {
+  return `${name} の厚みが入っていません`
+}
+
+/**
+ * その部材の寸法・厚み（第2.2版）を式で使っている、ほかの部材（部材の並び順。軸は使っている側の式の W→H。name は表示用の名前）。
+ * 部材の削除の前の確認に使う
+ */
 export function partsReferencing(parts: readonly Part[], partId: string): { partId: string; name: string; axes: Axis[] }[] {
   const { nodes } = resolve(parts)
   const labels = partLabels(parts)
   const out: { partId: string; name: string; axes: Axis[] }[] = []
   for (const p of parts) {
     if (p.id === partId) continue
-    const axes = AXES.filter((a) => nodes.get(dimKey(p.id, a))?.deps.some((d) => d.partId === partId))
+    const axes = AXES.filter((a) => {
+      const n = nodes.get(dimKey(p.id, a))
+      return !!n && (n.deps.some((d) => d.partId === partId) || n.thicknessDeps.includes(partId))
+    })
     if (axes.length > 0) out.push({ partId: p.id, name: labels.get(p.id)!, axes })
   }
   return out

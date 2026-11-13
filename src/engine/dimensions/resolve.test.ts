@@ -1,16 +1,16 @@
 // kidori の dimensions/resolve.test.ts をもとに、見本を仕様書 6章の棚（全体・天板・側板・棚板）に、軸を W・H にしたもの
 import { describe, expect, it } from 'vitest'
-import { shelfJob } from '../fixtures/shelf'
+import { shelfJob, thickShelfJob } from '../fixtures/shelf'
 import type { Axis, Part } from '../types'
 import { partsReferencing, resolve } from './resolve'
 
-function mkPart(name: string, expr: Partial<Record<Axis, string>>): Part {
+function mkPart(name: string, expr: Partial<Record<Axis, string>>, thickness: number | null = null): Part {
   return {
     id: `id-${name}`,
     name,
     expr: { W: '100', H: '100', ...expr },
     adjust: { W: '', H: '' },
-    thickness: null,
+    thickness,
     quantity: 1,
     rotatable: false,
     finishedDone: false,
@@ -127,5 +127,42 @@ describe('partsReferencing：その部材の寸法を式で使っている、ほ
     const parts = shelfJob().parts
     expect(partsReferencing(parts, 'part-tanaita')).toEqual([])
     expect(partsReferencing([mkPart('A', { W: 'A.H', H: '1' })], 'id-A')).toEqual([])
+  })
+})
+
+describe('厚みの参照（部材名.T。第2.2版 仕様書 26.1）', () => {
+  it('天板.T は計算順・循環の辿りに入らない（厚みは式ではなく数字）', () => {
+    const r = resolve(thickShelfJob().parts)
+    expect(r.errors).toEqual([])
+    expect(r.nodes.get('part-gawaita:H')!.deps).toEqual([{ partId: 'part-zentai', axis: 'H' }])
+    expect(r.nodes.get('part-gawaita:H')!.thicknessDeps).toEqual(['part-tenita'])
+    expect(r.order).toHaveLength(8)
+  })
+
+  it('自分の厚みを使う式（A.H ＝ A.T × 2）は循環ではない', () => {
+    const r = resolve([mkPart('A', { H: 'A.T × 2' }, 9)])
+    expect(r.errors).toEqual([])
+  })
+
+  it('厚みが空の部材の .T は noThickness「天板 の厚みが入っていません」（部材名を示す）', () => {
+    const parts = thickShelfJob().parts
+    parts[1] = { ...parts[1], thickness: null }
+    expect(resolve(parts).errors).toEqual([
+      { partId: 'part-gawaita', axis: 'H', field: 'finished', kind: 'noThickness', message: '天板 の厚みが入っていません', refs: ['天板'] },
+    ])
+  })
+
+  it('存在しない部材の .T は今までどおり unknownRef「「天板」という部材はありません」', () => {
+    const r = resolve([mkPart('X', { W: '天板.T + 1' })])
+    expect(r.errors).toEqual([
+      { partId: 'id-X', axis: 'W', field: 'finished', kind: 'unknownRef', message: '「天板」という部材はありません', refs: ['天板'] },
+    ])
+  })
+
+  it('天板を消す前の確認：厚みを使っている側板も「使っている」に入る', () => {
+    expect(partsReferencing(thickShelfJob().parts, 'part-tenita')).toEqual([
+      { partId: 'part-gawaita', name: '側板', axes: ['H'] },
+      { partId: 'part-tanaita', name: '棚板', axes: ['W', 'H'] },
+    ])
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MELAMINE_ID, shelfJob } from '../fixtures/shelf'
+import { MELAMINE_ID, shelfJob, thickShelfJob } from '../fixtures/shelf'
 import { renamePart, renameRefsInExpr } from './rename'
 
 describe('renameRefsInExpr（式の中の参照のつけ替え）', () => {
@@ -117,5 +117,17 @@ describe('全角で書いた参照のつけ替え', () => {
 describe('renameRefsInExpr：先頭の「＝」はそのまま残す（仕様書 20.2）', () => {
   it('＝天板.W - 20 → ＝天板A.W - 20', () => {
     expect(renameRefsInExpr('＝天板.W - 20', '天板', '天板A')).toBe('＝天板A.W - 20')
+  })
+})
+
+describe('厚みの参照の名前のつけ替え（第2.2版。仕様書 26.1）', () => {
+  it('天板.T も書き換える（全角の 天板．Ｔ も）', () => {
+    expect(renameRefsInExpr('全体.H - 天板.T × 2', '天板', '甲板')).toBe('全体.H - 甲板.T × 2')
+    expect(renameRefsInExpr('全体.H - 天板．Ｔ', '天板', '甲板')).toBe('全体.H - 甲板.T')
+  })
+
+  it('見本で「天板」を「甲板」に変えると、側板の式が 全体.H - 甲板.T × 2 になる', () => {
+    const r = renamePart(thickShelfJob().parts, 'part-tenita', '甲板')
+    expect(r.ok && r.parts[2].expr).toEqual({ W: '全体.W', H: '全体.H - 甲板.T × 2' })
   })
 })
