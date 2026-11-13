@@ -65,6 +65,7 @@ import {
   type OpResult,
   type PartPatch,
 } from './jobs'
+import type { History } from './history'
 import { sampleJob } from './sample'
 import type { LoadResult } from './storage'
 
@@ -76,6 +77,11 @@ export interface StoreState {
   loadError: string | null
   /** 保存してよいか（壊れたデータを守るため、保存を止めることがある） */
   canSave: boolean
+  /**
+   * 戻る・進むの履歴（第2.3版。仕様書 27.3。store/history.ts）。アプリを開いている間だけ持ち、スマホには保存しない（saveSaved は data と currentJobId だけを書く）。
+   * reduce は変えずにそのまま引き継ぐ。記録・戻す・進むは history.ts の dispatchWithHistory・undoHistory・redoHistory
+   */
+  history: History
 }
 
 /** 操作の中で使う id の作り方と今の時刻 */
@@ -311,7 +317,8 @@ export function adjustTableOutcome(data: Pick<AppData, 'adjusts' | 'adjustClip'>
 
 /** 読み込みの結果から最初の状態を作る */
 export function initialState(load: LoadResult): StoreState {
-  return { data: load.data, currentJobId: load.currentJobId, loadError: load.message ?? null, canSave: load.canSave }
+  // 履歴は空から（history.ts の emptyHistory と同じ形。history.ts が reduce を使うので、ここでは読み込まずに書く）
+  return { data: load.data, currentJobId: load.currentJobId, loadError: load.message ?? null, canSave: load.canSave, history: { past: [], future: [], last: null, revision: 0 } }
 }
 
 /** 開いている仕事（無ければ null） */

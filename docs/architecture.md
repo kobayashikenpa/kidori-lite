@@ -990,48 +990,44 @@ export interface Part {
 - **保存しない**：履歴は `StoreState` に持つが、`saveSaved` は `data`・`currentJobId` だけを書くので保存されない（27.3）。戻す・進むで `data` が変わるので、今の自動保存（`JobStore.tsx` の useEffect）がそのまま保存する
 - **コピーしたセルは入れない**：`cellClip`・`adjustClip` は履歴に持たず、戻しても変わらない
 
-### 16.1 履歴の形（E-29。`src/store/history.ts`）
+### 16.1 履歴の形（E-29。`src/store/history.ts`。作った）
 
 ```ts
 /** 仕事の中身のうち、戻すもの（名前・id・作った日・updatedAt は戻さない） */
-type JobBody = Pick<Job, 'parts' | 'settings' | 'frozenSheets'>
+export type JobBody = Pick<Job, 'parts' | 'settings' | 'frozenSheets'>
+export interface JobChange { jobId: string; before: JobBody; after: JobBody }
+export interface AdjustsChange { before: AdjustRow[]; after: AdjustRow[] }
 
-interface HistoryEntry {
-  /** 何をしたか（E-30 の historyLabel。まとまりは最初の操作の名前）。知らせる文に使う */
-  label: string
-  /** まとめる印（dispatch の opts.group）。無ければ null */
-  group: string | null
-  /** 変わった仕事ごとの前と後（切り取りの元がほかの仕事なら2つ） */
-  jobs: { jobId: string; before: JobBody; after: JobBody }[]
-  /** 調整寸法の表（アプリ全体）の前と後。変わらなければ null */
-  adjusts: { before: AdjustRow[]; after: AdjustRow[] } | null
+export interface HistoryEntry {
+  label: string                 // 何をしたか（E-30 の historyLabel。まとまりは最初の操作の名前。E-29 の時点では空）
+  group: string | null          // まとめる印（opts.group）
+  jobs: JobChange[]             // 変わった仕事ごとの前と後（切り取りの元がほかの仕事なら2つ）
+  adjusts: AdjustsChange | null // 調整寸法の表の前と後。変わらなければ null
 }
 
-interface History {
-  past: HistoryEntry[]        // 古い順。最大 HISTORY_LIMIT（50）
-  future: HistoryEntry[]      // 戻した分（次に進むものが最後）
-  /** 最後にしたのが記録（'record'）か戻す・進む（'move'）か。まとめる・後片付けの判断に使う */
-  last: 'record' | 'move' | null
-  /** 戻す・進むのたびに 1 増える（画面が入力を終え、選んでいる範囲を外す合図） */
-  revision: number
+export interface History {
+  past: HistoryEntry[]          // 古い順。最大 HISTORY_LIMIT（50）
+  future: HistoryEntry[]        // 戻した分（次に進むものが最後）
+  last: 'record' | 'move' | null // 最後にしたのが記録か戻す・進むか（消した直後・1回を外した直後は null）
+  revision: number              // 戻す・進むのたびに +1（履歴を消しても戻さない）
 }
 
-interface StoreState { data; currentJobId; loadError; canSave; history: History }   // history を足す
+// reducer.ts の StoreState に history: History を足した（initialState は空の履歴。saveSaved は書かない）
 
-interface DispatchOptions {
-  /** 同じ印の操作が続いたら1回にまとめる。画面がセルの入力を始めるたびに新しい印を作る */
-  group?: string
-  /** 直前の1回に含める後片付け（空の行を外す）。直前が戻す・進むなら記録しない */
-  follow?: boolean
-}
+export interface DispatchOptions { group?: string; follow?: boolean }   // 両方あれば follow が先
+export type HistoryResult = { ok: true; state: StoreState; label: string } | { ok: false; message: string }
 
 export const HISTORY_LIMIT = 50
+export function emptyHistory(revision = 0): History
 export function dispatchWithHistory(state: StoreState, action: StoreAction, env: Env, opts?: DispatchOptions): ReduceResult
-export function undoHistory(state: StoreState, env: Env): HistoryResult   // { ok: true; state; label } | { ok: false; message }
-export function redoHistory(state: StoreState, env: Env): HistoryResult
+export function undoHistory(state: StoreState, env: Env): HistoryResult   // 失敗は「戻せる操作がありません」
+export function redoHistory(state: StoreState, env: Env): HistoryResult   // 失敗は「進める操作がありません」
 export const canUndo = (h: History) => h.past.length > 0
 export const canRedo = (h: History) => h.future.length > 0
 ```
+
+- `reducer.ts` は `import type { History } from './history'` だけ（`history.ts` が `reduce` を使うので、実行時は読み込み合わない）。`initialState` の空の履歴は `emptyHistory()` と同じ形をその場で書いている
+- action の種類（戻せる・記録しない・戻せない）は `Record<StoreAction['type'], …>` の表で持つ。action を足すと型のエラーになり、入れ忘れない
 
 ### 16.2 記録の決まり（E-29）
 
@@ -1039,12 +1035,15 @@ export const canRedo = (h: History) => h.future.length > 0
 
 1. 失敗した操作・状態が変わらなかった操作は何もしない
 2. 開いている仕事（`currentJobId`）が変わったら履歴を空にする（ほかの仕事を開く・閉じる・新しい仕事を作って開く・開いている仕事の削除。同じ仕事を開き直したときは消さない＝未決事項 1）
-3. **戻せる操作**（下の表）で、仕事（`data.jobs` の中身 `JobBody`）か調整寸法の表（`data.adjusts`）が変わったときだけ記録する。変わった仕事は id ごとに前後の中身を比べて見つける（`jobs` 配列の要素の参照が変わったもの）
-   - `opts.follow`：`last === 'record'` なら直前の1回の「後」を新しくする（前は最初のまま）。それ以外は記録しない（先も消さない）
-   - `opts.group` が直前の1回の `group` と同じで `last === 'record'`：直前の1回の「後」を新しくする（ほかの仕事・調整寸法が新しく変わればそれも足す）
+3. 記録しない操作（コピー・切り取り・知らせを閉じる）はそのまま（`last` も変えない）
+4. `replaceData` はいつも履歴を空にする（中身が同じでも）
+5. 仕事（両方にある仕事の `JobBody`）・調整寸法の表の **中身** を前後で比べる（同じオブジェクトならすぐ同じ。違えば中身を比べる）。何も変わっていなければ何もしない（同じ切り代を入れ直す、などは記録しない。先も消さない）
+6. **戻せない操作** で、開いている仕事の中身か調整寸法の表が変わったら履歴を空にする（`addSample` がメラミン1 を足した、など。未決事項 2）。名前の変更・ほかの仕事のコピー・ほかの仕事の削除・開かずに作るは中身が変わらないので残る（`last` も変えない）
+7. **戻せる操作**（下の表）は記録する
+   - `opts.follow`：`last === 'record'` なら直前の1回に含める（前は最初のまま、後を新しくする）。それ以外は記録しない（先も消さない）
+   - `opts.group` が直前の1回の `group` と同じで `last === 'record'`：直前の1回に含める（ほかの仕事・調整寸法が新しく変わればそれも足す）
    - それ以外：新しい1回を足し、`future` を空にし、`past` が 50 を超えたら古いものを捨てる
-   - まとめた結果、全部の前と後が同じ（`parts` の要素・`settings`・`frozenSheets`・`adjusts` の要素の参照が同じ）になった1回は外す（行を挿入して何も入れずに外した、など）
-4. **戻せない操作** で、開いている仕事の中身か調整寸法の表が変わったら履歴を空にする（`addSample` がメラミン1 を足した、`replaceData` など。未決事項 2）。名前の変更・ほかの仕事のコピー・ほかの仕事の削除は中身が変わらないので残る
+   - 含めた結果、前と後の中身が同じになった仕事・調整寸法の表は外し、何も残らなければ1回ごと外す（行を挿入して何も入れずに外した、同じ入力の中で元の値に戻した、など）。外したあとは `last = null`（次の follow・同じ印をほかの1回にまとめない）
 
 | 種類 | action |
 |---|---|
@@ -1055,7 +1054,8 @@ export const canRedo = (h: History) => h.future.length > 0
 | 戻せない（仕事の画面。27.2） | `createJob`・`openJob`・`renameJob`・`copyJob`・`deleteJob`・`addSample`・`replaceData` |
 
 - 貼り付けで切り取りの元がほかの仕事のときは、その仕事も同じ1回に入る（戻すと両方戻る）。貼り付けでクリップが「ふつうのコピー」に変わるのは戻さない（未決事項 10）
-- **戻す**：`past` の最後の1回を取り、`jobs` の各仕事の中身を `before` に置き換え（名前・id はそのまま。updatedAt は今の時刻＝未決事項 9。その仕事が消えていれば飛ばす）、`adjusts` があれば表を `before` に。その1回を `future` へ。`last = 'move'`、`revision + 1`。**進む** は逆（`after` に置き換え、`past` へ）
+- **戻す**：`past` の最後の1回を取り、`jobs` の各仕事の中身を `before` に置き換え（名前・id・作った日はそのまま。updatedAt は今の時刻＝未決事項 9。その仕事が消えていれば飛ばす）、`adjusts` があれば表を `before` に。その1回を `future` へ。`last = 'move'`、`revision + 1`。**進む** は逆（`after` に置き換え、`past` へ）
+  - 記録した仕事が全部消えていて調整寸法の表も無い1回は、当てる所が無いので捨てて次の1回を戻す（進む）
 - 固定した1枚（`frozenSheets`）・切り出しチェックも中身に入っているので、チェックを戻すと固定した1枚も「チェックした時の形」に戻る（27.2）
 
 ### 16.3 1回の名前と知らせる文（E-30）
