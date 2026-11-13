@@ -2,7 +2,7 @@
 // 計算（コピー・貼り付け・消す・行を削除）は engine/clipboard/cells.ts と store の reducer が行う
 import type { PasteSkip } from '../engine/clipboard/cells'
 import { formulaText } from '../engine/formula/display'
-import type { Adjust, CellClip, CellCol, CellPos, CellRange } from '../engine/types'
+import type { Adjust, CellClip, CellCol, CellPos, CellRange, PartColor } from '../engine/types'
 
 /** セルの鍵（"行:列"） */
 export const cellKey = (pos: CellPos): string => `${pos.row}:${pos.col}`
@@ -152,3 +152,18 @@ export function hasPartCell(cells: readonly CellPos[], partCount: number): boole
 }
 
 export const CELL_COL_LABEL: Record<CellCol, string> = { name: '名前', T: '厚み', W: 'W', H: 'H', qty: '枚数' }
+
+/** 色の呼び方（第2.2版。仕様書 26.3） */
+export const PART_COLOR_LABEL: Record<PartColor, string> = { red: '赤', blue: '青', yellow: '黄' }
+
+/** セル・番号に付ける色の class（index.css の .mk-red など。色が無ければ ''） */
+export function markClass(color: PartColor | null | undefined): string {
+  return color ? ` mk-${color}` : ''
+}
+
+/** 選んでいる所の今の色：全部同じならその色（色なしは null）、混ざっていれば 'mixed'、何も無ければ 'mixed'（どれも押した印にしない） */
+export function commonColor(values: readonly (PartColor | null | undefined)[]): PartColor | null | 'mixed' {
+  if (values.length === 0) return 'mixed'
+  const first = values[0] ?? null
+  return values.every((v) => (v ?? null) === first) ? first : 'mixed'
+}

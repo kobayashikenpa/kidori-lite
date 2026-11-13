@@ -965,3 +965,10 @@ export interface Part {
 - 範囲の左上が名前のセルで、その部材が同じ名前なら、式の欄のすぐ下に `DUPLICATE_NAME_MESSAGE`「同じ名前があります」（［仕上がり］は名前の入力中は出さない。入力中は今までどおり行の下の理由）。［木取り］の表は名前のセルも押せるようにした（`Picked.field` に `name`）
 - `FormulaBar`：中身が無い（名前のセル）のに理由があるときは、空の欄（`.fx-bar.blank`。点線で同じ高さ）と理由を出す（表の位置がずれない）
 - 打って同じ名前にしたときは今までどおり（`validatePartName` の「「棚板」という部材はすでにあります」）
+
+### 15.11 色（U-34。spec 26.3・26.8）
+
+- `CellMenu`：「行の色」「セルの色」の欄（赤・青・黄・なし）。`target`（`'row' | 'cell'`）は、長押しした所が番号なら row、セルなら cell（`PartsTable`・`PartAdjustTable` の `openMenu` が `menuTarget` に持つ）。row は `setRowColor`、cell は `setCellColor`（どちらも `range`）を dispatch して閉じ、「セルを赤にしました」「行の色を消しました」を出す。今の色が全部同じならそのボタンに印（`aria-pressed`。`commonColor`）。部材の無い行だけを選んでいるときは欄ごと押せない（`fieldset disabled`）
+- 3つの表：各セルに `markClass(cellColor(part, 列))`（`.mk-red` など。engine の `cellColor` はセルの色 → 行の色）。番号のセルは行の色（`markClass(part.rowColor)`）。［木取り］の表も同じ class（見るだけ）。木取りの画面には出さない
+- `ui/cellSelect.ts`：`PART_COLOR_LABEL`（赤・青・黄）・`markClass(color)`・`commonColor(values)`（テストつき）
+- 色（`index.css`）：`--mark-red`・`--mark-blue`・`--mark-yellow`（ライトは淡い色、ダークは暗い色。字の色はそのまま）と、メニューのボタンの字の色 `--mark-*-ink`。`.pt-cell.mk-*` は `.pt-cell` のすぐ後ろに置き、選んだ範囲（`.rs`）・入力中（`.on`）・エラー（`.bad`）・選んだ行の番号（`.hl`）の色が上に重なるようにした（選んでいる間は選んだ色、外すと部材の色）

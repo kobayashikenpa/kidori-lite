@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { PasteSkip } from '../engine/clipboard/cells'
 import {
+  commonColor,
+  markClass,
+  PART_COLOR_LABEL,
   clampRange,
   clipText,
   fillExtension,
@@ -141,5 +144,20 @@ describe('長押しのメニューの手伝い', () => {
   it('範囲の呼び方', () => {
     expect(rangeText({ top: 1, left: 0, rows: 3, cols: 2 })).toBe('3行×2列（2〜4行目）')
     expect(rangeText({ top: 0, left: 0, rows: 1, cols: 4 })).toBe('1行×4列（1行目）')
+  })
+})
+
+describe('色（第2.2版。仕様書 26.3）', () => {
+  it('色の呼び方と class', () => {
+    expect(PART_COLOR_LABEL).toEqual({ red: '赤', blue: '青', yellow: '黄' })
+    expect(markClass('red')).toBe(' mk-red')
+    expect(markClass(null)).toBe('')
+    expect(markClass(undefined)).toBe('')
+  })
+  it('選んでいる所の今の色：全部同じならその色、混ざっていれば mixed', () => {
+    expect(commonColor(['red', 'red'])).toBe('red')
+    expect(commonColor([null, undefined])).toBeNull()
+    expect(commonColor(['red', null])).toBe('mixed')
+    expect(commonColor([])).toBe('mixed')
   })
 })

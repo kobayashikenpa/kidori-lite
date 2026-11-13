@@ -5,12 +5,14 @@
 // 計算は store の reducer（engine/clipboard/cells.ts など）に任せる。押せる／押せないの判定も engine の selectedPartIds を使う
 // 第2.1版：［調整］のタブ（adjust）では 切り取り・コピー・貼り付け・クリア だけを出し、［調整］の欄の操作（partAdjustCells）を使う
 // （行の挿入・削除・複製・回転・仕上がりは［仕上がり］のタブだけ。仕様書 25.2）
+// 第2.2版（仕様書 26.3）：「色」（赤・青・黄・なし）。番号を長押ししたときは選んでいる行の色、セルを長押ししたときは選んでいるセルの色。
+// ［仕上がり］［調整］の両方に出す。部材の無い行だけを選んでいるときは押せない
 import { useState } from 'react'
-import { selectedPartIds } from '../../engine/clipboard/cells'
+import { selectedPartIds, selectionCells } from '../../engine/clipboard/cells'
 import { partLabel, partLabelAt } from '../../engine/parts'
-import type { Adjust, CellClip, CellRange, Job } from '../../engine/types'
+import { PART_COLORS, type Adjust, type CellClip, type CellRange, type Job, type PartColor } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
-import { clipText, flagState, pasteText } from '../cellSelect'
+import { clipText, commonColor, flagState, markClass, PART_COLOR_LABEL, pasteText } from '../cellSelect'
 import { referencingOthers } from '../partsTable'
 import { Segmented } from './Segmented'
 import { Sheet } from './Sheet'
@@ -34,12 +36,14 @@ interface Props {
   adjust?: boolean
   /** 調整寸法の一覧（コピー中の表示を × ÷ − の書き方にする。仕様書 25.8） */
   adjusts?: readonly Adjust[]
+  /** 長押しした所：番号（row）なら行の色、セル（cell）ならセルの色を付ける（仕様書 26.3・26.8） */
+  target?: 'row' | 'cell'
 }
 
 type Rotate = 'fixed' | 'free' | 'some'
 type Done = 'open' | 'done' | 'some'
 
-export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false, adjusts }: Props) {
+export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice, onError, onInsertAbove, onRowsDeleted, adjust = false, adjusts, target = 'cell' }: Props) {
   const [confirm, setConfirm] = useState(false)
   const ids = selectedPartIds(job, range)
   const parts = job.parts.filter((p) => ids.includes(p.id))
@@ -113,6 +117,24 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
     onRowsDeleted?.()
     onClose()
   }
+  /** 色：番号の長押しなら選んでいる行の色、セルの長押しなら選んでいるセルの色（null は「なし」で消す） */
+  const paint = (color: PartColor | null) => {
+    const r = run(target === 'row' ? { type: 'setRowColor', color, range } : { type: 'setCellColor', color, range })
+    if (!r.ok) return
+    const what = target === 'row' ? '行' : 'セル'
+    onNotice(color === null ? `${what}の色を消しました` : `${what}を${PART_COLOR_LABEL[color]}にしました`)
+    onClose()
+  }
+  // 今の色（全部同じなら、そのボタンを押した印にする）
+  const nowColor =
+    target === 'row'
+      ? commonColor(parts.map((p) => p.rowColor))
+      : commonColor(
+          selectionCells(range)
+            .filter((c) => c.row < job.parts.length)
+            .map((c) => job.parts[c.row].cellColors[c.col]),
+        )
+
   /** 回転・仕上がり：選んでいる行の部材全部に当てる（メニューは開いたまま） */
   const updateAll = (patch: { rotatable?: boolean; finishedDone?: boolean }) => {
     for (const p of parts) {
@@ -174,6 +196,19 @@ export function CellMenu({ job, range, title, clip, dispatch, onClose, onNotice,
             </div>
             <p className="cm-clip">{clipNow ?? 'コピーしたものはありません'}</p>
           </div>
+          <fieldset className="cm-field" disabled={!hasParts}>
+            <legend>{target === 'row' ? `行の色${count}` : 'セルの色'}</legend>
+            <div className="cm-keys four">
+              {PART_COLORS.map((c) => (
+                <button key={c} type="button" className={`btn mk-btn${markClass(c)}`} aria-pressed={nowColor === c} onClick={() => paint(c)}>
+                  {PART_COLOR_LABEL[c]}
+                </button>
+              ))}
+              <button type="button" className="btn mk-btn" aria-pressed={nowColor === null} onClick={() => paint(null)}>
+                なし
+              </button>
+            </div>
+          </fieldset>
           {!adjust && (
           <>
           <div className="cm-keys two">

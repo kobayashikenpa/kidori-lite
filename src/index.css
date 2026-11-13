@@ -31,6 +31,13 @@
   --refc-2: #1e8a4a;
   --refc-3: #c46a00;
   --refc-4: #c2307a;
+  /* 部材の色（第2.2版 仕様書 26.3）：赤・青・黄。淡く塗って、上の字が読めるように */
+  --mark-red: #fbe0dd;
+  --mark-blue: #dce8f8;
+  --mark-yellow: #f8eec0;
+  --mark-red-ink: #b3261e;
+  --mark-blue-ink: #1f5fa8;
+  --mark-yellow-ink: #8a6a00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -61,6 +68,12 @@
     --refc-2: #6fd69a;
     --refc-3: #ffb35c;
     --refc-4: #ff8cc6;
+    --mark-red: #43211f;
+    --mark-blue: #1b2f4b;
+    --mark-yellow: #3d3413;
+    --mark-red-ink: #f28b82;
+    --mark-blue-ink: #8cb8ec;
+    --mark-yellow-ink: #e3c35a;
   }
 }
 
@@ -1518,6 +1531,16 @@ h3 > .help {
 .pt-cell:first-child {
   border-left: 0;
 }
+/* 部材の色（第2.2版 仕様書 26.3）。選んだ範囲・エラー・入力中の色はこの上に重ねる（後ろに書く） */
+.pt-cell.mk-red {
+  background: var(--mark-red);
+}
+.pt-cell.mk-blue {
+  background: var(--mark-blue);
+}
+.pt-cell.mk-yellow {
+  background: var(--mark-yellow);
+}
 .pt-cell:disabled {
   cursor: default;
 }
@@ -1895,6 +1918,29 @@ h3 > .help {
 }
 .cm-field:disabled .seg {
   opacity: 0.45;
+}
+/* 長押しのメニューの「色」のボタン（第2.2版 仕様書 26.3）：その色で塗り、今の色は太い枠 */
+.btn.mk-btn {
+  font-weight: 700;
+}
+.btn.mk-btn.mk-red {
+  background: var(--mark-red);
+  color: var(--mark-red-ink);
+}
+.btn.mk-btn.mk-blue {
+  background: var(--mark-blue);
+  color: var(--mark-blue-ink);
+}
+.btn.mk-btn.mk-yellow {
+  background: var(--mark-yellow);
+  color: var(--mark-yellow-ink);
+}
+.btn.mk-btn[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 3px var(--accent);
+}
+.cm-field:disabled .btn {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .pt-msg {
   margin: 0;

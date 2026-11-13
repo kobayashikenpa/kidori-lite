@@ -16,7 +16,8 @@ import { adjustIdsInExpr } from '../../engine/formula/usages'
 import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type AdjustRow, type Axis, type CellClip, type CellRange, type DimensionResult, type Job } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
-import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { CELL_COL_LABEL, clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { cellColor } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import { canInsertRef, insertAt, type Edit } from '../formulaEdit'
@@ -67,6 +68,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
   const parts = job.parts
   const rowCount = parts.length
   const [menuOpen, setMenuOpen] = useState(false)
+  // 長押しした所：番号なら行の色、セルならセルの色（仕様書 26.3）
+  const [menuTarget, setMenuTarget] = useState<'row' | 'cell'>('cell')
   const [notice, setNotice] = useState<string | null>(null)
   const [selS, setSelS] = useState<Sel | null>(null)
   const sel = cellOf(selS, job)
@@ -253,6 +256,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
     }
     onError(null)
     setNotice(null)
+    setMenuTarget(at.col === null ? 'row' : 'cell')
     setMenuOpen(true)
     navigator.vibrate?.(10)
   }
@@ -379,6 +383,8 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
               ].join('')
             }
             const inRange = (col: number) => shown !== null && rangeHas(shown, { row: i, col })
+            // セルの色（無ければ行の色。［仕上がり］と同じ部材・同じ列に同じ色。仕様書 26.3）
+            const mark = (col: number) => markClass(cellColor(part, CELL_COLS[col]))
 
             const dimEl = (axis: Axis) => {
               const c = adjustDimCell(part, d, axis, adjusts)
@@ -389,7 +395,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
               return (
                 <button
                   type="button"
-                  className={`pt-cell pt-dim pa${c.kind === 'error' && !typing ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(col)}`}
+                  className={`pt-cell pt-dim pa${mark(col)}${c.kind === 'error' && !typing ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(col)}`}
                   data-row={i}
                   data-col={col}
                   aria-label={`${label} の ${axis}（調整）：${adjustCellLabel(c)}`}
@@ -414,7 +420,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                 <div className={rowClass} role="row">
                   <button
                     type="button"
-                    className={`pt-cell pt-no${rowIn ? ' hl' : ''}`}
+                    className={`pt-cell pt-no${markClass(part.rowColor)}${rowIn ? ' hl' : ''}`}
                     data-row={i}
                     aria-label={`${label} の行を選ぶ`}
                     onClick={() => pressRow(i)}
@@ -428,7 +434,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   </button>
                   <button
                     type="button"
-                    className={`pt-cell pt-name${dupIds.has(part.id) ? ' dup' : ''}${rangeCls(0)}`}
+                    className={`pt-cell pt-name${mark(0)}${dupIds.has(part.id) ? ' dup' : ''}${rangeCls(0)}`}
                     data-row={i}
                     data-col={0}
                     aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}（見るだけ）`}
@@ -440,7 +446,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   {/* 厚みは［仕上がり］で入れる。ここは見るだけ（仕様書 26.1） */}
                   <button
                     type="button"
-                    className={`pt-cell pt-thick num${rangeCls(THICK_COL)}`}
+                    className={`pt-cell pt-thick num${mark(THICK_COL)}${rangeCls(THICK_COL)}`}
                     data-row={i}
                     data-col={THICK_COL}
                     aria-label={`${label} の厚み：${part.thickness === null ? '空' : thicknessText(part.thickness)}（見るだけ）`}
@@ -453,7 +459,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                   {dimEl('H')}
                   <button
                     type="button"
-                    className={`pt-cell pt-qty num${rangeCls(QTY_COL)}`}
+                    className={`pt-cell pt-qty num${mark(QTY_COL)}${rangeCls(QTY_COL)}`}
                     data-row={i}
                     data-col={QTY_COL}
                     aria-label={`${label} の枚数：${part.quantity ?? '空'}（見るだけ）`}
@@ -491,6 +497,7 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
           onClose={() => setMenuOpen(false)}
           onNotice={setNotice}
           onError={onError}
+          target={menuTarget}
           adjust
         />
       )}

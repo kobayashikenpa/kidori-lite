@@ -9,7 +9,8 @@ import { useEffect, useRef, useState } from 'react'
 import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import type { PartCutProgress } from '../../engine/progress/partProgress'
 import { CELL_COLS, type Adjust, type Axis, type DimensionResult, type Job } from '../../engine/types'
-import { CELL_COL_LABEL } from '../cellSelect'
+import { CELL_COL_LABEL, markClass } from '../cellSelect'
+import { cellColor } from '../../engine/marks'
 import { fmt } from '../format'
 import { barErrors, partBar } from '../fxBar'
 import { cutDimCell, cutQuantityText, thicknessText } from '../partsTable'
@@ -82,6 +83,8 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
           const noCut = part.quantity === 0
           const rowClass = ['pt-row', 'part', part.quantity === null ? 'noqty' : '', noCut ? 'nocut' : ''].filter(Boolean).join(' ')
           const isPicked = (f: Picked['field']) => on && picked.partId === part.id && picked.field === f
+          // セルの色（無ければ行の色。見るだけ。仕様書 26.3）
+          const mark = (f: Picked['field']) => markClass(cellColor(part, f))
           const dimEl = (axis: Axis) => {
             const c = cutDimCell(part, d, axis, adjusts)
             const text = c.kind === 'empty' ? '空' : c.kind === 'error' ? 'エラー' : fmt(c.value)
@@ -89,7 +92,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
               <button
                 type="button"
                 role="cell"
-                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isPicked(axis) ? ' picked' : ''}`}
+                className={`pt-cell pt-dim${mark(axis)}${c.kind === 'error' ? ' bad' : ''}${isPicked(axis) ? ' picked' : ''}`}
                 aria-label={`${label} の ${axis}：${text}（押すと仕上がりの式を上の欄に出す）`}
                 aria-pressed={isPicked(axis)}
                 onClick={() => press(part.id, axis)}
@@ -113,7 +116,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
           return (
             <div key={part.id} className="pt-item" role="rowgroup">
               <div className={rowClass} role="row">
-                <span role="cell" className="pt-cell pt-no">
+                <span role="cell" className={`pt-cell pt-no${markClass(part.rowColor)}`}>
                   <span className="num">{named ? i + 1 : `#${i + 1}`}</span>
                   {part.rotatable && (
                     <span className="pt-rot" aria-label="回転してよい">
@@ -124,7 +127,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
                 <button
                   type="button"
                   role="cell"
-                  className={`pt-cell pt-name${dupIds.has(part.id) ? ' dup' : ''}${isPicked('name') ? ' picked' : ''}`}
+                  className={`pt-cell pt-name${mark('name')}${dupIds.has(part.id) ? ' dup' : ''}${isPicked('name') ? ' picked' : ''}`}
                   aria-label={`${i + 1}行目の名前：${named ? part.name : '空'}${dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}`}
                   aria-pressed={isPicked('name')}
                   onClick={() => press(part.id, 'name')}
@@ -134,7 +137,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
                 <button
                   type="button"
                   role="cell"
-                  className={`pt-cell pt-thick num${isPicked('T') ? ' picked' : ''}`}
+                  className={`pt-cell pt-thick num${mark('T')}${isPicked('T') ? ' picked' : ''}`}
                   aria-label={`${label} の厚み：${part.thickness === null ? '空' : thicknessText(part.thickness)}`}
                   aria-pressed={isPicked('T')}
                   onClick={() => press(part.id, 'T')}
@@ -146,7 +149,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
                 <button
                   type="button"
                   role="cell"
-                  className={`pt-cell pt-qty${isPicked('qty') ? ' picked' : ''}`}
+                  className={`pt-cell pt-qty${mark('qty')}${isPicked('qty') ? ' picked' : ''}`}
                   aria-label={`${label} の枚数：${part.quantity === null ? '空' : cutQuantityText(part.quantity)}`}
                   aria-pressed={isPicked('qty')}
                   onClick={() => press(part.id, 'qty')}

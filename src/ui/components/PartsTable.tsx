@@ -25,7 +25,8 @@ import { movedTop, type SortKey, type SortOrder } from '../../engine/order'
 import { DUPLICATE_NAME_MESSAGE, duplicateNameIds, hasName } from '../../engine/parts'
 import { CELL_COLS, type Adjust, type Axis, type CellClip, type CellCol, type CellRange, type DimensionResult, type Job, type Part, type RefAxis } from '../../engine/types'
 import { currentJob, type ReduceResult, type StoreAction } from '../../store/reducer'
-import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { clampRange, clipText, fillExtension, fillHint, fillText, isSingleAt, markClass, rangeEnd, rangeHas, rangeText, singleRange } from '../cellSelect'
+import { cellColor } from '../../engine/marks'
 import { claimOpen } from '../exclusive'
 import { fmt } from '../format'
 import { canInsertRef, insertAt, refCellsOf, refColorsOf, refPiece, type Edit } from '../formulaEdit'
@@ -120,6 +121,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   const [minRowsJob, setMinRowsJob] = useState(job.id)
   // 長押しのメニューを開いているか・操作のあとの知らせ（表の上に短く出す）
   const [menuOpen, setMenuOpen] = useState(false)
+  // 長押しした所：番号なら行の色、セルならセルの色（仕様書 26.3）
+  const [menuTarget, setMenuTarget] = useState<'row' | 'cell'>('cell')
   const [notice, setNotice] = useState<string | null>(null)
   // 見出しを長押しして開いた並べ替えのメニューの列（仕様書 24.1。開いていなければ null）
   const [sortCol, setSortCol] = useState<number | null>(null)
@@ -538,6 +541,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     }
     onError(null)
     setNotice(null)
+    setMenuTarget(at.col === null ? 'row' : 'cell')
     setMenuOpen(true)
     navigator.vibrate?.(10)
   }
@@ -751,11 +755,13 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
             ].join('')
           }
           const inRange = (f: TableField) => shown !== null && rangeHas(shown, { row: i, col: colOf(f) })
+          // セルの色（無ければ行の色。仕様書 26.3）
+          const mark = (f: TableField) => (part ? markClass(cellColor(part, f)) : '')
 
           const numCell = (
             <button
               type="button"
-              className={`pt-cell pt-no${part ? '' : ' muted'}${rowIn ? ' hl' : ''}${grab ? ' grab' : ''}`}
+              className={`pt-cell pt-no${part ? '' : ' muted'}${markClass(part?.rowColor)}${rowIn ? ' hl' : ''}${grab ? ' grab' : ''}`}
               data-row={i}
               aria-label={`${part ? label : `${i + 1}行目`} の行を選ぶ`}
               onClick={() => pressRow(i)}
@@ -793,7 +799,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           ) : (
             <button
               type="button"
-              className={`pt-cell pt-name${part && dupIds.has(part.id) ? ' dup' : ''}${rangeCls('name')}`}
+              className={`pt-cell pt-name${mark('name')}${part && dupIds.has(part.id) ? ' dup' : ''}${rangeCls('name')}`}
               data-row={i}
               data-col={0}
               aria-label={`${i + 1}行目の名前：${part && hasName(part) ? part.name : '空'}${part && dupIds.has(part.id) ? `（${DUPLICATE_NAME_MESSAGE}）` : ''}`}
@@ -817,7 +823,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
             return (
               <button
                 type="button"
-                className={`pt-cell pt-dim${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(axis)}${refFrame(part, axis)}`}
+                className={`pt-cell pt-dim${mark(axis)}${c.kind === 'error' ? ' bad' : ''}${isSel(axis) ? ' on' : ''}${rangeCls(axis)}${refFrame(part, axis)}`}
                 data-row={i}
                 data-col={colOf(axis)}
                 aria-label={`${label} の ${axis}：${text || '空'}`}
@@ -855,7 +861,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
                 {nameCell}
                 <button
                   type="button"
-                  className={`pt-cell pt-thick num${isSel('T') ? ' on' : ''}${rangeCls('T')}${refFrame(part, 'T')}`}
+                  className={`pt-cell pt-thick num${mark('T')}${isSel('T') ? ' on' : ''}${rangeCls('T')}${refFrame(part, 'T')}`}
                   data-row={i}
                   data-col={colOf('T')}
                   aria-label={`${label} の厚み：${part?.thickness == null ? '空' : thicknessText(part.thickness)}`}
@@ -868,7 +874,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
                 {dimCellEl('H')}
                 <button
                   type="button"
-                  className={`pt-cell pt-qty num${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
+                  className={`pt-cell pt-qty num${mark('qty')}${isSel('qty') ? ' on' : ''}${rangeCls('qty')}`}
                   data-row={i}
                   data-col={colOf('qty')}
                   aria-label={`${label} の枚数：${part?.quantity ?? '空'}`}
@@ -911,6 +917,7 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
           onClose={() => setMenuOpen(false)}
           onNotice={setNotice}
           onError={onError}
+          target={menuTarget}
           onInsertAbove={insertAbove}
           onRowsDeleted={() => selectRange(singleRange({ row: shown.top, col: shown.left }))}
         />
