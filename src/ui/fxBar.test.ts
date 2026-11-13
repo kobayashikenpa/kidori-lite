@@ -45,6 +45,14 @@ describe('式の欄に出す中身（仕様書 25.8）', () => {
     expect(partBar(thick, at(9, 1), 'finished')).toEqual({ kind: 'text', text: '' })
   })
 
+  it('厚みは丸めずにそのまま出す（18.25 は 18.25。どのタブも。仕様書 26.8）', () => {
+    const thick = shelfJob().parts
+    thick[1] = { ...thick[1], thickness: 18.25 }
+    for (const tab of ['finished', 'adjust', 'cut'] as const) {
+      expect(partBar(thick, at(1, 1), tab)).toEqual({ kind: 'text', text: '18.25' })
+    }
+  })
+
   it('部材の無い空の行は空の中身（そこに入れられるので欄は出す）', () => {
     expect(partBar(parts, at(4, 2), 'finished')).toEqual({ kind: 'expr', expr: '' })
     expect(partBar(parts, at(4, 4), 'finished')).toEqual({ kind: 'text', text: '' })

@@ -105,6 +105,11 @@ export function thicknessIncomplete(text: string): boolean {
   return /^0*\.?0*$/.test(text.trim()) && text.trim() !== ''
 }
 
+/** 厚みの中身そのまま（空は ''。丸めない。式の欄・入力を始めたときの欄。仕様書 25.8・26.8） */
+export function thicknessRaw(t: number | null): string {
+  return t === null ? '' : String(t)
+}
+
 /** 厚みの欄の文字（空は ''。小数第1位まで） */
 export function thicknessText(t: number | null): string {
   return t === null ? '' : fmt(t)

@@ -4,7 +4,7 @@
 import { adjustValueText } from '../engine/adjusts'
 import { splitLeadingEquals } from '../engine/formula/tokenize'
 import { ADJUST_COLS, CELL_COLS, type AdjustRow, type Axis, type CellRange, type DimensionError, type Part } from '../engine/types'
-import { errorsWhileEditing, quantityText, thicknessText } from './partsTable'
+import { errorsWhileEditing, quantityText, thicknessRaw } from './partsTable'
 import type { PartsTab } from './partsTab'
 
 /** 欄の中身：式（部材の寸法・調整寸法の塊を色つきで見せる。expr は保存してある形）か、ただの文字（枚数・調整寸法の寸法） */
@@ -28,7 +28,7 @@ export function partBar(parts: readonly Part[], range: CellRange | null, tab: Pa
   if (!range || !field) return null
   const part = parts[range.top] as Part | undefined
   if (field === 'qty') return { kind: 'text', text: quantityText(part?.quantity ?? null) }
-  if (field === 'T') return { kind: 'text', text: thicknessText(part?.thickness ?? null) }
+  if (field === 'T') return { kind: 'text', text: thicknessRaw(part?.thickness ?? null) }
   if (tab === 'adjust') return { kind: 'expr', expr: part?.adjust[field] ?? '' }
   return { kind: 'expr', expr: splitLeadingEquals(part?.expr[field] ?? '').rest }
 }

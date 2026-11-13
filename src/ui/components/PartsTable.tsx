@@ -47,6 +47,7 @@ import {
   tableRowCount,
   thicknessFromText,
   thicknessIncomplete,
+  thicknessRaw,
   thicknessText,
   type TableCell,
   type TableField,
@@ -166,6 +167,8 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
   // 厚みの欄の書きかけ（「2.」のような打っている途中の形を残すため、文字で持つ）と、入れられない理由（式の欄のすぐ下に出す）
   const [thickDraft, setThickDraftS] = useState('')
   const thickDraftRef = useRef('')
+  /** 厚みの入力を始めたときの部材と厚み（入れられない形のまま離れたとき、この厚みに戻す） */
+  const thickStartRef = useRef<{ partId: string | null; thickness: number | null }>({ partId: null, thickness: null })
   const setThickDraft = (t: string) => {
     thickDraftRef.current = t
     setThickDraftS(t)
@@ -281,6 +284,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     }
     // 厚みの欄に入れられない形（0 など）のまま離れたときは、保存してある厚みのまま（理由を出す）
     if (prev?.field === 'T' && !thicknessFromText(thickDraftRef.current).ok) {
+      // キーを押すたびに保存しているので、入力を始めたときの厚みに戻す（途中で ⌫ して空を保存していても）
+      const start = thickStartRef.current
+      const now = start.partId ? jobRef.current.parts.find((p) => p.id === start.partId) : undefined
+      if (now && now.thickness !== start.thickness) run({ type: 'updatePart', partId: now.id, patch: { thickness: start.thickness } })
       onError(`${THICKNESS_MESSAGE}。厚みは元に戻しました`)
     }
     if (!cell) {
@@ -299,7 +306,10 @@ export function PartsTable({ job, dims, adjusts, clip, dispatch, onError, barSlo
     }
     // アプリのキーを出すときは、スマホのキーボードをしまう
     closeKeyboard()
-    if (cell.field === 'T') setThickDraft(part?.thickness == null ? '' : String(part.thickness))
+    if (cell.field === 'T') {
+      setThickDraft(thicknessRaw(part?.thickness ?? null))
+      thickStartRef.current = { partId: part?.id ?? null, thickness: part?.thickness ?? null }
+    }
     if (cell.field === 'qty' || cell.field === 'T') return
     // カーソルは式の終わり。第1.6版までの「＝」で始めた式は「＝」を外した形で開く（入れ直すと「＝」の無い形で保存する）
     const raw = part?.expr[cell.field] ?? ''
