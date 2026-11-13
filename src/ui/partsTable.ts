@@ -3,12 +3,13 @@ import { partsReferencing } from '../engine/dimensions/resolve'
 import { isBlankAdjustExpr } from '../engine/formula/adjustExpr'
 import { formulaText } from '../engine/formula/display'
 import { isBlankPart } from '../engine/parts'
-import type { Adjust, Axis, DimensionError, Part, PartDimensions } from '../engine/types'
-import { fmt } from './format'
+import type { Adjust, Axis, CellCol, DimensionError, Part, PartDimensions } from '../engine/types'
+import { THICKNESS_MESSAGE } from '../store/jobs'
+import { fmt, parseNum } from './format'
 import { dimCell, type DimCell } from './partCells'
 
-/** 表の欄（番号の欄は選ばない） */
-export type TableField = 'name' | 'W' | 'H' | 'qty'
+/** 表の欄（番号の欄は選ばない）。第2.2版で厚み（T）が増えた（engine の CellCol と同じ：名前・厚み・W・H・枚数） */
+export type TableField = CellCol
 
 /** 選んでいる欄。row は表の行（0 から。job.parts の位置。parts.length は空の行） */
 export interface TableCell {
@@ -59,10 +60,11 @@ export function inputRow(row: number, partCount: number): number {
   return Math.max(0, Math.min(row, partCount))
 }
 
-/** 「次へ」の行き先：名前 → W → H → 枚数 → 次の行の名前 */
+/** 「次へ」の行き先：名前 → W → H → 枚数 → 次の行の名前（厚みは W へ） */
 export function nextCell(cell: TableCell, partCount: number): TableCell {
   switch (cell.field) {
     case 'name':
+    case 'T':
       return { row: cell.row, field: 'W' }
     case 'W':
       return { row: cell.row, field: 'H' }
@@ -92,6 +94,22 @@ export function quantityFromText(t: string): number | null {
   if (t === '') return null
   const n = Number(t)
   return Number.isInteger(n) && n >= 0 ? n : null
+}
+
+/** 厚みの欄の文字（空は ''。小数第1位まで） */
+export function thicknessText(t: number | null): string {
+  return t === null ? '' : fmt(t)
+}
+
+/**
+ * 厚みの欄に打った文字から厚み（第2.2版。仕様書 26.1）：空は空（null）、0 より大きい数（小数可）はその数。
+ * 0・0.・数でないものは入れられない（理由つき。打っている途中の「2.」は 2 として入れてよい）
+ */
+export function thicknessFromText(t: string): { ok: true; value: number | null } | { ok: false; message: string } {
+  const n = parseNum(t)
+  if (n === null) return { ok: true, value: null }
+  if (!Number.isFinite(n) || n <= 0) return { ok: false, message: THICKNESS_MESSAGE }
+  return { ok: true, value: n }
 }
 
 /** 表の W・H の欄：空、または一覧と同じ欄（数値・式・エラー。仕上がり寸法） */

@@ -920,3 +920,13 @@ export interface Part {
   - `{ type: 'setCellColor', color: PartColor | null } & SelectionArg`（`cells` か `range`）
   - `{ type: 'setRowColor', color: PartColor | null } & SelectionArg`
   - `{ type: 'setPartMemo', partId, text }`（無い部材は「部材が見つかりません」）
+
+### 15.6 厚みの列と厚みの入力（U-30。spec 26.1・26.8）
+
+- 3つの表（`PartsTable`・`PartAdjustTable`・`CutTable`）の列は 番号・名前・厚み・W・H・枚数。見出しも `CELL_COLS` のまま全部出す（E-26 の「T を出さない」をやめた）。`useGrid` の `headEls` は5列そろう
+- 列の幅（`index.css` の `.pt-row`）：`36px 1.25fr 40px 1fr 1fr 42px`（番号・枚数を少し詰め、厚みは 40px）。［調整］（`.pt.adjtab .pt-row`）は名前を詰めて W・H を広く（`36px 1fr 40px 1.15fr 1.15fr 42px`）、［木取り］（`.pt.cut .pt-row`）は `36px 1.1fr 40px 1fr 1fr 64px`。セルの左右の余白は 5px（前は 6px）。厚みの欄は `.pt-thick`（14px・太字・真ん中）
+- `ui/partsTable.ts`：`TableField` は `CellCol`（名前・厚み・W・H・枚数）。`thicknessText(t)`（空は ''）、`thicknessFromText(text)`（空は null、`parseNum` で 0 より大きい数はその数、0・`0.`・数でないものは `THICKNESS_MESSAGE` で断る。打っている途中の `2.` は 2）。テストつき
+- `PartsTable` の厚みの入力：1回押して選ぶ・もう一度押して入力。キーは枚数と同じ形の `FormulaKeys`（`numeric` の `decimal: true`）。書きかけの文字（`thickDraft`）を持ち、キーを押すたびに `pressKey`（小数可）→ `thicknessFromText` → 入れられれば `updatePart` の `patch: { thickness }`（空の行なら `addPart` で部材を作る）。入れられない形（0 など）は保存せず、理由を式の欄のすぐ下に出す。その形のまま入力を終えると、保存してある厚みのまま「厚みは 0 より大きい数を入れてください。厚みは元に戻しました」
+- 式の欄（`ui/fxBar.ts`）：`barField` は 厚み・W・H・枚数（範囲の左上が厚みなら `'T'`）。`partBar` の厚みはどのタブも厚みの数字（`text`）。［仕上がり］の入力中は書きかけの文字と右に「mm」。［調整］［木取り］の厚みは見るだけ（欄を押しても入力しない）
+- 並べ替え：見出しの長押しの「厚み」は 大きい順・小さい順（`sortChoices` の名前以外と同じ。engine の `sortParts` の `T`）
+- ［木取り］の表（`CutTable`）：厚みのセルも押すと枠が付き、式の欄に厚みを見るだけで出す

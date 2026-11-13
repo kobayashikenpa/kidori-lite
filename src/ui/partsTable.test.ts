@@ -14,6 +14,8 @@ import {
   nextCell,
   quantityFromText,
   quantityText,
+  thicknessFromText,
+  thicknessText,
   referencingOthers,
   rotationState,
   tableDimCell,
@@ -76,6 +78,22 @@ describe('部材の表の行（仕様書 15.1）', () => {
     expect(nextCell({ row: 3, field: 'qty' }, 4)).toEqual({ row: 4, field: 'name' })
     // 空の行のまま次へ：同じ空の行の名前
     expect(nextCell({ row: 4, field: 'qty' }, 4)).toEqual({ row: 4, field: 'name' })
+  })
+
+  it('厚みの文字と厚み（第2.2版。空は null、0 より大きい数（小数可）、0・数でないものは入れられない）', () => {
+    expect(thicknessText(null)).toBe('')
+    expect(thicknessText(18)).toBe('18')
+    expect(thicknessText(2.5)).toBe('2.5')
+    expect(thicknessFromText('')).toEqual({ ok: true, value: null })
+    expect(thicknessFromText('18')).toEqual({ ok: true, value: 18 })
+    expect(thicknessFromText('2.5')).toEqual({ ok: true, value: 2.5 })
+    // 打っている途中の「2.」は 2
+    expect(thicknessFromText('2.')).toEqual({ ok: true, value: 2 })
+    expect(thicknessFromText('１８')).toEqual({ ok: true, value: 18 })
+    expect(thicknessFromText('0')).toEqual({ ok: false, message: '厚みは 0 より大きい数を入れてください' })
+    expect(thicknessFromText('0.')).toMatchObject({ ok: false })
+    expect(thicknessFromText('0.0')).toMatchObject({ ok: false })
+    expect(thicknessFromText('abc')).toMatchObject({ ok: false })
   })
 
   it('枚数の文字と枚数（空は null、0 は寸法だけ）', () => {

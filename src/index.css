@@ -1458,7 +1458,7 @@ h3 > .help {
   font-weight: 700;
 }
 
-/* ---------- 部材の表（第1.1版 仕様書 15.1）：番号・名前・W・H・枚数。375px に横スクロールなしで収める ---------- */
+/* ---------- 部材の表（第1.1版 仕様書 15.1）：番号・名前・厚み・W・H・枚数（厚みは第2.2版 26.1）。375px に横スクロールなしで収める ---------- */
 .pt {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1468,7 +1468,8 @@ h3 > .help {
 }
 .pt-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 46px;
+  /* 厚みの列は細く（数字3〜4桁）。ほかの列を少しずつ詰めた（第2.2版 仕様書 26.1） */
+  grid-template-columns: 36px minmax(0, 1.25fr) 40px minmax(0, 1fr) minmax(0, 1fr) 42px;
   min-width: 0;
 }
 .pt-item + .pt-item {
@@ -1497,7 +1498,7 @@ h3 > .help {
   font: inherit;
   min-height: 46px;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 5px;
   margin: 0;
   display: flex;
   align-items: center;
@@ -1555,6 +1556,17 @@ h3 > .help {
   justify-content: center;
   color: var(--ink);
 }
+/* 厚みの欄（第2.2版 仕様書 26.1）：細い列なので小さめの字で真ん中に */
+.pt-thick {
+  justify-content: center;
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pt-hcell.thin {
+  padding: 0 2px;
+}
 .pt-f {
   font-size: 11px;
   font-weight: 400;
@@ -1583,6 +1595,7 @@ h3 > .help {
 }
 /* 枚数が空の行は薄く（木取りに入らない） */
 .pt-row.noqty .pt-name,
+.pt-row.noqty .pt-thick,
 .pt-row.noqty .pt-dim,
 .pt-row.noqty .pt-qty {
   opacity: 0.5;
@@ -1595,6 +1608,7 @@ h3 > .help {
   background: var(--sunk);
 }
 .pt-row.done .pt-name,
+.pt-row.done .pt-thick,
 .pt-row.done .pt-dim,
 .pt-row.done .pt-qty {
   color: var(--muted);
@@ -2008,7 +2022,10 @@ h3 > .help {
   cursor: default;
 }
 .pt.cut .pt-row {
-  grid-template-columns: 40px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 70px;
+  grid-template-columns: 36px minmax(0, 1.1fr) 40px minmax(0, 1fr) minmax(0, 1fr) 64px;
+}
+.pt.cut .pt-head > span:nth-child(3) {
+  padding: 4px 2px 2px;
 }
 .pt.cut .pt-dim {
   color: var(--cut);
@@ -2140,6 +2157,13 @@ h3 > .help {
 }
 .pa-err {
   font-size: 14px;
+}
+/* ［調整］の表は名前を見るだけなので、名前の列を少し詰めて W・H の調整の値を広く見せる（第2.2版で厚みの列が増えたため） */
+.pt.adjtab .pt-row {
+  grid-template-columns: 36px minmax(0, 1fr) 40px minmax(0, 1.15fr) minmax(0, 1.15fr) 42px;
+}
+.pt.adjtab .pa-label {
+  font-size: 11.5px;
 }
 .pt.pt-edit.adjtab .pt-item:last-child .pt-no {
   border-bottom-left-radius: 9px;

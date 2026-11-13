@@ -9,7 +9,8 @@ const at = (top: number, left: number, rows = 1, cols = 1): CellRange => ({ top,
 describe('式の欄に出す中身（仕様書 25.8）', () => {
   const parts = shelfJob().parts // 0 全体・1 天板・2 側板・3 棚板
 
-  it('W・H・枚数のセルだけ。名前のセル・何も選んでいないときは null', () => {
+  it('厚み・W・H・枚数のセルだけ。名前のセル・何も選んでいないときは null', () => {
+    expect(barField(at(3, 1))).toBe('T')
     expect(barField(at(3, 2))).toBe('W')
     expect(barField(at(3, 3))).toBe('H')
     expect(barField(at(3, 4))).toBe('qty')
@@ -32,6 +33,16 @@ describe('式の欄に出す中身（仕様書 25.8）', () => {
     expect(partBar(parts, at(3, 3), 'adjust')).toEqual({ kind: 'expr', expr: '' })
     expect(partBar(parts, at(3, 2), 'cut')).toEqual({ kind: 'expr', expr: '天板.W - 20' })
     expect(partBar(parts, at(0, 4), 'cut')).toEqual({ kind: 'text', text: '0' })
+  })
+
+  it('厚みはどのタブも その数（空は空。第2.2版）', () => {
+    const thick = shelfJob().parts
+    thick[1] = { ...thick[1], thickness: 18 }
+    expect(partBar(thick, at(1, 1), 'finished')).toEqual({ kind: 'text', text: '18' })
+    expect(partBar(thick, at(1, 1), 'adjust')).toEqual({ kind: 'text', text: '18' })
+    expect(partBar(thick, at(1, 1), 'cut')).toEqual({ kind: 'text', text: '18' })
+    expect(partBar(thick, at(2, 1), 'finished')).toEqual({ kind: 'text', text: '' })
+    expect(partBar(thick, at(9, 1), 'finished')).toEqual({ kind: 'text', text: '' })
   })
 
   it('部材の無い空の行は空の中身（そこに入れられるので欄は出す）', () => {

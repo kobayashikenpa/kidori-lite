@@ -1,4 +1,5 @@
-// 部材の表の［木取り］のタブ（仕様書 15.1・5.1）：仕上がりのタブと同じ表の形で、番号・名前・木取り寸法 W・H・枚数（切った数）を見るだけ。
+// 部材の表の［木取り］のタブ（仕様書 15.1・5.1）：仕上がりのタブと同じ表の形で、番号・名前・厚み・木取り寸法 W・H・枚数（切った数）を見るだけ。
+// 厚みは［仕上がり］で入れたものを見るだけ（切り代は足さない。仕様書 26.1）。
 // 押しても編集しない（入力は［仕上がり］［調整］のタブ）。枚数 0 は「切らない」、枚数が空の行は薄く出す。
 // 木取り寸法（調整後 ＋ 切り代。第2.1版 仕様書 25.1）は engine（computeDimensions の cutByAxis）、切った数は engine（partCutProgress）の結果を並べるだけ
 // 第2.1版（仕様書 25.8。kidori-simple 28.1 と同じ）：W・H・枚数のセルを押すと選んだ印（枠）を付け、タブのすぐ下の式の欄に、
@@ -11,7 +12,7 @@ import { CELL_COLS, type Adjust, type Axis, type DimensionResult, type Job } fro
 import { CELL_COL_LABEL } from '../cellSelect'
 import { fmt } from '../format'
 import { barErrors, partBar } from '../fxBar'
-import { cutDimCell, cutQuantityText } from '../partsTable'
+import { cutDimCell, cutQuantityText, thicknessText } from '../partsTable'
 import { useOutsideEnd } from '../useGrid'
 import { FormulaBar } from './FormulaBar'
 
@@ -24,10 +25,10 @@ interface Props {
   barSlot: HTMLElement | null
 }
 
-/** 押して選んだセル（部材の id と W・H・枚数） */
+/** 押して選んだセル（部材の id と 厚み・W・H・枚数） */
 interface Picked {
   partId: string
-  field: Axis | 'qty'
+  field: Axis | 'T' | 'qty'
 }
 
 export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
@@ -47,13 +48,13 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
 
   if (parts.length === 0) return <p className="placeholder">部材はまだありません</p>
 
-  const press = (partId: string, field: Axis | 'qty') =>
+  const press = (partId: string, field: Picked['field']) =>
     setPicked((cur) => (cur && cur.partId === partId && cur.field === field ? null : { partId, field }))
   const range = on ? { top: pickedRow, left: CELL_COLS.indexOf(picked.field), rows: 1, cols: 1 } : null
   const bar = partBar(parts, range, 'cut')
   const barWho = pickedPart ? (hasName(pickedPart) ? pickedPart.name : `#${pickedRow + 1}`) : ''
   const d0 = pickedPart ? dims.parts.find((x) => x.partId === pickedPart.id) : undefined
-  const errs = on && picked.field !== 'qty' ? barErrors(d0?.errors ?? [], picked.field, 'cut', false) : []
+  const errs = on && (picked.field === 'W' || picked.field === 'H') ? barErrors(d0?.errors ?? [], picked.field, 'cut', false) : []
 
   return (
     <>
@@ -61,6 +62,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
         <div className="pt-row pt-head" role="row">
           <span role="columnheader">番号</span>
           <span role="columnheader">名前</span>
+          <span role="columnheader">厚み</span>
           <span role="columnheader">W</span>
           <span role="columnheader">H</span>
           <span role="columnheader">枚数</span>
@@ -72,7 +74,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
           const label = named ? part.name : `#${i + 1}`
           const noCut = part.quantity === 0
           const rowClass = ['pt-row', 'part', part.quantity === null ? 'noqty' : '', noCut ? 'nocut' : ''].filter(Boolean).join(' ')
-          const isPicked = (f: Axis | 'qty') => on && picked.partId === part.id && picked.field === f
+          const isPicked = (f: Picked['field']) => on && picked.partId === part.id && picked.field === f
           const dimEl = (axis: Axis) => {
             const c = cutDimCell(part, d, axis, adjusts)
             const text = c.kind === 'empty' ? '空' : c.kind === 'error' ? 'エラー' : fmt(c.value)
@@ -115,6 +117,16 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
                 <span role="cell" className="pt-cell pt-name">
                   {named ? part.name : ''}
                 </span>
+                <button
+                  type="button"
+                  role="cell"
+                  className={`pt-cell pt-thick num${isPicked('T') ? ' picked' : ''}`}
+                  aria-label={`${label} の厚み：${part.thickness === null ? '空' : thicknessText(part.thickness)}`}
+                  aria-pressed={isPicked('T')}
+                  onClick={() => press(part.id, 'T')}
+                >
+                  {thicknessText(part.thickness)}
+                </button>
                 {dimEl('W')}
                 {dimEl('H')}
                 <button
@@ -141,7 +153,7 @@ export function CutTable({ job, dims, adjusts, progress, barSlot }: Props) {
         slot={barSlot}
         content={bar}
         adjusts={adjusts}
-        label={on ? `${barWho} の ${picked.field === 'qty' ? '枚数' : `仕上がりの${CELL_COL_LABEL[picked.field]}`}` : ''}
+        label={on ? `${barWho} の ${picked.field === 'qty' || picked.field === 'T' ? CELL_COL_LABEL[picked.field] : `仕上がりの${CELL_COL_LABEL[picked.field]}`}` : ''}
         errors={errs}
       />
     </>

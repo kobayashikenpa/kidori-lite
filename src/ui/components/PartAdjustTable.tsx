@@ -1,8 +1,8 @@
-// 部材の表の［調整］のタブ（第2.1版。仕様書 25.2・25.3・25.7）：［仕上がり］と同じ表の形（番号・名前・W・H・枚数）。
+// 部材の表の［調整］のタブ（第2.1版。仕様書 25.2・25.3・25.7）：［仕上がり］と同じ表の形（番号・名前・厚み・W・H・枚数）。
 // W・H の欄は「調整の値 ｜ 調整後の寸法」（例：−メラミン1 ｜ 379）。調整が空の欄は仕上がり寸法を薄く、エラーは赤で「エラー」。
 // 部材のある行だけ（空の行・「＋ 5行足す」は出さない。仕様書 25.9）。
 // 操作は［仕上がり］と同じ：1回押して選ぶ・もう一度押して入力（W・H だけ。アプリのキー）・取っ手で範囲・番号で行・見出しで列・
-// 長押しのメニュー（切り取り・コピー・貼り付け・クリアだけ。CellMenu の adjust）・オートフィル（指の動きは useGrid）。名前・枚数は見るだけ。
+// 長押しのメニュー（切り取り・コピー・貼り付け・クリアだけ。CellMenu の adjust）・オートフィル（指の動きは useGrid）。名前・厚み・枚数は見るだけ。
 // 表の下に調整寸法の表（AdjustTable）を置き、W・H の入力中に欄が空か記号の後でその行を押すと、その調整寸法を入れる（仕様書 25.3・25.7）。
 // 入力中にほかの部材の W・H を押したら、入れずに入力を終えてそのセルを選ぶ（調整に部材の寸法は使えない。仕様書 25.9）。
 // 選んでいるセルの中身は、タブのすぐ下の式の欄（FormulaBar。仕様書 25.8）に出す（W・H は調整の式、枚数は枚数を見るだけ、名前は空）。
@@ -22,7 +22,7 @@ import { fmt } from '../format'
 import { canInsertRef, insertAt, type Edit } from '../formulaEdit'
 import { closeKeyboard } from '../keyboard'
 import { barErrors, barField, partBar } from '../fxBar'
-import { adjustCellLabel, adjustDimCell, errorsWhileEditing, nextAdjustTabCell, type AdjustDimCell } from '../partsTable'
+import { adjustCellLabel, adjustDimCell, errorsWhileEditing, nextAdjustTabCell, thicknessText, type AdjustDimCell } from '../partsTable'
 import { rangeKey, useOutsideEnd, usePadHeight, useRevealRow, useGrid, useGridBoxes, type PressAt } from '../useGrid'
 import { AdjustTable } from './AdjustTable'
 import { CellMenu } from './CellMenu'
@@ -59,7 +59,8 @@ function cellOf(s: Sel | null, job: Job): Cell | null {
 }
 
 const colOf = (axis: Axis): number => CELL_COLS.indexOf(axis)
-/** 枚数の列の位置（第2.2版で厚みの列が入って 4 になった） */
+/** 厚み・枚数の列の位置（第2.2版で厚みの列が名前の右に入った） */
+const THICK_COL = CELL_COLS.indexOf('T')
 const QTY_COL = CELL_COLS.indexOf('qty')
 
 export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, barSlot }: Props) {
@@ -336,15 +337,14 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
             <span role="columnheader" className="pt-hno">
               番号
             </span>
-            {/* 第2.2版（E-26）：厚み（T）の列は U-30 で作るので、それまで見出しを出さない（最小限の直し） */}
-            {CELL_COLS.map((f, c) => f === 'T' ? null : (
+            {CELL_COLS.map((f, c) => (
               <span key={f} role="columnheader" className="pt-hwrap">
                 <button
                   type="button"
                   ref={(el) => {
                     headEls.current[c] = el
                   }}
-                  className={`pt-hcell${c === 0 ? ' left' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
+                  className={`pt-hcell${c === 0 ? ' left' : ''}${f === 'T' ? ' thin' : ''}${shown && c >= shown.left && c < shown.left + shown.cols ? ' hl' : ''}`}
                   aria-label={`${CELL_COL_LABEL[f]} の列を選ぶ`}
                   onClick={() => pressColumn(c)}
                 >
@@ -432,6 +432,18 @@ export function PartAdjustTable({ job, dims, adjusts, clip, dispatch, onError, b
                     onClick={() => pressCell(i, 0)}
                   >
                     {named ? part.name : ''}
+                  </button>
+                  {/* 厚みは［仕上がり］で入れる。ここは見るだけ（仕様書 26.1） */}
+                  <button
+                    type="button"
+                    className={`pt-cell pt-thick num${rangeCls(THICK_COL)}`}
+                    data-row={i}
+                    data-col={THICK_COL}
+                    aria-label={`${label} の厚み：${part.thickness === null ? '空' : thicknessText(part.thickness)}（見るだけ）`}
+                    aria-selected={inRange(THICK_COL)}
+                    onClick={() => pressCell(i, THICK_COL)}
+                  >
+                    {thicknessText(part.thickness)}
                   </button>
                   {dimEl('W')}
                   {dimEl('H')}
