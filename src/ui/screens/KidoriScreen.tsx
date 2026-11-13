@@ -57,7 +57,7 @@ const DRIFT_REASON: Record<FrozenSheetView['drift'][number]['reason'], string> =
 }
 
 export function KidoriScreen() {
-  const { job, data, dispatch } = useJobStore()
+  const { job, data, dispatch, historyRevision } = useJobStore()
   const adjusts = usableAdjusts(data.adjusts)
   // 部材・設定・調整寸法・固定した1枚が変わったときだけ計算する（仕事は、部材・設定・固定した1枚・名前を変えたときだけ新しくなる。
   // 名前はこの画面では変えないので、仕事と調整寸法を見ていれば足りる）
@@ -75,6 +75,12 @@ export function KidoriScreen() {
   const [openFinished, setOpenFinished] = useState(false)
   // チェックで失敗したときの知らせ（その1枚の中に出す）
   const [checkError, setCheckError] = useState<{ key: string; message: string } | null>(null)
+  // 戻す・進むのあとは、前の操作のエラーの文を消す（第2.3版）
+  const [errRev, setErrRev] = useState(historyRevision)
+  if (errRev !== historyRevision) {
+    setErrRev(historyRevision)
+    setCheckError(null)
+  }
   // チェックを付け外しすると1枚の並びが変わる（計算した1枚が固定した1枚になって前に来る）ので、押した行が画面の同じ位置に残るようにスクロールを戻す
   const anchor = useRef<{ key: string; top: number } | null>(null)
   // 見出しの行を止める位置（上の仕事の名前の帯の高さ）

@@ -2303,10 +2303,10 @@ h3 > .help {
   cursor: pointer;
   touch-action: manipulation;
 }
-.ur-btn:not(:disabled):active {
+.ur-btn:not([aria-disabled='true']):active {
   background: var(--sunk);
 }
-.ur-btn:disabled {
+.ur-btn[aria-disabled='true'] {
   opacity: 0.35;
   cursor: not-allowed;
 }
@@ -2336,6 +2336,9 @@ h3 > .help {
   box-shadow: var(--shadow);
   overflow-wrap: anywhere;
   pointer-events: none;
+}
+.ur-notice.empty {
+  visibility: hidden;
 }
 /* 式の欄の置き場所：中身が無いとき（名前のセル・何も選んでいない）も同じ高さの空の欄を出す（表の位置がずれない） */
 .fx-slot {

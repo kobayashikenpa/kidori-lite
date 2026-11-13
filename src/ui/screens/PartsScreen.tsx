@@ -31,6 +31,12 @@ export function PartsScreen() {
   const { job, data, dispatch, historyRevision } = useJobStore()
   const [tab, setTabState] = useState<PartsTab>(() => loadPartsTab(browserStorage()))
   const [error, setError] = useState<string | null>(null)
+  // 戻す・進むのあとは、前の操作のエラーの文を消す（第2.3版）
+  const [errRev, setErrRev] = useState(historyRevision)
+  if (errRev !== historyRevision) {
+    setErrRev(historyRevision)
+    setError(null)
+  }
   // 式の欄の置き場所（表が選んでいるセルの中身をここへ出す）
   const [barSlot, setBarSlot] = useState<HTMLDivElement | null>(null)
   // タブと式の欄を止める位置（上の仕事の名前の帯の高さ。文字の大きさ・画面の向きで変わるので測る）

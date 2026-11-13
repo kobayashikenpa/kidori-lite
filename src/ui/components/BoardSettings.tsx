@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { customSheet } from '../../engine/defaults'
 import type { SizeComparison, SizeSummary, StandardSize } from '../../engine/packing/sizes'
 import { BOARD_SIZES, type CutMode, type Job, type PackingResult, type Settings } from '../../engine/types'
-import type { Dispatch } from '../../store/useJobStore'
+import { useJobStore, type Dispatch } from '../../store/useJobStore'
 import { pct } from '../kidoriView'
 import { CUT_MODES, sheetSizeText } from '../settings'
 import { Help } from './Help'
@@ -28,6 +28,14 @@ export function BoardSettings({ job, compare, result, empty, dispatch }: Props) 
   const s = job.settings
   const [sheetError, setSheetError] = useState<string | null>(null)
   const [numError, setNumError] = useState<string | null>(null)
+  // 戻す・進むのあとは、前の操作のエラーの文を消す（第2.3版）
+  const { historyRevision } = useJobStore()
+  const [errRev, setErrRev] = useState(historyRevision)
+  if (errRev !== historyRevision) {
+    setErrRev(historyRevision)
+    setSheetError(null)
+    setNumError(null)
+  }
   const custom = s.sheet.sizeKind === 'custom'
 
   const pickSize = (kind: StandardSize) => {

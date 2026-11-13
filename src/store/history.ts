@@ -2,6 +2,7 @@
 // 履歴は操作の前と後の中身をまるごと持つ（スナップショット）。部材・設定・固定した1枚・調整寸法の表は変えずに新しいオブジェクトを作る作りなので、
 // 変わらない部分は前のオブジェクトを共有し、50回持ってもメモリは小さい。
 // reduce は変えずに、その外側（dispatchWithHistory）で記録する。履歴はスマホに保存しない（StoreState.history。saveSaved は書かない）
+import { isBlankPart } from '../engine/parts'
 import type { AdjustRow, AppData, Job } from '../engine/types'
 import { historyLabel, historyNotice } from './historyLabel'
 import { reduce, type Env, type ReduceResult, type StoreAction, type StoreState } from './reducer'
@@ -24,8 +25,17 @@ export interface AdjustsChange {
 
 /** 履歴の1回（「戻る」1回で戻る分） */
 export interface HistoryEntry {
-  /** 何をしたか（知らせる文に使う。まとまりは最初の操作の名前） */
+  /** 何をしたか（知らせる文に使う。まとめた1回で名前が2つ以上なら「天板 の回転 ほか2件」） */
   label: string
+  /** 最初の操作の名前 */
+  first: string
+  /** まとめた操作の相手（部材の操作は部材の id、ほかは操作の名前。重ならない）。2つ以上なら名前は「最初 ほか◯件」 */
+  keys: string[]
+  /**
+   * この1回を記録したときに消した「進む」（戻したあとの新しい操作）。この1回が後片付けなどで何も変わらなかったことになり
+   * 履歴から外れたら、消した「進む」を戻す。戻す・進むで動かしたあとは持たない
+   */
+  clearedFuture?: HistoryEntry[]
   /** まとめる印（dispatch の opts.group）。無ければ null */
   group: string | null
   /** 変わった仕事ごとの前と後（切り取りの元がほかの仕事なら2つ） */
@@ -169,6 +179,16 @@ function changesBetween(before: AppData, after: AppData): Pick<HistoryEntry, 'jo
   return { jobs, adjusts }
 }
 
+/** 知らせる文の名前（相手が2つ以上なら「最初 ほか◯件」） */
+function labelOf(first: string, keys: readonly string[]): string {
+  return keys.length > 1 ? `${first} ほか${keys.length - 1}件` : first
+}
+
+/** まとめる相手：1つの部材の操作は部材の id（同じ部材の名前と W を変えても1件）、ほかは操作の名前 */
+function keyOf(action: StoreAction, label: string): string {
+  return 'partId' in action && typeof action.partId === 'string' ? `part:${action.partId}` : `label:${label}`
+}
+
 /** 前と後が同じになった仕事・調整寸法の表を外す。何も残らなければ null */
 function prune(entry: HistoryEntry): HistoryEntry | null {
   const jobs = entry.jobs.filter((j) => !sameBody(j.before, j.after))
@@ -177,8 +197,11 @@ function prune(entry: HistoryEntry): HistoryEntry | null {
   return { ...entry, jobs, adjusts }
 }
 
-/** 直前の1回に続けて含める（前は最初のまま、後を新しくする。新しく変わった仕事・調整寸法の表は足す） */
-function merge(prev: HistoryEntry, cur: Pick<HistoryEntry, 'jobs' | 'adjusts'>): HistoryEntry {
+/**
+ * 直前の1回に続けて含める（前は最初のまま、後を新しくする。新しく変わった仕事・調整寸法の表は足す）。
+ * label を渡すと（同じ印のまとまり）、まとめた操作の名前に足す。後片付け（follow）は名前を足さない
+ */
+function merge(prev: HistoryEntry, cur: Pick<HistoryEntry, 'jobs' | 'adjusts'>, key?: string): HistoryEntry {
   const jobs = prev.jobs.map((j) => {
     const c = cur.jobs.find((x) => x.jobId === j.jobId)
     return c ? { ...j, after: c.after } : j
@@ -186,20 +209,24 @@ function merge(prev: HistoryEntry, cur: Pick<HistoryEntry, 'jobs' | 'adjusts'>):
   for (const c of cur.jobs) if (!prev.jobs.some((j) => j.jobId === c.jobId)) jobs.push(c)
   let adjusts = prev.adjusts
   if (cur.adjusts) adjusts = prev.adjusts ? { before: prev.adjusts.before, after: cur.adjusts.after } : cur.adjusts
-  return { ...prev, jobs, adjusts }
+  const keys = key !== undefined && !prev.keys.includes(key) ? [...prev.keys, key] : prev.keys
+  return { ...prev, jobs, adjusts, keys, label: labelOf(prev.first, keys) }
 }
 
 // ---------- 記録 ----------
 
-/** 直前の1回を置き換える。前と後が同じになったら履歴から外す（そのあとは何にもまとめない） */
+/**
+ * 直前の1回を置き換える。前と後が同じになったら履歴から外す（そのあとは何にもまとめない）。
+ * 外れた1回が記録したときに消した「進む」があれば戻す（戻したあとに行を挿入して何も入れずに外した、など）
+ */
 function replaceTop(h: History, merged: HistoryEntry): History {
   const rest = h.past.slice(0, -1)
   const entry = prune(merged)
-  if (!entry) return { ...h, past: rest, last: null }
+  if (!entry) return { ...h, past: rest, future: merged.clearedFuture ?? h.future, last: null }
   return { ...h, past: [...rest, entry], last: 'record' }
 }
 
-function record(h: History, change: Pick<HistoryEntry, 'jobs' | 'adjusts'>, label: string, opts: DispatchOptions | undefined): History {
+function record(h: History, change: Pick<HistoryEntry, 'jobs' | 'adjusts'>, label: string, key: string, opts: DispatchOptions | undefined): History {
   const top = h.past.at(-1)
   if (opts?.follow) {
     // 後片付け：直前が記録なら含める。戻す・進むの直後（や何も無いとき）は記録せず、先も消さない
@@ -207,8 +234,8 @@ function record(h: History, change: Pick<HistoryEntry, 'jobs' | 'adjusts'>, labe
     return replaceTop(h, merge(top, change))
   }
   const group = opts?.group ?? null
-  if (group !== null && h.last === 'record' && top && top.group === group) return replaceTop(h, merge(top, change))
-  const entry = prune({ label, group, ...change })
+  if (group !== null && h.last === 'record' && top && top.group === group) return replaceTop(h, merge(top, change, key))
+  const entry = prune({ label, first: label, keys: [key], group, ...change, ...(h.future.length > 0 ? { clearedFuture: h.future } : {}) })
   if (!entry) return h
   return { ...h, past: [...h.past, entry].slice(-HISTORY_LIMIT), future: [], last: 'record' }
 }
@@ -237,12 +264,34 @@ export function dispatchWithHistory(state: StoreState, action: StoreAction, env:
     const touched = change.adjusts !== null || change.jobs.some((j) => j.jobId === state.currentJobId)
     return touched ? withHistory(emptyHistory(h.revision)) : r
   }
-  return withHistory(record(h, change, historyLabel(action, state), opts))
+  const label = historyLabel(action, state)
+  return withHistory(record(h, change, label, keyOf(action, label), opts))
 }
 
 // ---------- 戻す・進む ----------
 
-/** 1回の前（後）の中身を当てる。当てる所が何も無ければ（記録した仕事が全部消えた）null */
+/**
+ * 何も入っていない行（部材・調整寸法の表）を外す。画面は入力していない空の行を後片付けで外すので、戻す・進むで当てる中身にも残さない
+ * （残すと、戻したあとの後片付けが履歴の外で行を外し、見た目の変わらない「戻る」ができてしまう）
+ */
+const tidyBody = (b: JobBody): JobBody => {
+  const parts = b.parts.filter((p) => !isBlankPart(p))
+  return parts.length === b.parts.length ? b : { ...b, parts }
+}
+const tidyAdjusts = (rows: AdjustRow[]): AdjustRow[] => {
+  const kept = rows.filter((r) => r.name.trim() !== '' || r.value !== null)
+  return kept.length === rows.length ? rows : kept
+}
+
+/** 戻す・進むで動かした1回は、消した「進む」を持たない */
+const bare = (entry: HistoryEntry): HistoryEntry => {
+  if (!entry.clearedFuture) return entry
+  const rest = { ...entry }
+  delete rest.clearedFuture
+  return rest
+}
+
+/** 1回の前（後）の中身を当てる（空の行は外す）。当てる所が何も無ければ（記録した仕事が全部消えた）null */
 function applyEntry(data: AppData, entry: HistoryEntry, side: 'before' | 'after', now: Date): AppData | null {
   let touched = false
   const stamp = now.toISOString()
@@ -250,29 +299,37 @@ function applyEntry(data: AppData, entry: HistoryEntry, side: 'before' | 'after'
     const c = entry.jobs.find((x) => x.jobId === job.id)
     if (!c) return job
     touched = true
-    const b = c[side]
+    const b = tidyBody(c[side])
     // 名前・id・作った日は今のまま。updatedAt は今の時刻（戻すのも変更）
     return { ...job, parts: b.parts, settings: b.settings, frozenSheets: b.frozenSheets, updatedAt: stamp }
   })
   let adjusts = data.adjusts
   if (entry.adjusts) {
-    adjusts = entry.adjusts[side]
+    adjusts = tidyAdjusts(entry.adjusts[side])
     touched = true
   }
   return touched ? { ...data, jobs, adjusts } : null
 }
 
+/**
+ * 戻す・進む。空の行を外すと見た目が何も変わらない1回（行の挿入だけ、など）は、向こう側へ動かして次の1回を当てる。
+ * 何も変わる1回が無ければ、何もしない（理由を返す）
+ */
 function move(state: StoreState, env: Env, kind: 'undo' | 'redo'): HistoryResult {
   const h = state.history
   const from = kind === 'undo' ? [...h.past] : [...h.future]
+  const to = kind === 'undo' ? [...h.future] : [...h.past]
   while (from.length > 0) {
-    const entry = from.pop()!
+    const entry = bare(from.pop()!)
     const data = applyEntry(state.data, entry, kind === 'undo' ? 'before' : 'after', env.now)
     if (!data) continue // 記録した仕事が全部消えていれば、その1回は捨てて次へ
+    to.push(entry)
+    const change = changesBetween(state.data, data)
+    if (change.jobs.length === 0 && change.adjusts === null) continue // 見た目が変わらない1回は飛ばす
     const history: History =
       kind === 'undo'
-        ? { past: from, future: [...h.future, entry], last: 'move', revision: h.revision + 1 }
-        : { past: [...h.past, entry], future: from, last: 'move', revision: h.revision + 1 }
+        ? { past: from, future: to, last: 'move', revision: h.revision + 1 }
+        : { past: to, future: from, last: 'move', revision: h.revision + 1 }
     return { ok: true, state: { ...state, data, history }, label: entry.label, notice: historyNotice(kind, entry.label) }
   }
   return { ok: false, message: kind === 'undo' ? UNDO_EMPTY_MESSAGE : REDO_EMPTY_MESSAGE }

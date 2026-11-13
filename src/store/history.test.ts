@@ -335,13 +335,82 @@ describe('後片付け（opts.follow）', () => {
 
   it('直前が戻す・進むのときは記録せず、先（進む）も消さない', () => {
     let s = fresh()
-    const r = dispatchWithHistory(s, { type: 'insertPart', index: 0, part: {} }, env)
-    if (!r.ok) throw new Error(r.message)
-    s = act(r.state, editW(r.state, '300'))
+    s = act(s, { type: 'updatePart', partId: 'part-gawaita', patch: { quantity: 4 } })
+    s = act(s, editW(s, '300'))
     s = undo(s)
-    s = act(s, { type: 'removePart', partId: r.id! }, { follow: true })
+    s = act(s, { type: 'removePart', partId: 'part-zentai' }, { follow: true })
     expect(s.history.past).toHaveLength(1)
     expect(s.history.future).toHaveLength(1)
+  })
+})
+
+describe('空の行と戻す・進む（レビューの直し）', () => {
+  it('行を上に挿入 → 名前を入れる → 戻る：空の行は残らず、次の「戻る」は挿入より前の操作を戻す（何も変わらない「戻る」は無い）', () => {
+    let s = fresh()
+    s = act(s, { type: 'updatePart', partId: 'part-gawaita', patch: { quantity: 4 } })
+    const r = dispatchWithHistory(s, { type: 'insertPart', index: 1, part: { quantity: null } }, env) // 画面と同じ空の行
+    if (!r.ok) throw new Error(r.message)
+    s = act(r.state, { type: 'updatePart', partId: r.id!, patch: { name: '背板' } }, { group: 'g1' })
+    expect(shelf(s).parts).toHaveLength(5)
+    s = undo(s)
+    // 名前を戻すと空の行になるので、その行は外れる
+    expect(shelf(s).parts).toHaveLength(4)
+    expect(shelf(s).parts[2].quantity).toBe(4)
+    // 次の「戻る」は挿入（見た目が変わらない）を飛ばして、側板の枚数を戻す
+    const u = undoHistory(s, env)
+    if (!u.ok) throw new Error(u.message)
+    expect(shelf(u.state).parts[2].quantity).toBe(2)
+    expect(u.label).toBe('側板 の枚数')
+    // 進むは、側板の枚数 → （挿入は飛ばして）背板 の名前
+    s = redo(u.state)
+    expect(shelf(s).parts[2].quantity).toBe(4)
+    s = redo(s)
+    expect(shelf(s).parts.map((p) => p.name)).toEqual(['全体', '背板', '天板', '側板', '棚板'])
+    expect(canRedo(s.history)).toBe(false)
+  })
+
+  it('戻したあとに行を挿入して、何も入れずに外したら、「進む」は消えない', () => {
+    let s = fresh()
+    s = act(s, editW(s, '300'))
+    s = undo(s)
+    expect(canRedo(s.history)).toBe(true)
+    const r = dispatchWithHistory(s, { type: 'insertPart', index: 0, part: {} }, env)
+    if (!r.ok) throw new Error(r.message)
+    s = act(r.state, { type: 'removePart', partId: r.id! }, { follow: true })
+    expect(canRedo(s.history)).toBe(true)
+    s = redo(s)
+    expect(tanaita(s).expr.W).toBe('300')
+  })
+
+  it('戻したあと、同じ入力の中で元の値に戻した（何も変わらなかった）ときも「進む」は消えない', () => {
+    let s = fresh()
+    s = act(s, editW(s, '300'))
+    s = undo(s)
+    const before = tanaita(s).expr.W
+    s = act(s, editW(s, '3'), { group: 'g2' })
+    s = act(s, editW(s, before), { group: 'g2' })
+    expect(canRedo(s.history)).toBe(true)
+  })
+})
+
+describe('まとめた1回の名前（レビューの直し）', () => {
+  it('同じ印で3つの部材を変えたら「天板 の回転 ほか2件」。同じ部材なら1つの名前のまま', () => {
+    let s = fresh()
+    for (const id of ['part-tenita', 'part-gawaita', 'part-tanaita']) {
+      s = act(s, { type: 'updatePart', partId: id, patch: { rotatable: true } }, { group: 'rot' })
+    }
+    expect(s.history.past).toHaveLength(1)
+    const u = undoHistory(s, env)
+    if (!u.ok) throw new Error(u.message)
+    expect(u.label).toBe('天板 の回転 ほか2件')
+    expect(u.notice).toBe('戻しました：天板 の回転 ほか2件')
+
+    let t = fresh()
+    t = act(t, editW(t, '3'), { group: 'w' })
+    t = act(t, editW(t, '30'), { group: 'w' })
+    const v = undoHistory(t, env)
+    if (!v.ok) throw new Error(v.message)
+    expect(v.label).toBe('棚板 の W')
   })
 })
 
